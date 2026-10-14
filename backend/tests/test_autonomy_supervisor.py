@@ -267,14 +267,19 @@ async def test_finished_ticks_are_released_from_the_in_flight_set() -> None:
 
     supervisor.register(LoopSpec(loop_id="test_loop", description="t", tick=tick))
     await supervisor.start()
-    deadline = time.monotonic() + 30.0
-    while runs < 3 and time.monotonic() < deadline:
-        await asyncio.sleep(0.01)
-    assert runs >= 3
+    try:
+        deadline = time.monotonic() + 30.0
+        while runs < 3 and time.monotonic() < deadline:
+            await asyncio.sleep(0.01)
+        assert runs >= 3
+    finally:
+        # Stop the interval loop before asserting its transient task set; a
+        # fourth tick may otherwise start between the counter increment and the
+        # current tick's completion callback.
+        await supervisor.stop()
     assert supervisor._inflight["test_loop"] == set()
     assert supervisor._workers["test_loop"] == set()
     assert supervisor.status()["loops"]["test_loop"]["in_flight"] == 0
-    await supervisor.stop()
 
 
 @pytest.mark.asyncio

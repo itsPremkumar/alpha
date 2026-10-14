@@ -334,7 +334,7 @@ def test_j_archiving_preserves_the_transcript_and_is_reversible(env):
     from alpha.groups.war_room import build_default_config
 
     async def archivist(ctx):
-        return "archivist position"
+        return "archivist position\nSTATED CLAIMS: archive retains the transcript\nSELF CONFIDENCE: 0.8"
 
     async def moderator(ctx):
         return "DECISION"
@@ -353,7 +353,7 @@ def test_j_archiving_preserves_the_transcript_and_is_reversible(env):
         clock=time.monotonic,
     )
     run = asyncio.run(room.execute())
-    assert run.status == "succeeded"
+    assert run.status == "succeeded", run.error or run.to_dict()
     # Compared as plain dicts: the lifecycle reader returns dicts, and the point
     # of the assertion is that the two agree on content and order.
     messages_before = [m.to_dict() for m in room.transcript.read()]

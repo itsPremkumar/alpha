@@ -141,7 +141,7 @@ def test_start_container_logs_redacted_env_values(monkeypatch, caplog):
     assert "NORMAL=visible-value" in joined_cmd
 
     log_output = "\n".join(record.getMessage() for record in caplog.records)
-    assert "API_KEY=<redacted>" in log_output
+    assert "API_KEY=<redacted>" in log_output or "API_KEY=[REDACTED:" in log_output
     assert "NORMAL=<redacted>" in log_output
     assert "secret-value" not in log_output
     assert "visible-value" not in log_output

@@ -189,11 +189,12 @@ ZeroDivisionError: division by zero
         assert "count != 0" in fixed_code
 
 
-def test_run_surgical_program_repair_tool():
+def test_run_surgical_program_repair_tool(monkeypatch):
     import json
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
+        monkeypatch.setenv("ALPHA_WORKSPACE_ROOTS", str(tmp_path))
         buggy_file = tmp_path / "math_fn.py"
         buggy_file.write_text(
             "def divide(a, b):\n    return a / b\n",

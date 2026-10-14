@@ -161,6 +161,17 @@ class WorktreeTaskContext(AbstractContextManager):
     def _generate_diff(self) -> str:
         if not self.instance or not self.instance.path.exists():
             return ""
+        # ``git diff HEAD`` omits new, untracked files. Mark visible untracked
+        # paths intent-to-add so the patch contains newly created source files
+        # without staging their contents. This runs in the isolated worktree
+        # and uses the same deadline because configured clean filters may run
+        # external programs.
+        _run_git_bounded(
+            ["git", "-C", str(self.instance.path), "add", "-N", "--", "."],
+            cwd=str(self.instance.path),
+            timeout=_DIFF_TIMEOUT_SECONDS,
+            description="worktree index preparation",
+        )
         cmd = ["git", "-C", str(self.instance.path), "diff", "HEAD"]
         return _run_git_bounded(
             cmd,

@@ -190,8 +190,13 @@ def test_postmortem_heuristics_capture(tmp_path: Path):
     assert any("sorted order" in str(h) for h in proj_mem.get("failure_heuristics", []))
 
 
-def test_workforce_model_routing():
+def test_workforce_model_routing(monkeypatch):
     router = WorkforceModelRouter()
+    # This test covers the router's built-in fallback table. Keep the operator's
+    # active config.yaml from replacing that table with deployment-specific
+    # model ids (for example, the configured alpha-free route).
+    monkeypatch.setattr(router, "_declared_tier_chain", lambda _tier: [])
+    monkeypatch.setattr(router, "_overridden_tiers", lambda: set())
 
     # 1. Architecture task -> Frontier tier
     decision_arch = router.route_model("architecture", complexity="medium")

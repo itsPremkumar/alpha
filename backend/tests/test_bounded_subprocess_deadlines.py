@@ -309,8 +309,9 @@ def test_worktree_diff_still_returns_output_without_a_hanging_driver(tmp_path):
     assert "+second" in diff
 
 
-def test_worktree_task_context_still_generates_a_patch(tmp_path):
+def test_worktree_task_context_still_generates_a_patch(tmp_path, monkeypatch):
     """The bounded diff keeps the ordinary worktree/patch lifecycle intact."""
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "alpha-home"))
     repo = tmp_path / "repo"
     _init_repo(repo)
     _seed_commit(repo)

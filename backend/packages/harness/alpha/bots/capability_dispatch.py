@@ -400,6 +400,8 @@ class CapabilityDispatcher:
         """
         registry = self.registry
         issuer = self._context.node_id or ALPHA_LEADER_NAME
+        mod_routing_note: str | None = None
+        mod_recommendation: str | None = None
 
         # 0. Emergency Stop & Mod Kernel Admission Gate
         try:
@@ -454,20 +456,15 @@ class CapabilityDispatcher:
             if res.outcome == EventOutcome.ANSWER:
                 mod_bot = str((res.response_payload or {}).get("selected_bot") or "").strip()
                 if not mod_bot:
-                    return _refusal(
-                        task_id,
-                        REFUSAL_NO_ELIGIBLE_AGENT,
-                        res.reason or "task router found no eligible agent",
-                        issuer=issuer,
-                        required=required_capability_tags or (),
-                        attempt=attempt,
-                        max_attempts=max_attempts,
-                        context=self._context,
-                    )
-                if candidate_names:
-                    candidate_names = (mod_bot, *[c for c in candidate_names if c.lower() != mod_bot.lower()])
+                    # This mod is advisory and can use the process-wide roster.
+                    # Keep the dispatcher's own roster authoritative when the
+                    # caller supplied an isolated or owner-scoped registry.
+                    mod_routing_note = res.reason or "task router found no eligible agent"
                 else:
-                    candidate_names = (mod_bot,)
+                    # A recommendation must never narrow the capability-safe
+                    # auction pool. It may be stale or incompatible with the
+                    # dispatcher's registry; retain it as decision context only.
+                    mod_recommendation = mod_bot
         except Exception as exc:
             return _refusal(
                 task_id,
@@ -540,6 +537,8 @@ class CapabilityDispatcher:
         eligibility = eligible_candidates(profiles, required, exclude=list(exclude or []))
         if not eligibility.eligible:
             detail = "; ".join(f"{item['bot']}: {item['detail']}" for item in eligibility.rejected[:8]) or "no live agent on the roster"
+            if mod_routing_note:
+                detail = f"{detail}; advisory task router: {mod_routing_note}"
             return _refusal(
                 task_id,
                 REFUSAL_NO_ELIGIBLE_AGENT,
@@ -671,6 +670,10 @@ class CapabilityDispatcher:
             award=award,
             eligible=eligibility.eligible,
         )
+        if mod_recommendation:
+            reason += f"; advisory task router recommended @{mod_recommendation}"
+        elif mod_routing_note:
+            reason += f"; advisory task router had no match ({mod_routing_note})"
         decision = DispatchDecision(
             task_id=task_id,
             outcome=DispatchOutcome.DISPATCHED,

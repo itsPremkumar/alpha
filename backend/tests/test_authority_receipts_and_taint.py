@@ -275,8 +275,8 @@ def test_ledger_records_a_child_with_its_delegator() -> None:
 # ===========================================================================
 
 
-def _chain_of_three(chain_id: str = "unit-h") -> ReceiptChain:
-    chain = ReceiptChain(chain_id=chain_id)
+def _chain_of_three(chain_id: str = "unit-h", *, directory=None) -> ReceiptChain:
+    chain = ReceiptChain(chain_id=chain_id, directory=directory)
     for index in range(3):
         chain.append(
             decision=f"authority_grant_{index}",
@@ -312,11 +312,11 @@ def test_mutating_a_historical_receipt_in_memory_is_detected() -> None:
         chain.assert_intact()
 
 
-def test_mutating_a_receipt_on_disk_is_detected() -> None:
-    chain = _chain_of_three("unit-h-disk")
+def test_mutating_a_receipt_on_disk_is_detected(tmp_path) -> None:
+    chain = _chain_of_three("unit-h-disk", directory=tmp_path)
     path = chain.persist()
     assert path.exists()
-    reloaded = ReceiptChain.load(chain_id="unit-h-disk")
+    reloaded = ReceiptChain.load(chain_id="unit-h-disk", directory=tmp_path)
     assert reloaded.verify().ok is True
     assert len(reloaded) == 3
 
@@ -328,7 +328,7 @@ def test_mutating_a_receipt_on_disk_is_detected() -> None:
     lines[0] = json.dumps(payload, ensure_ascii=True, sort_keys=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    tampered = ReceiptChain.load(chain_id="unit-h-disk")
+    tampered = ReceiptChain.load(chain_id="unit-h-disk", directory=tmp_path)
     verdict = tampered.verify()
     assert verdict.ok is False
     assert verdict.broken_at_seq == 1
@@ -336,22 +336,22 @@ def test_mutating_a_receipt_on_disk_is_detected() -> None:
         tampered.assert_intact()
 
 
-def test_removing_a_receipt_is_detected() -> None:
-    chain = _chain_of_three("unit-h-remove")
+def test_removing_a_receipt_is_detected(tmp_path) -> None:
+    chain = _chain_of_three("unit-h-remove", directory=tmp_path)
     path = chain.persist()
     lines = path.read_text(encoding="utf-8").splitlines()
     path.write_text("\n".join([lines[0], lines[2]]) + "\n", encoding="utf-8")
-    verdict = ReceiptChain.load(chain_id="unit-h-remove").verify()
+    verdict = ReceiptChain.load(chain_id="unit-h-remove", directory=tmp_path).verify()
     assert verdict.ok is False
     assert "removed or reordered" in verdict.reason
 
 
-def test_reordering_receipts_is_detected() -> None:
-    chain = _chain_of_three("unit-h-reorder")
+def test_reordering_receipts_is_detected(tmp_path) -> None:
+    chain = _chain_of_three("unit-h-reorder", directory=tmp_path)
     path = chain.persist()
     lines = path.read_text(encoding="utf-8").splitlines()
     path.write_text("\n".join([lines[1], lines[0], lines[2]]) + "\n", encoding="utf-8")
-    verdict = ReceiptChain.load(chain_id="unit-h-reorder").verify()
+    verdict = ReceiptChain.load(chain_id="unit-h-reorder", directory=tmp_path).verify()
     assert verdict.ok is False
     # Detected, and the report names the receipt whose seq is out of position.
     assert verdict.broken_at_seq == 2
