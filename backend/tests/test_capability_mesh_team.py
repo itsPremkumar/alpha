@@ -24,7 +24,7 @@ from alpha.capability_mesh.fingerprint import Pressure, Risk, SituationFingerpri
 from alpha.capability_mesh.graph import CapabilityGraph, EdgeKind, GraphEdge, GraphNode, NodeKind
 from alpha.capability_mesh.memory import CapabilityMemory, CapabilityRecord, OutcomeKind
 from alpha.capability_mesh.models import CapabilityEstimate, CapabilityPassport, EntityKind, EvidenceLevel
-from alpha.capability_mesh.policy import Depth, DecisionPolicy, PolicyProfile, resolve_policy
+from alpha.capability_mesh.policy import DecisionPolicy, Depth, PolicyProfile
 from alpha.capability_mesh.team import MAX_TEAM_SIZE, RISK_PENALTY, UNPRICED_PENALTY, DiversityAxis, TeamMember, TeamPlan, select_team
 
 PV = "p1"
@@ -82,7 +82,7 @@ def test_select_team_requires_a_profile_version():
 
 
 def test_select_team_refuses_max_team_size_above_the_hard_ceiling():
-    with pytest.raises(ValueError, match=f"MAX_TEAM_SIZE"):
+    with pytest.raises(ValueError, match="MAX_TEAM_SIZE"):
         select_team(("docs",), _ordering_passports(), policy=_profile(), profile_version=PV, max_team_size=MAX_TEAM_SIZE + 1)
 
 
