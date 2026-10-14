@@ -212,6 +212,11 @@ def _python_files() -> tuple[list[str], list[str]]:
     return files, excluded
 
 
+def _mypy_command(python: str) -> list[str]:
+    """Type-check the backend while honoring ignored local scratch paths."""
+    return [python, "-m", "mypy", ".", "--ignore-missing-imports", "--exclude-gitignore"]
+
+
 def _display_path(path: Path) -> str:
     try:
         return path.relative_to(REPO_ROOT).as_posix()
@@ -530,7 +535,7 @@ def main() -> int:
         stages.append(
             _run_process_stage(
                 "mypy",
-                [python, "-m", "mypy", ".", "--ignore-missing-imports"],
+                _mypy_command(python),
                 cwd=REPO_ROOT / "backend",
                 reports_dir=reports_dir,
             )

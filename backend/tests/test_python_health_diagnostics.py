@@ -110,6 +110,19 @@ def test_mypy_diagnostics_keep_windows_paths_codes_and_all_findings():
     assert "tmp_probe/probe.py: error" in summary
 
 
+def test_mypy_health_command_excludes_gitignored_local_scratch():
+    module = _load_diagnostics_module()
+
+    assert module._mypy_command("python") == [
+        "python",
+        "-m",
+        "mypy",
+        ".",
+        "--ignore-missing-imports",
+        "--exclude-gitignore",
+    ]
+
+
 def test_compile_diagnostics_are_machine_readable_with_exact_location():
     module = _load_diagnostics_module()
 
