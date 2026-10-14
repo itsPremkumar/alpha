@@ -93,7 +93,7 @@ async function loadProbeAll(deps) {
     // at the test file instead of at the change. One definition, plus
     // `supervision-stub-parity.test.mjs` to keep it honest.
     supervision: supervisionStubSource(),
-    teamops: stub("companyStatus", "return Promise.resolve({});"),
+    company: stub("listCompanies", "return Promise.resolve(globalThis.__companies ?? []);"),
     mcp: stub("fetchMcpConfig", "return Promise.resolve([]);"),
     multimodal: stub("getCapabilities", "return Promise.resolve(globalThis.__capabilities);"),
     ...deps,
@@ -198,6 +198,43 @@ test("a fully-disabled channel roster reports nothing connected, not \"10 runnin
     delete globalThis.__channels;
     delete globalThis.__capabilities;
   }
+});
+
+test("Company OS readiness reads the owner-scoped directory used by Companies", async () => {
+  globalThis.__companies = [
+    { company_id: "co-1", name: "Alpha QA", state: "active" },
+    { company_id: "co-2", name: "Archived org", state: "archived" },
+  ];
+  try {
+    const probeAll = await loadProbeAll();
+    const company = find(await probeAll(), "company");
+    assert.equal(company.ok, true);
+    assert.equal(company.detail, "1 active · 2 total");
+  } finally {
+    delete globalThis.__companies;
+  }
+});
+
+test("an empty Company OS directory is configured-empty, not a failed readiness probe", async () => {
+  globalThis.__companies = [];
+  try {
+    const probeAll = await loadProbeAll();
+    const company = find(await probeAll(), "company");
+    assert.equal(company.ok, true);
+    assert.equal(company.detail, "no organizations configured");
+  } finally {
+    delete globalThis.__companies;
+  }
+});
+
+test("a failed Company OS directory read keeps the Gateway's reason", async () => {
+  const reason = "Company store unreadable";
+  const probeAll = await loadProbeAll({
+    company: stub("listCompanies", `throw new Error(${JSON.stringify(reason)});`),
+  });
+  const company = find(await probeAll(), "company");
+  assert.equal(company.ok, false);
+  assert.equal(company.detail, reason);
 });
 
 test("the channel row counts connected links and names the platforms", async () => {

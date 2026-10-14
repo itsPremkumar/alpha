@@ -4,7 +4,7 @@
 // Found by driving the real running app and reading the emitted DOM, not by
 // reading the JSX. At a 1000px viewport `header > div` contained this:
 //
-//     Gateway online  v2.1.0  ● 5.3G/5.9G 90%  ⚡7  ▤8  ⬚0  ⬦1.3M  ⬦—  ⚡6/7
+//     Gateway online  v2.1.0  ● 5.3G/5.9G 90%  ⚡7  ▤8  ⬚0  ⬦1.3M  ⬦—  ⚡7/7
 //     ●  ●  ●  ●  ●  ●  ●
 //
 // and the audit that followed found, in that same markup:
@@ -13,16 +13,14 @@
 //      tokens, cost, RAM, "subsystems ready", and all seven subsystem names —
 //      sat behind `hidden lg:inline` / `hidden xl:inline`. `7` is not a run
 //      count to someone who cannot see the word "runs".
-//   2. The `6/7` readiness ratio had `title === null`. Not even a hover answer.
+//   2. The `7/7` readiness ratio had `title === null`. Not even a hover answer.
 //   3. The watchdog and company entries were 6px wide: a bare status dot, no
 //      glyph, no text. Five green dots and one grey dot were the whole story.
 //   4. Tokens and cost shared one `Coins` glyph — two units, identical mark.
-//   5. `GET /api/company/status` answers 404 with
-//      `{"detail":"No active organizations found. Bootstrap a company first."}`.
-//      `lib/system.ts` swallowed that and substituted its own sentence,
-//      "Company engine idle", which rendered as a real subsystem state in the
-//      header AND in the System control centre's capability list. It asserts
-//      an engine exists and is idle; the server said none was ever created.
+//   5. The Company OS listed Collab Test Co at `/api/companies`, while the
+//      readiness probe queried the separate legacy `/api/company/status` store,
+//      which answered 404. The probe now checks the same owner-scoped directory
+//      used by the Companies workspace.
 //
 // These tests are REAL, not structural. The strip is transpiled and rendered
 // through `react-dom/server`, so the assertions run against actual emitted
@@ -212,10 +210,9 @@ const PROBES = [
   {
     key: "company",
     label: "Autonomous company",
-    blurb: "KPIs, board, briefings",
-    ok: false,
-    // The server's own 404 detail, reached now that companyStatus() propagates.
-    detail: "No active organizations found. Bootstrap a company first.",
+    blurb: "Owner-scoped Company OS directory",
+    ok: true,
+    detail: "1 active · 1 total",
     ms: 11,
   },
 ];
@@ -450,12 +447,12 @@ test("tokens and cost no longer share a glyph", () => {
 /* ══ 2. Every entry answers "what is this, and who measured it" ═══════════ */
 
 test("the readiness ratio carries a title, which it did not before", () => {
-  // Measured: `title: null` on the `6/7` element in the live DOM.
+  // Measured: `title: null` on the `7/7` element in the live DOM.
   const markup = render(HEALTHY);
   const title = metricTitle(markup, "ready");
   assert.ok(
     title,
-    "the 6/7 ratio must carry a title attribute of its own (not the cluster's)",
+    "the 7/7 ratio must carry a title attribute of its own (not the cluster's)",
   );
   assert.match(title, /of 7/, "the title must state the counts");
   assert.match(title, /success/i, "the title must say what counts as ready");
@@ -491,24 +488,12 @@ test("every failing subsystem's reason is carried by the ratio, and routes stay 
   );
 });
 
-test("a failing subsystem keeps its reason reachable after the header chips were removed", () => {
-  // The company's own 404 detail used to render inside a per-subsystem chip in
-  // the header. Those chips duplicated workspace views and are gone, so the
-  // reason had to travel with them into the readiness ratio's own `title` —
-  // dropping it would have turned a stated failure into a silent amber count.
+test("the company directory is counted as an answered subsystem", () => {
   const markup = render(HEALTHY);
   const title = metricTitle(markup, "ready");
-  assert.ok(title, "the 6/7 ratio must have a title attribute");
-  assert.match(
-    title,
-    /Autonomous company/,
-    "the failing subsurface must be named from the ratio",
-  );
-  assert.match(
-    title,
-    /No active organizations found/,
-    "the server's own reason must stay reachable from the ratio, got: " + title,
-  );
+  assert.ok(title, "the 7/7 ratio must have a title attribute");
+  assert.match(title, /7 of 7/, "the owner-scoped company directory answered successfully");
+  assert.match(title, /Every probed subsurface answered/);
   // The chip itself is gone — the header carries no per-subsystem row.
   assert.doesNotMatch(markup, /data-subsystem="company"/);
 });
@@ -947,8 +932,8 @@ test("the readiness ratio counts only the seven declared subsurfaces", () => {
   const markup = render(HEALTHY);
   // One company failure out of seven probed subsurfaces.
   assert.ok(
-    visibleText(markup).includes("6/7 ready"),
-    `expected 6/7, got: ${visibleText(markup)}`,
+    visibleText(markup).includes("7/7 ready"),
+    `expected 7/7, got: ${visibleText(markup)}`,
   );
   // The seven keys still drive the DENOMINATOR — a subsystem silently dropping
   // out would turn a red row green with no change on the server — but none of
@@ -969,26 +954,20 @@ test("a partially-ready workspace emphasises the ratio and names the failure", (
   );
   const markup = render({ ...HEALTHY, probes: failing });
   const text = visibleText(markup);
-  // Company was already failing in HEALTHY, so skills is the second failure.
-  assert.ok(text.includes("5/7"), `expected the reduced ratio, got: ${text}`);
+  assert.ok(text.includes("6/7"), `expected the reduced ratio, got: ${text}`);
   // Both reasons are read out of the titles now: the per-subsystem chips that
-  // used to print them in the row are gone, so a 5/7 with only one explanation
+  // used to print them in the row are gone, so a 6/7 with no explanation
   // attached would leave the second failure unaccounted for.
   const all = titles(markup).join("\n");
   assert.ok(
     all.includes("Skills list failed (HTTP 503)."),
     `the second failure's reason must stay reachable, got: ${all}`,
   );
-  // …and the first failure is still named, so the ratio can be accounted for.
-  assert.ok(
-    all.includes("No active organizations found"),
-    "the first failure must still be named",
-  );
   // Neither reason was dropped along with the chips.
   assert.doesNotMatch(markup, /data-subsystem=/);
 });
 
-/* ══ 5. `companyStatus` must not swallow the 404 ═════════════════════════ */
+/* ══ 5. Legacy Team Ops company errors remain disclosed ═══════════════════ */
 
 /**
  * The shared `./http` stand-in. One instance, shared by every module under
@@ -1119,7 +1098,7 @@ const PROBE_DEPS_URL = dataUrl(`
   export const listSkills = async () => { throw new Error("stub: must not run"); };
   export const listScheduledTasks = async () => { throw new Error("stub: must not run"); };
   export const channelStatus = async () => { throw new Error("stub: must not run"); };
-  export const companyStatus = async () => { throw new Error("stub: must not run"); };
+  export const listCompanies = async () => { throw new Error("stub: must not run"); };
   export const fetchMcpConfig = async () => { throw new Error("stub: must not run"); };
   // The voice probe reads \`GET /api/multimodal/capabilities\` through this
   // client. \`probeReason\` never calls it, but ESM validates the named import at
@@ -1158,7 +1137,7 @@ const PROBE_DEPS_URL = dataUrl(`
 `);
 
 const systemCode = transpile(read("./system.ts")).replace(
-  /from\s+"\.\/(http|workspace|memory|skills|scheduled|channels|supervision|teamops|mcp|multimodal)"/g,
+  /from\s+"\.\/(http|workspace|memory|skills|scheduled|channels|supervision|company|mcp|multimodal)"/g,
   `from "${PROBE_DEPS_URL}"`,
 );
 
