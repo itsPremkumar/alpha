@@ -1144,6 +1144,9 @@ python scripts/generate_docs_index.py --check   # docs index drift
 bash scripts/verify_versions.sh                 # version lockstep gate
 ```
 
+On Windows, the dev watcher excludes system-owned volume-root paths before
+scanning, while continuing to watch the project tree.
+
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
@@ -1216,6 +1219,12 @@ independent evidence verification, centralized policy grants, backup/restore
 drills, and release scorecards — are tracked in
 [docs/PRODUCTION_READINESS_INVENTORY.md](docs/PRODUCTION_READINESS_INVENTORY.md).
 Read it before exposing a deployment.
+
+The Gateway readiness check probes disk-backed SQLite outside the application
+connection pool, so an otherwise responsive database remains ready when every
+ORM pool slot is busy. Its read-only probe uses a non-creating SQLite URI; a
+missing database remains an unhealthy result and is never recreated by health
+checks.
 
 **Q: How is Alpha different from CrewAI, AutoGen, or LangGraph?**
 **A:** Those are libraries/primitives; Alpha is a finished, self-hostable agent

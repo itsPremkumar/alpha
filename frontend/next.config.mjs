@@ -3,6 +3,30 @@ import { fileURLToPath } from "node:url";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const WINDOWS_VOLUME_ROOT_NOISE = /^[A-Z]:[\\/](?:DumpStack(?:\.log)?(?:\.tmp)?|pagefile\.sys|hiberfil\.sys|swapfile\.sys|System Volume Information(?:[\\/].*)?|\$RECYCLE\.BIN(?:[\\/].*)?)$/i;
+
+function ignoreGlobPattern(pattern) {
+  let source = "^";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index];
+    if (character === "*" && pattern[index + 1] === "*") {
+      index += 1;
+      if (pattern[index + 1] === "/" || pattern[index + 1] === "\\\\") {
+        index += 1;
+        source += "(?:.*[\\\\/])?";
+      } else {
+        source += ".*";
+      }
+    } else if (character === "*") {
+      source += "[^\\\\/]*";
+    } else if (character === "/" || character === "\\\\") {
+      source += "[\\\\/]";
+    } else {
+      source += character.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+  return new RegExp(`${source}$`, "i");
+}
 
 // The Gateway API runs on port 8001 by default (see start.ps1 -GatewayPort).
 // Override with ALPHA_INTERNAL_GATEWAY_BASE_URL when the backend lives elsewhere.
@@ -82,11 +106,26 @@ export default function nextConfig(phase) {
       ];
     },
     webpack: (config) => {
-      // Watchpack EINVAL on Windows system files (e.g. C:\pagefile.sys) when the
-      // watcher resolves paths near the drive root — exclude them explicitly.
+      // Watchpack's glob ignores still stat Windows volume-root files during
+      // the initial scan (for example C:\pagefile.sys and
+      // C:\System Volume Information). Match those absolute paths before the
+      // watcher touches them, while retaining any ignores supplied by Next.
+      const existingIgnored = config.watchOptions?.ignored;
+      const ignored = Array.isArray(existingIgnored)
+        ? existingIgnored
+        : existingIgnored
+          ? [existingIgnored]
+          : [];
+      const ignorePatterns = ignored.map((pattern) =>
+        pattern instanceof RegExp ? pattern : ignoreGlobPattern(pattern),
+      );
+      ignorePatterns.push(WINDOWS_VOLUME_ROOT_NOISE);
       config.watchOptions = {
         ...config.watchOptions,
-        ignored: ["**/pagefile.sys", "**/hiberfil.sys", "**/swapfile.sys", "**/System Volume Information/**", "**/$RECYCLE.BIN/**"],
+        // Webpack accepts one RegExp, or an array of strings, but not a mixed
+        // array. Combine the upstream globs into a single matcher to preserve
+        // Next's ignores and handle the drive-root EINVAL paths.
+        ignored: new RegExp(`(?:${ignorePatterns.map((pattern) => pattern.source).join("|")})`, "i"),
       };
       return config;
     },

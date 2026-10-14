@@ -47,6 +47,11 @@ logger = logging.getLogger(__name__)
 # a dead database (for example a TCP connect timeout to Postgres).
 _PROBE_TIMEOUT_SECONDS = 2.0
 
+# A SQLite readiness read must not wait behind SQLite's much longer application
+# busy_timeout. SELECT 1 does not need a table lock; a short busy timeout is
+# enough to report an actual SQLite lock while keeping health probes bounded.
+_SQLITE_PROBE_BUSY_TIMEOUT_SECONDS = 0.25
+
 # Whole-endpoint deadline covering both probes. They run concurrently, so a
 # healthy response completes within a single probe window; the extra margin
 # absorbs scheduling/cancellation overhead without letting the request
@@ -104,12 +109,57 @@ async def check_database_health() -> str:
         # no database to probe.
         return DATABASE_NOT_CONFIGURED
     try:
+        engine_url = getattr(engine, "url", None)
+        if getattr(getattr(engine, "dialect", None), "name", None) == "sqlite" and engine_url is not None and not _sqlite_is_in_memory(engine_url.database or ""):
+            return await _probe_sqlite_engine(engine_url.database or "")
         async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):
             async with engine.connect() as connection:
                 await connection.execute(text("SELECT 1"))
     except Exception:
         logger.warning("Readiness database probe failed", exc_info=True)
         return DATABASE_UNREACHABLE
+    return DATABASE_OK
+
+
+async def _probe_sqlite_engine(database: str) -> str:
+    """Probe a disk SQLite database without borrowing the application's pool.
+
+    Application requests can occupy every SQLAlchemy pool slot while still
+    leaving SQLite itself responsive. Readiness must measure the database, not
+    pool queue pressure, so it opens one short-lived aiosqlite connection. The
+    URI uses ``mode=rw`` to preserve the existing database and never create a
+    missing file. In-memory SQLite remains on the pooled path because a new
+    connection would observe a different database.
+    """
+    try:
+        import aiosqlite
+    except ImportError:
+        logger.error("Readiness probe: aiosqlite is not installed for the sqlite database backend")
+        return DATABASE_UNREACHABLE
+
+    conn_string = _sqlite_disk_uri(database) if database.startswith("file:") else f"{pathlib.Path(database).as_uri()}?mode=rw"
+    connection = None
+    try:
+        async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):
+            connection = await aiosqlite.connect(
+                conn_string,
+                uri=True,
+                timeout=_SQLITE_PROBE_BUSY_TIMEOUT_SECONDS,
+            )
+            cursor = await connection.execute("SELECT 1")
+            try:
+                await cursor.fetchone()
+            finally:
+                await cursor.close()
+    except Exception:
+        logger.warning("Readiness sqlite database probe failed", exc_info=True)
+        return DATABASE_UNREACHABLE
+    finally:
+        if connection is not None:
+            try:
+                await asyncio.wait_for(connection.close(), timeout=_SQLITE_PROBE_BUSY_TIMEOUT_SECONDS)
+            except Exception:
+                logger.warning("Readiness sqlite database probe connection did not close cleanly", exc_info=True)
     return DATABASE_OK
 
 

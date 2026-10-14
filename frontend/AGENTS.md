@@ -139,6 +139,13 @@ untracked build tree behind, and `tsconfig.json` includes both `.next/types` and
 the contract the launcher and watchdog read. Coverage:
 `src/lib/test_fe_audit_next_output_dirs.test.mjs`.
 
+On Windows, Next's Webpack watcher must ignore volume-root OS files with an
+absolute-path regular expression. Glob ignores alone still caused Watchpack to
+`lstat` `C:\pagefile.sys`, `C:\DumpStack.log.tmp`, and
+`C:\System Volume Information` during its initial scan. Keep the matcher
+limited to those root-owned paths so it does not hide project files; coverage:
+`src/lib/next-config-watch-ignores.test.mjs`.
+
 A Next.js server (dev **or** `start`) and `next build` both read and write
 `.next/`. When they overlap, the build emits a bundle whose runtime references
 vendor chunks that were never written, and the failure surfaces as a misleading

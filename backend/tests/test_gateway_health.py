@@ -70,6 +70,47 @@ async def test_check_database_health_unreachable(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_sqlite_readiness_does_not_wait_for_a_saturated_orm_pool(tmp_path, monkeypatch):
+    """Readiness uses an independent SQLite connection when the app pool is busy."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    database = tmp_path / "busy-pool.db"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database}", pool_size=1, max_overflow=0)
+    async with engine.begin() as connection:
+        await connection.exec_driver_sql("SELECT 1")
+    held_connection = await engine.connect()
+    monkeypatch.setattr("app.gateway.health.get_engine", lambda: engine)
+    monkeypatch.setattr(health_module, "_PROBE_TIMEOUT_SECONDS", 0.1)
+
+    try:
+        started = time.perf_counter()
+        result = await check_database_health()
+        elapsed = time.perf_counter() - started
+    finally:
+        await held_connection.close()
+        await engine.dispose()
+
+    assert result == DATABASE_OK
+    assert elapsed < 0.5
+
+
+@pytest.mark.anyio
+async def test_sqlite_readiness_does_not_create_a_missing_database(tmp_path, monkeypatch):
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    database = tmp_path / "missing.db"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database}")
+    monkeypatch.setattr("app.gateway.health.get_engine", lambda: engine)
+    try:
+        result = await check_database_health()
+    finally:
+        await engine.dispose()
+
+    assert result == DATABASE_UNREACHABLE
+    assert not database.exists()
+
+
+@pytest.mark.anyio
 async def test_readiness_payload_ready_when_database_ok_and_memory_backend(monkeypatch):
     monkeypatch.setattr("app.gateway.health.get_engine", lambda: _FakeEngine())
 
