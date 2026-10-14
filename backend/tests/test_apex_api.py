@@ -258,6 +258,17 @@ class TestPolicyEndpoint:
 
 
 class TestSessionLifecycleOverHttp:
+    def test_creation_binds_a_default_thread_when_the_caller_omits_one(self, client: TestClient, store: ApexStore) -> None:
+        session = _create(client)["session"]
+
+        assert session["owner"] == "admin-1"
+        assert session["thread_id"] == session["owner"]
+
+    def test_creation_preserves_an_explicit_thread_scope(self, client: TestClient, store: ApexStore) -> None:
+        session = _create(client, thread_id="project-thread-42")["session"]
+
+        assert session["thread_id"] == "project-thread-42"
+
     def test_create_returns_the_contract_and_its_digest(self, client: TestClient, store: ApexStore) -> None:
         body = _create(client, acceptance_criteria=["suite passes"])
         assert body["contract"]["profile"] == "autonomous"
