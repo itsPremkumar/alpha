@@ -35,16 +35,17 @@ The four properties this module is responsible for
 The roster seam
 ---------------
 The declarative ``specialists:`` configuration section is owned by the config
-layer, so this module does **not** read it. It defines the interface instead:
+layer. :func:`load_specialists_from_config` projects its active entries and
+exact tool-group allowlists into this roster shape; the Gateway registers that
+provider. This module owns the assignment policy, not the config parser:
 
     register_roster_provider(provider, source="...")
 
-where ``provider`` is any zero-argument callable returning a roster. The
-catalogue owner calls that once at load time; until it does,
-:func:`resolve_roster` returns an empty roster together with an explicit reason,
-and the swarm behaves exactly as it did before this module existed. That
-fail-open is deliberate: a missing catalogue must degrade a plan, never break
-plan construction.
+where ``provider`` is any zero-argument callable returning a roster. With no
+registered provider or no enabled entries, :func:`resolve_roster` returns an
+empty roster together with an explicit reason, and the plan keeps its default
+worker types. That graceful degradation is deliberate: a missing catalogue
+must be visible in the report without breaking plan construction.
 
 The two rules a registered roster must satisfy are both enforced here rather
 than trusted: a second provider registered from a different source is refused

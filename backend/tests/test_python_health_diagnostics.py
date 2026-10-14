@@ -175,6 +175,39 @@ def test_ruff_and_pytest_diagnostics_are_machine_readable():
     ]
 
 
+def test_pytest_runtime_traceback_becomes_searchable_location_diagnostic():
+    module = _load_diagnostics_module()
+    output = """=================================== FAILURES ===================================
+__________________________ test_runtime_path __________________________
+backend/tests/test_runtime.py:18: in test_runtime_path
+    run_handler()
+E   RuntimeError: provider timed out
+=========================== short test summary info ============================
+FAILED backend/tests/test_runtime.py::test_runtime_path - RuntimeError: provider timed out
+"""
+
+    diagnostics = module._parse_diagnostics("pytest-offline", output)
+
+    assert diagnostics == [
+        {
+            "path": "backend/tests/test_runtime.py",
+            "line": 18,
+            "column": None,
+            "severity": "error",
+            "message": "RuntimeError: provider timed out (in test_runtime_path)",
+            "code": "pytest-runtime-error",
+        },
+        {
+            "path": "backend/tests/test_runtime.py::test_runtime_path",
+            "line": None,
+            "column": None,
+            "severity": "error",
+            "message": "RuntimeError: provider timed out",
+            "code": "pytest-failure",
+        },
+    ]
+
+
 def test_html_report_exposes_all_findings_and_escapes_untrusted_text():
     module = _load_diagnostics_module()
     report = {

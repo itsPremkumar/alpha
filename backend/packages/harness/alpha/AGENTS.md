@@ -256,6 +256,12 @@ Gateway swarm reads and mutations are owner-scoped (`SwarmPlan.owner_id`); the
 verified blackboard message. Model-visible blackboard content is bounded data in the
 human input channel, never an elevated system instruction. Worktree paths are
 relative metadata; the worker always uses the server project root.
+Specialist requirements are inferred from each task directive using
+`alpha.capabilities.eligibility.CAPABILITY_KEYWORDS` and matched against the
+live `specialists:` roster with a hard capability floor. Keep the inferred tags
+aligned to the shipped specialist capability vocabulary and pin end-to-end
+composition in `backend/tests/test_team_composition.py`; a completed swarm with
+zero specialist assignments is not evidence of specialist execution.
 `communication.py`, `consensus.py`, `reflection.py` are harness-layer and never
 import `app.*`.
 

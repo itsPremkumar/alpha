@@ -19,10 +19,11 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
 - Each stage's JSON `diagnostics` list should preserve its actionable findings
   in a common shape, with optional line/column and stage-specific error code;
   mypy must retain located and module-level findings. Runtime findings are
-  parsed from the full stage log, not the short terminal preview. The stage log
-  preserves full raw output. The generated self-contained HTML report must escape
-  diagnostic text and expose every parsed finding to its client-side filter. Do
-  not truncate machine findings to the preview.
+  parsed from the full stage log, not the short terminal preview; pytest failure
+  summaries and traceback exception locations should both be searchable. The
+  stage log preserves full raw output. The generated self-contained HTML report
+  must escape diagnostic text and expose every parsed finding to its client-side
+  filter. Do not truncate machine findings to the preview.
 - Keep compile/type/runtime stages read-only with respect to source files and
   configuration. Update `docs/DEVELOPMENT.md` and the README command guidance
   with any user-visible report changes.

@@ -186,21 +186,19 @@ never queued forever and never handed to a non-capable specialist.
 
 Read this section before relying on any of the above.
 
-1. **The HTTP routes are mounted, but reachability is not the same as
-   usefulness.** `app/gateway/routers/teams.py` is registered in
-   `app/gateway/app.py` beside the swarms mount, so `/api/teams/*` answers over
-   HTTP. It was previously dead code, and the pin that said so has been inverted
-   to `tests/test_team_routes.py::test_the_team_routes_are_mounted` so the mount
-   cannot rot back. Note what that does *not* buy you: with no `specialists:`
-   catalogue registered (item 3), the roster is empty and a report describes a
-   plan that assigned nothing. A reachable route returning an honest empty
-   result is not the same as a working team.
+1. **An available roster does not guarantee every task can be assigned.** The
+   Gateway registers `load_specialists_from_config` and hot-reads the active
+   `specialists:` catalogue. `GET /api/teams/roster` reports declared, accepted,
+   and rejected profiles; each plan's team report records its composition-time
+   assignments and reasons for unassigned tasks. Capability vocabulary drift
+   can leave every task unassigned even while the roster endpoint is healthy,
+   so check the plan report rather than inferring assignments from roster size.
 2. **No `swarm` tool action was added.** `swarm_tool.py` is not owned by this
    change, so there is no `swarm(action="team")`. The team is visible through
    the existing `status` / `metrics` actions and `GET /api/swarms/{id}`.
-3. **No specialist exists until a catalogue registers one.** The `specialists:`
-   config section does not exist yet. With nothing registered, a plan runs
-   exactly as it did before this change.
+3. **The shipped config declares six specialists.** A missing, disabled, or
+   rejected catalogue still produces an explicit empty-roster report; it does
+   not silently label general-purpose workers as specialists.
 4. **Nothing here is verified.** A completed task means a worker returned a
    result. `accepted` reflects only the deterministic acceptance overlay
    (`verify_acceptance_criteria`) — never a model's opinion of itself. The
@@ -213,13 +211,13 @@ Read this section before relying on any of the above.
    imposing a second lexical policy on another owner's module. The failure mode
    is a task going unassigned with a spurious tag named, never a
    mis-assignment.
-6. **The real delegation stack is untested.** `tests/conftest.py` replaces
+6. **Offline tests do not exercise the complete provider-backed delegation
+   stack.** `tests/conftest.py` replaces
    `sys.modules["alpha.subagents.executor"]` with a MagicMock to break an
    import cycle, so the real `SubagentExecutor` / `SubagentResult` /
-   `SubagentStatus` are not importable anywhere in the test suite. The worker
-   is tested by substituting those module-level symbols; **no test exercises a
-   real `SubagentExecutor`**, and a live gateway was not available to confirm
-   it (see [Verification](#verification)).
+   `SubagentStatus` boundary is substituted in unit tests. A live swarm can
+   exercise the configured provider, but a returned response still requires
+   independent acceptance evidence before it counts as verified work.
 7. **One specialist per run, shared tool pool.** A run assembles the tool pool
    once and threads it through every specialist; a catalogue entry cannot have
    its own pool.
@@ -258,22 +256,22 @@ keeps measuring, so un-mounting it now fails a test rather than silently turning
 
 ## Measured behaviour
 
-`roster` = six specialists drawn from the `CAPABILITY_KEYWORDS` vocabulary
-(`researcher`, `architect`, `coder`, `tester`, `web`, `scribe`). Goal
-*"Implement a sql migration and audit the backend service"*, `mode=hierarchical`
-(the same mode as before this change):
+The composition regression loads all six specialists from `config.example.yaml`
+and routes four task intents through the same inference and hard-filter path the
+Gateway uses:
 
 ```
-task-research  ui_design                 -> web        cov=1
-task-arch      react, system_design      -> architect  cov=1
-task-worker-a  code_generation           -> coder      cov=1
-task-worker-b  code_generation, ui_design-> coder      cov=1
-task-qa        code_audit                -> tester     cov=1
+Review group coordination routes          -> code-reviewer
+Review authentication and authorization   -> security-reviewer
+Find test coverage gaps                    -> test-engineer
+Synthesize the final evidence report        -> technical-writer
 ```
 
-Five of five nodes assigned, four distinct specialists. Before the
-goal-stripping fix the same run assigned **0 of 5**: every node had inherited
-the goal's four tags as a hard conjunction.
+This proves composition against the shipped catalogue, not model execution or
+acceptance. A previous live run exposed the drift: the roster was accepted, but
+all four tasks were unassigned because inferred tags (`backend`, `pytest`,
+`document_synthesis`) did not align with declared specialist capabilities. The
+regression test now pins all four expected assignments.
 
 ## Verification
 

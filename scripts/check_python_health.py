@@ -55,6 +55,8 @@ _COMPILE_DIAGNOSTIC = re.compile(r"^(.*?):(\d+):(\d+): (.+)$")
 _COMPILE_FILE_DIAGNOSTIC = re.compile(r"^(.+?): (OSError|UnicodeError|ValueError|MemoryError|RecursionError): (.+)$")
 _RUFF_FORMAT_DIAGNOSTIC = re.compile(r"^Would reformat: (.+)$")
 _PYTEST_FAILURE = re.compile(r"^(FAILED|ERROR) (.+?)(?: - (.*))?$")
+_PYTEST_FRAME = re.compile(r"^\s*(?:>\s*)?(.+?\.py):(\d+): in (.+?)\s*$")
+_PYTEST_EXCEPTION = re.compile(r"^\s*E\s+(?:(\w+(?:Error|Exception|Failure)):)?\s*(.*?)\s*$")
 
 
 def _parse_mypy_diagnostics(output: str) -> list[dict[str, Any]]:
@@ -153,7 +155,9 @@ def _parse_diagnostics(name: str, output: str) -> list[dict[str, Any]]:
         ]
     if name.startswith("pytest-"):
         diagnostics = []
-        for line in output.splitlines():
+        lines = output.splitlines()
+        last_frame: tuple[str, int, str] | None = None
+        for line in lines:
             match = _PYTEST_FAILURE.match(line.strip())
             if match:
                 kind, target, message = match.groups()
@@ -167,6 +171,26 @@ def _parse_diagnostics(name: str, output: str) -> list[dict[str, Any]]:
                         "code": "pytest-failure" if kind == "FAILED" else "pytest-error",
                     }
                 )
+                continue
+            frame = _PYTEST_FRAME.match(line)
+            if frame:
+                path, row, function = frame.groups()
+                last_frame = (path.strip(), int(row), function)
+                continue
+            exception = _PYTEST_EXCEPTION.match(line)
+            if exception and exception.group(2) and last_frame:
+                exception_type, message = exception.groups()
+                diagnostics.append(
+                    {
+                        "path": last_frame[0],
+                        "line": last_frame[1],
+                        "column": None,
+                        "severity": "error",
+                        "message": f"{exception_type + ': ' if exception_type else ''}{message} (in {last_frame[2]})",
+                        "code": "pytest-runtime-error",
+                    }
+                )
+                last_frame = None
         return diagnostics
     return []
 
