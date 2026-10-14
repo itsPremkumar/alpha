@@ -1,4 +1,16 @@
-"""Built-in tool for managing continuous goal-driven autonomous executions."""
+"""Built-in tool for the legacy continuous-goal surface (RETIRED for mutation).
+
+`RunManager` is the sole run-lifecycle owner, and nothing in production ever
+dispatched a goal created through this tool — so `start` / `step` / `pause` /
+`resume` refuse by name instead of writing rows that read like launched work.
+`list` / `inspect` / `retire` remain: a read that says "these records prove
+nothing" is the useful half of the retirement, and `retire` lets an operator
+stamp that onto the stored rows without deleting any of them.
+
+Both the refusal text and the read projection come from
+`alpha.harness.continuous`, so this tool and the `/loop:*` commands cannot drift
+into telling the model two different stories about the same record.
+"""
 
 from __future__ import annotations
 
@@ -6,28 +18,40 @@ from typing import Literal
 
 from langchain.tools import tool
 
-from alpha.harness.continuous.runner import get_goal_runner
-from alpha.harness.continuous.store import get_goal_store
+from alpha.harness.continuous.models import LEGACY_MIGRATION_GUIDANCE, LEGACY_RETIREMENT_REASON
+from alpha.harness.continuous.store import describe_goal, get_goal_store
+
+_LIST_LIMIT = 50
+
+
+def _retired(action: str, goal_id: str = "") -> str:
+    target = f" for goal '{goal_id}'" if goal_id else ""
+    return f"goal_engine action='{action}' is retired{target}. {LEGACY_RETIREMENT_REASON} Nothing was created, run, or recorded as progress. {LEGACY_MIGRATION_GUIDANCE}"
 
 
 @tool("goal_engine", parse_docstring=True)
 def goal_engine_tool(
-    action: Literal["start", "inspect", "step", "pause", "resume", "list"],
+    action: Literal["start", "inspect", "step", "pause", "resume", "list", "retire"],
     goal_id: str = "",
     title: str = "",
     description: str = "",
     max_iterations: int = 100,
 ) -> str:
-    """Manage continuous, goal-driven autonomous execution loops with self-healing.
+    """Inspect the retired continuous-goal record store.
+
+    This tool no longer launches work. `RunManager` owns every real run: send the
+    objective as a normal message in a thread instead. The actions below are the
+    honest remainder — `start`, `step`, `pause` and `resume` refuse by name, and
+    `list` / `inspect` read stored records while stating plainly that none of
+    them is evidence that a step ran or that work was verified.
 
     Args:
-        action: Operation to perform ('start', 'inspect', 'step', 'pause', 'resume', 'list').
-        goal_id: Identifier of the goal (required for inspect, step, pause, resume).
-        title: High-level title of the objective (required for 'start').
-        description: Detailed requirements and acceptance criteria (optional for 'start').
-        max_iterations: Maximum iterations before pausing (default: 100).
+        action: 'list', 'inspect' or 'retire' are answered; 'start', 'step', 'pause' and 'resume' are refused as retired.
+        goal_id: Identifier of a goal (required for inspect).
+        title: Unused; 'start' is retired and records nothing.
+        description: Unused; 'start' is retired and records nothing.
+        max_iterations: Unused; 'start' is retired and records nothing.
     """
-    runner = get_goal_runner()
     store = get_goal_store()
 
     # A corrupt store used to answer "No active autonomous goals." here, which
@@ -39,89 +63,52 @@ def goal_engine_tool(
     if action == "list":
         goals = store.list_goals()
         if not goals:
-            return "No autonomous goals are recorded."
+            return "No autonomous goal records are stored. (This store is retired: a record here is never evidence that work ran.)"
         counts: dict[str, int] = {}
         for goal in goals:
             counts[goal.status] = counts.get(goal.status, 0) + 1
         out = [
-            f"=== Autonomous Goal Catalog ({len(goals)} total) ===",
-            "Status counts: " + ", ".join(f"{status}={count}" for status, count in sorted(counts.items())),
+            f"=== Retired Goal Records ({len(goals)} total) ===",
+            "Recorded status counts: " + ", ".join(f"{status}={count}" for status, count in sorted(counts.items())),
+            f"Every record below is RETIRED and unverified: {LEGACY_RETIREMENT_REASON}",
+            LEGACY_MIGRATION_GUIDANCE,
         ]
-        limit = 50
-        for g in goals[:limit]:
-            out.append(f"- **{g.goal_id}**: {g.title} [Status: `{g.status}`, Iteration: {g.iteration}/{g.max_iterations}]")
-        if len(goals) > limit:
-            out.append(f"- {len(goals) - limit} additional goal(s) omitted; inspect a goal by ID for details.")
+        for goal in goals[:_LIST_LIMIT]:
+            view = describe_goal(goal)
+            out.append(f"- **{view['goal_id']}**: {view['title']} [Retired; recorded status `{view['recorded_status']}`, iteration {view['iteration']}/{view['max_iterations']}, verified: never]")
+        if len(goals) > _LIST_LIMIT:
+            out.append(f"- {len(goals) - _LIST_LIMIT} additional record(s) omitted; inspect a goal by ID for details.")
         return "\n".join(out)
 
-    elif action == "start":
-        if not title:
-            return "Error: 'title' is required for 'start'."
-        try:
-            goal = runner.start_goal(title=title, description=description, max_iterations=max_iterations)
-            if not store.is_durable:
-                return f"Error: goal '{goal.goal_id}' was created in memory but could NOT be persisted to {store.storage_path} ({store.save_error}). It is not durable."
-            return f"Continuous Autonomous Goal initialized: {goal.goal_id}\n- Title: {goal.title}\n- Status: {goal.status}\n- Milestones provisioned: {len(goal.milestones)}"
-        except Exception as e:
-            return f"Error starting goal: {e}"
-
-    elif action == "inspect":
+    if action == "inspect":
         if not goal_id:
             return "Error: 'goal_id' is required for 'inspect'."
         goal = store.get_goal(goal_id)
-        if not goal:
+        if goal is None:
             return f"Error: Goal '{goal_id}' not found."
+        view = describe_goal(goal)
         out = [
-            f"=== Autonomous Goal: {goal.goal_id} ===",
+            f"=== Retired Goal Record: {goal.goal_id} ===",
             f"Title: {goal.title}",
-            f"Status: {goal.status} (Iteration {goal.iteration}/{goal.max_iterations})",
-            f"Heartbeat: {goal.heartbeat_at}",
-            "\n--- Milestones ---",
+            f"Recorded status: {view['recorded_status']} | Verified: never | Iteration {view['iteration']}/{view['max_iterations']}",
+            f"Last heartbeat: {view['heartbeat_at']} (a stale timestamp is not liveness; nothing polls it)",
+            f"Retired because: {view['retirement_reason']}",
+            "\n--- Milestones (none executed) ---",
         ]
-        for m in goal.milestones.values():
-            deps = f" (Depends on: {m.dependencies})" if m.dependencies else ""
-            out.append(f"- [{m.status.upper()}] {m.milestone_id}: {m.title}{deps} (Attempts: {m.attempts})")
-        if goal.strategy_notes:
-            out.append("\n--- Strategy Adaptation Notes ---")
-            out.extend(goal.strategy_notes[-5:])
+        for milestone in view["milestones"]:
+            deps = f" (Depends on: {milestone['dependencies']})" if milestone["dependencies"] else ""
+            out.append(f"- [UNVERIFIED] {milestone['milestone_id']}: {milestone['title']}{deps} (Attempts: {milestone['attempts']}; recorded `{milestone['recorded_status']}`)")
+        if view["strategy_notes"]:
+            out.append("\n--- Strategy Notes (historical) ---")
+            out.extend(view["strategy_notes"])
+        out.append(f"\n{LEGACY_MIGRATION_GUIDANCE}")
         return "\n".join(out)
 
-    elif action == "step":
-        if not goal_id:
-            return "Error: 'goal_id' is required for 'step'."
-        res = runner.step(goal_id)
-        if not store.is_durable:
-            return f"Error: step for goal '{goal_id}' was not durably persisted ({store.save_error}). Outcome may be incomplete."
-        if res.get("status") == "awaiting_executor":
-            return f"Goal step was not executed for {goal_id}: {res.get('message')} The goal remains {res.get('goal_status')}; do not report progress or verification."
-        return f"Step executed on {goal_id}: Status={res.get('status')}, Milestone={res.get('milestone_id')}, Success={res.get('success')}."
+    if action == "retire":
+        outcome = store.retire_all()
+        if not outcome["durable"]:
+            return f"Error: the retirement stamp did NOT persist to {store.storage_path} ({outcome['error']}). Records are unchanged on disk."
+        return f"Stamped {outcome['retired']} of {outcome['total']} record(s) retired in {store.storage_path}. No record was deleted. {LEGACY_RETIREMENT_REASON}"
 
-    elif action == "pause":
-        if not goal_id:
-            return "Error: 'goal_id' is required for 'pause'."
-        goal = store.get_goal(goal_id)
-        if goal is None:
-            return f"Error: goal '{goal_id}' was not found."
-        if goal.status in {"achieved", "blocked"}:
-            return f"Error: goal '{goal_id}' is already {goal.status} and cannot be paused."
-        if goal.status == "paused":
-            return f"Goal {goal_id} is already paused."
-        goal = store.update_goal_status(goal_id, "paused", "Paused by operator tool command.")
-        if goal is None or not store.is_durable:
-            return f"Error: goal '{goal_id}' could NOT be durably paused ({store.save_error or 'goal not found'})."
-        return f"Goal {goal_id} status updated to: paused."
-
-    elif action == "resume":
-        if not goal_id:
-            return "Error: 'goal_id' is required for 'resume'."
-        goal = store.get_goal(goal_id)
-        if goal is None:
-            return f"Error: goal '{goal_id}' was not found."
-        if goal.status != "paused":
-            return f"Error: goal '{goal_id}' is {goal.status}, not paused."
-        goal = store.update_goal_status(goal_id, "executing", "Resumed by operator tool command.")
-        if goal is None or not store.is_durable:
-            return f"Error: goal '{goal_id}' status could NOT be persisted to {store.storage_path} ({store.save_error or 'goal not found'}). The goal is NOT durably resumed."
-        return f"Goal {goal_id} status updated to: executing."
-
-    return f"Error: Unknown action '{action}'."
+    # start / step / pause / resume: refused by name, never silently accepted.
+    return _retired(action, goal_id)

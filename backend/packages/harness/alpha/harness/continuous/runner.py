@@ -1,4 +1,13 @@
-"""Continuous Goal-Driven Autonomous Execution Runner with Self-Healing."""
+"""Continuous Goal-Driven Autonomous Execution Runner with Self-Healing.
+
+**Retired production surface.** No Gateway worker dispatches a goal created
+here: ``RunManager`` is the sole run-lifecycle owner, and work only becomes
+real when a run is admitted through it. ``/loop:start`` and ``goal_engine
+action="start"`` therefore refuse rather than mint a record that reads like
+launched work. What remains is the library primitive — a caller that injects a
+**real** ``executor_fn`` gets real milestone transitions — plus the honest
+``awaiting_executor`` refusal for one that does not.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 from alpha.harness.continuous.loop_detector import ToolLoopDetector
-from alpha.harness.continuous.models import Goal, Milestone
+from alpha.harness.continuous.models import LEGACY_MIGRATION_GUIDANCE, Goal, Milestone
 from alpha.harness.continuous.store import GoalStore, get_goal_store
 from alpha.safety.guard import get_safety_guard
 from alpha.trajectory.store import get_trajectory_store
@@ -56,7 +65,13 @@ class ContinuousGoalRunner:
         # Creating a durable goal record does not start an executor.  In
         # particular, do not expose `executing` until a real worker has claimed
         # work; the current legacy engine is driven by an active agent turn.
-        self.store.update_goal_status(goal.goal_id, "planning", strategy_note="Goal recorded with 3 initial milestones; awaiting an active executor.")
+        # `planning` is itself a claim about the future, so say what is true
+        # instead: the objective is recorded and nothing is dispatched.
+        self.store.update_goal_status(
+            goal.goal_id,
+            "planning",
+            strategy_note=(f"Goal recorded with 3 initial milestones. No executor is dispatched for it: {LEGACY_MIGRATION_GUIDANCE}"),
+        )
         return goal
 
     def get_next_runnable_milestone(self, goal: Goal) -> Milestone | None:
@@ -103,7 +118,9 @@ class ContinuousGoalRunner:
                 "goal_status": goal.status,
                 "goal_id": goal.goal_id,
                 "success": False,
+                "verified": False,
                 "message": "No goal executor is configured; no milestone was run or verified.",
+                "migration": LEGACY_MIGRATION_GUIDANCE,
             }
 
         if goal.iteration >= goal.max_iterations:

@@ -2,8 +2,15 @@
 
 Binds top slash commands to real backend subsystems:
 - Skill Creator & Manager -> alpha.skills.storage (LocalSkillStorage / UserScopedSkillStorage)
-- Loop & Ralph Loop -> alpha.harness.continuous.runner (ContinuousGoalRunner)
-- Goal Management -> alpha.harness.continuous.store (GoalStore) & CognitiveMetaPlanner
+- Loop & Ralph Loop -> RETIRED. `/loop:start`, `/loop:pause` and `/loop:resume`
+  refuse by name because no Gateway worker dispatched the records they used to
+  write (a resume persisted `executing` with nothing behind it). `/loop:status`
+  stays, read-only, and projects every row through
+  `alpha.harness.continuous.store.describe_goal`, so a stale `executing` record
+  reads as retired rather than as running work. `/loop:retire` stamps that
+  retirement onto the stored records additively; it never deletes them.
+- Goal Management -> alpha.harness.continuous.store (GoalStore, read-only) &
+  CognitiveMetaPlanner
 - Subagent Hierarchy -> alpha.subagents.lifecycle (SubagentLifecycleManager)
 - Context & Compact -> /compact honestly reports that real compaction only runs
   through the thread compact API (POST /threads/{id}/compact); it performs no
@@ -393,51 +400,44 @@ def handle_skill_test(args: str, context: dict[str, Any] | None = None) -> Comma
 # ==============================================================================
 # 2. CONTINUOUS LOOP & RALPH LOOP HANDLERS
 # ==============================================================================
+#
+# The legacy continuous-goal surface is RETIRED. ``RunManager`` is the sole
+# run-lifecycle owner; nothing in production dispatched a goal created through
+# `/loop:*` or `goal_engine`, so every mutating verb here would have written a
+# row that reads like launched work without a worker behind it. They refuse by
+# name instead, and name the real path. Inspection stays, because a read that
+# says "these records prove nothing" is the useful half of the retirement.
 
 
 def handle_loop_start(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Starts a continuous goal-driven execution loop with self-healing and milestone tracking."""
-    task_desc = args.strip() or "Continuous autonomous optimization loop"
-    from alpha.harness.continuous.runner import get_goal_runner
+    """Refuse: the legacy loop surface is retired; no worker dispatches these goals."""
+    from alpha.harness.continuous.models import LEGACY_MIGRATION_GUIDANCE, LEGACY_RETIREMENT_REASON
 
-    runner = get_goal_runner()
-
-    try:
-        goal = runner.start_goal(
-            title=task_desc[:60],
-            description=task_desc,
-            max_iterations=50,
-        )
-        if not runner.store.is_durable:
-            return CommandExecutionResult(
-                status="error",
-                command="/loop:start",
-                output=f"Goal {goal.goal_id} was created in memory but could not be persisted; it is not durable.",
-                data={"goal_id": goal.goal_id, "status": "unknown"},
-            )
-        return CommandExecutionResult(
-            status="success",
-            command="/loop:start",
-            output=(f"Goal recorded: {goal.goal_id}\n- Objective: {goal.title}\n- Status: {goal.status} (awaiting active agent execution)\n- Initial milestones: {len(goal.milestones)}\n- Iteration budget: {goal.max_iterations}"),
-            data={"goal_id": goal.goal_id, "title": goal.title, "milestones": len(goal.milestones)},
-            autonomous_directives=[
-                f"Work on the user's objective in the active agent run for goal {goal.goal_id}. Only report milestones as complete when the real work and its verification are done; the goal record alone does not execute work."
-            ],
-        )
-    except Exception as e:
-        return CommandExecutionResult(
-            status="error",
-            command="/loop:start",
-            output=f"Failed to initialize loop: {e}",
-            data={"error": str(e)},
-        )
+    return CommandExecutionResult(
+        status="error",
+        command="/loop:start",
+        output=(f"/loop:start is retired. {LEGACY_RETIREMENT_REASON}\n{LEGACY_MIGRATION_GUIDANCE}\nNo goal record was created."),
+        data={"retired": True, "created": False, "migration": LEGACY_MIGRATION_GUIDANCE},
+    )
 
 
 def handle_loop_status(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Show a compact goal summary or milestone detail for one exact goal id."""
-    from alpha.harness.continuous.store import get_goal_store
+    """Show a compact goal summary or milestone detail for one exact goal id.
+
+    Read-only by design: every row is projected through ``describe_goal``, so a
+    stale record still carrying ``executing`` reads as retired here rather than
+    as a loop that is running.
+    """
+    from alpha.harness.continuous.store import describe_goal, get_goal_store
 
     store = get_goal_store()
+    if store.is_degraded:
+        return CommandExecutionResult(
+            status="error",
+            command="/loop:status",
+            output=(f"Goal state is UNKNOWN, not empty: the store at {store.storage_path} could not be read ({store.load_error})."),
+            data={"goals": [], "status_counts": {}, "reported": False, "reason": store.load_error},
+        )
     goals = store.list_goals()
 
     requested_id = args.strip()
@@ -450,16 +450,20 @@ def handle_loop_status(args: str, context: dict[str, Any] | None = None) -> Comm
                 output=f"Goal {requested_id} was not found.",
                 data={"goal_id": requested_id, "status": "not_found"},
             )
+        view = describe_goal(goal)
         out = [
-            f"=== Goal {goal.goal_id} ===",
-            f"{goal.title} | Status: `{goal.status}` | Iteration: {goal.iteration}/{goal.max_iterations}",
+            f"=== Goal {goal.goal_id} (RETIRED) ===",
+            f"{goal.title} | Recorded status: `{goal.status}` | Verified: never",
+            f"Retired because: {view['retirement_reason']}",
+            "Milestones (none executed):",
         ]
-        out.extend(f"• {milestone.title} [{milestone.status}]" for milestone in goal.milestones.values())
+        out.extend(f"• {milestone['title']} [unverified; recorded `{milestone['recorded_status']}`]" for milestone in view["milestones"])
+        out.append(str(view["migration"]))
         return CommandExecutionResult(
             status="success",
             command="/loop:status",
             output="\n".join(out),
-            data={"goal_id": goal.goal_id, "status": goal.status, "goal": goal.to_dict()},
+            data={"goal_id": goal.goal_id, "retired": True, "verified": "never", "goal": view},
         )
 
     if not goals:
@@ -467,103 +471,72 @@ def handle_loop_status(args: str, context: dict[str, Any] | None = None) -> Comm
             status="success",
             command="/loop:status",
             output="No autonomous goals are recorded.",
-            data={"active_loops": 0, "total_goals": 0, "status_counts": {}, "goals": [], "omitted_goals": 0},
+            data={"active_loops": 0, "total_goals": 0, "retired_goals": 0, "status_counts": {}, "goals": [], "omitted_goals": 0},
         )
 
-    active_statuses = {"planning", "executing", "verifying", "adapting"}
-    active = [g for g in goals if g.status in active_statuses]
     counts: dict[str, int] = {}
     for goal in goals:
         counts[goal.status] = counts.get(goal.status, 0) + 1
+    views = [describe_goal(goal) for goal in goals]
     out = [
-        f"=== Continuous Goal Status ({len(active)} active, {len(goals)} total) ===",
-        "Status counts: " + ", ".join(f"{status}={count}" for status, count in sorted(counts.items())),
+        f"=== Continuous Goal Status ({len(goals)} recorded, 0 active — the legacy loop surface is retired) ===",
+        "Recorded status counts: " + ", ".join(f"{status}={count}" for status, count in sorted(counts.items())),
+        "None of these records is evidence that a step ran or that work was verified.",
     ]
     limit = 10
-    for g in goals[:limit]:
-        out.append(f"• [{g.goal_id}] {g.title} | Status: `{g.status}` | Iteration: {g.iteration}/{g.max_iterations}")
-    if len(goals) > limit:
-        out.append(f"• {len(goals) - limit} additional goal(s) omitted; use /loop:status <goal-id> for milestone detail.")
+    for view in views[:limit]:
+        out.append(f"• [{view['goal_id']}] {view['title']} | Retired (recorded `{view['recorded_status']}`)")
+    if len(views) > limit:
+        out.append(f"• {len(views) - limit} additional goal(s) omitted; use /loop:status <goal-id> for detail.")
 
     return CommandExecutionResult(
         status="success",
         command="/loop:status",
         output="\n".join(out),
         data={
-            "active_loops": len(active),
+            "active_loops": 0,
             "total_goals": len(goals),
+            "retired_goals": len(goals),
             "status_counts": counts,
-            "goals": [g.to_dict() for g in goals[:limit]],
-            "omitted_goals": max(0, len(goals) - limit),
+            "goals": views[:limit],
+            "omitted_goals": max(0, len(views) - limit),
+            "retirement_reason": views[0]["retirement_reason"],
+            "migration": views[0]["migration"],
         },
     )
 
 
-def handle_loop_pause(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Pause one loop by id, or the sole active loop when unambiguous."""
-    from alpha.harness.continuous.store import get_goal_store
+def _loop_mutation_refused(command: str, args: str) -> CommandExecutionResult:
+    """Shared refusal for pause/resume: there is no worker behind these records."""
+    from alpha.harness.continuous.models import LEGACY_MIGRATION_GUIDANCE, LEGACY_RETIREMENT_REASON
 
-    store = get_goal_store()
     requested_id = args.strip().split(maxsplit=1)[0] if args.strip() else ""
-    active = [g for g in store.list_goals() if g.status in {"planning", "executing", "verifying", "adapting"}]
-    if requested_id:
-        target = store.get_goal(requested_id)
-        if target is None:
-            return CommandExecutionResult(status="error", command="/loop:pause", output=f"Loop {requested_id} was not found.", data={"goal_id": requested_id, "status": "not_found"})
-        if target.status in {"achieved", "blocked"}:
-            return CommandExecutionResult(status="error", command="/loop:pause", output=f"Loop {target.goal_id} is already {target.status} and cannot be paused.", data={"goal_id": target.goal_id, "status": target.status})
-        if target.status == "paused":
-            return CommandExecutionResult(status="success", command="/loop:pause", output=f"Loop {target.goal_id} is already paused.", data={"goal_id": target.goal_id, "status": "paused"})
-    elif not active:
-        return CommandExecutionResult(status="success", command="/loop:pause", output="No loops to pause.")
-    elif len(active) > 1:
-        ids = [g.goal_id for g in active]
-        return CommandExecutionResult(status="error", command="/loop:pause", output=f"Multiple active loops exist; specify one goal id: {', '.join(ids)}", data={"candidate_goal_ids": ids})
-    else:
-        target = active[0]
-
-    updated = store.update_goal_status(target.goal_id, "paused", strategy_note="User paused loop.")
-    if updated is None or not store.is_durable:
-        return CommandExecutionResult(status="error", command="/loop:pause", output=f"Could not confirm that loop {target.goal_id} was paused durably.", data={"goal_id": target.goal_id, "status": "unknown"})
     return CommandExecutionResult(
-        status="success",
-        command="/loop:pause",
-        output=f"Loop {target.goal_id} ({target.title}) paused successfully.",
-        data={"goal_id": target.goal_id, "status": "paused"},
+        status="error",
+        command=command,
+        output=(f"{command} is retired. {LEGACY_RETIREMENT_REASON}\nNo record was changed{' for ' + requested_id if requested_id else ''}. {LEGACY_MIGRATION_GUIDANCE}"),
+        data={"retired": True, "changed": False, "goal_id": requested_id or None, "migration": LEGACY_MIGRATION_GUIDANCE},
     )
+
+
+def handle_loop_pause(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
+    """Refuse: nothing is executing these records, so there is nothing to pause."""
+    return _loop_mutation_refused("/loop:pause", args)
 
 
 def handle_loop_resume(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Resume one loop by id, or the sole paused loop when unambiguous."""
-    from alpha.harness.continuous.store import get_goal_store
+    """Refuse: writing `executing` here is the lie this retirement removes.
 
-    store = get_goal_store()
-    requested_id = args.strip().split(maxsplit=1)[0] if args.strip() else ""
-    paused = [g for g in store.list_goals() if g.status == "paused"]
-    if requested_id:
-        target = store.get_goal(requested_id)
-        if target is None:
-            return CommandExecutionResult(status="error", command="/loop:resume", output=f"Loop {requested_id} was not found.", data={"goal_id": requested_id, "status": "not_found"})
-        if target.status != "paused":
-            return CommandExecutionResult(status="error", command="/loop:resume", output=f"Loop {target.goal_id} is {target.status}, not paused.", data={"goal_id": target.goal_id, "status": target.status})
-    elif not paused:
-        return CommandExecutionResult(status="success", command="/loop:resume", output="No loops to resume.")
-    elif len(paused) > 1:
-        ids = [g.goal_id for g in paused]
-        return CommandExecutionResult(status="error", command="/loop:resume", output=f"Multiple paused loops exist; specify one goal id: {', '.join(ids)}", data={"candidate_goal_ids": ids})
-    else:
-        target = paused[0]
+    A resume used to persist ``executing`` and report success, with no worker
+    behind the row — the clearest case of a record standing in for work.
+    """
+    return _loop_mutation_refused("/loop:resume", args)
 
-    updated = store.update_goal_status(target.goal_id, "executing", strategy_note="User resumed loop.")
-    if updated is None or not store.is_durable:
-        return CommandExecutionResult(status="error", command="/loop:resume", output=f"Could not confirm that loop {target.goal_id} resumed durably.", data={"goal_id": target.goal_id, "status": "unknown"})
-    return CommandExecutionResult(
-        status="success",
-        command="/loop:resume",
-        output=f"Loop {target.goal_id} ({target.title}) resumed.",
-        data={"goal_id": target.goal_id, "status": "executing"},
-        autonomous_directives=[f"Resume iteration step for loop {target.goal_id}."],
-    )
+
+# The retirement stamp is reachable as `goal_engine action="retire"` rather than
+# as a slash command: it is an operator action on a retired store, not a
+# conversation verb, and publishing a new `/loop:*` row would mean editing the
+# command catalog this slice does not own.
 
 
 # ==============================================================================
@@ -572,14 +545,34 @@ def handle_loop_resume(args: str, context: dict[str, Any] | None = None) -> Comm
 
 
 def handle_goal_create(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Creates a durable autonomous mission."""
-    res = handle_loop_start(args, context)
-    res.command = "/goal create"
-    if res.data is None:
-        res.data = {}
-    res.data["arguments"] = args
-    res.data["is_autonomous_trigger"] = True
-    return res
+    """Turn an objective into a directive for the run that is already executing.
+
+    This is the natural-language trigger the autonomous command engine fires
+    (`commands/autonomous_engine.py`), and it is **not** the retired loop
+    surface: it never dispatched a worker, it emitted an instruction for the
+    active agent run. That instruction is the real work path, so it stays.
+
+    What changed is only the claim. It used to delegate to `/loop:start` and so
+    minted a legacy goal record, which is what made "a goal was created" read as
+    "work started". Now it creates no record at all and says so, while the
+    directive still carries the objective into the active run. Reporting the
+    directive as success is honest about *what this command does* — execute the
+    objective in the run already in flight — and is not a claim that anything was
+    verified; that verdict belongs to the run's own acceptance criteria.
+    """
+    from alpha.harness.continuous.models import LEGACY_MIGRATION_GUIDANCE
+
+    objective = args.strip() or "the user's objective"
+    return CommandExecutionResult(
+        status="success",
+        command="/goal create",
+        output=(f"Objective accepted for the active agent run: {objective}\nNo legacy goal record was created; the retired goal store is not a work tracker and is not evidence that anything ran."),
+        data={"arguments": args, "is_autonomous_trigger": True, "created_goal_record": False, "migration": LEGACY_MIGRATION_GUIDANCE},
+        autonomous_directives=[
+            f"Pursue this objective in the current agent run: {objective}. Report a milestone complete only when the work and its verification are actually done, "
+            "and declare acceptance_criteria on the run if the outcome needs measured evidence — a completed run is still not a verified one."
+        ],
+    )
 
 
 def handle_goal_status(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
