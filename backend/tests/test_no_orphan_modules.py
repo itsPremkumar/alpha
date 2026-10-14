@@ -100,6 +100,21 @@ ALLOWED_ORPHANS: dict[str, str] = {
     "alpha.workflow._probe_replay_fold": "standalone replay probe: does replay_run fold a connectivity_wait_parked park?; run by hand or tests/test_diagnostic_scripts.py, never imported by production code",
     "alpha.workflow._proof_external_wait": "standalone replay proof: external_wait_parked folds to WAITING_EVENT (exit 0/1); run by hand or tests/test_diagnostic_scripts.py, never imported by production code",
     "app.gateway.routers.route_audit_builder": "standalone AST route inventory (JSON) over app/gateway/routers — never imports the Gateway; run by hand or tests/test_diagnostic_scripts.py, never imported by production code",
+    # Scratch diagnostics landed deliberately by 182cb2e ("land pending APEX
+    # work and session diagnostics"): one-shot probes run by hand against a
+    # running Gateway (curl status sweeps, OpenAPI dumps) or over a source file
+    # with a checkout-specific absolute path. Nothing in production may import
+    # them — a probe that production imports would run at import time — and
+    # each is self-contained (guarded main / top-level script), so the
+    # interpreter is its caller, exactly like the CLI_ENTRY_POINTS above.
+    "app.gateway._audit_routes": "standalone route-table dump of a running Gateway; run by hand, never imported by production code (landed by 182cb2e session diagnostics)",
+    "app.gateway.audit_now": "standalone route-table dump of a running Gateway (duplicate entry point of _audit_routes); run by hand, never imported by production code (landed by 182cb2e session diagnostics)",
+    "app.gateway.probes.authstate_probe": "standalone curl probe asking a running Gateway whether auth is enforced; run by hand, never imported by production code (landed by 182cb2e session diagnostics)",
+    "app.gateway.probes.noauth_probe": "standalone curl probe sweeping mutating routes with no auth header; run by hand, never imported by production code (landed by 182cb2e session diagnostics)",
+    "app.gateway.routers.probe_keys": "standalone AST dump of the context-key definitions in services.py; run by hand, never imported by production code (landed by 182cb2e session diagnostics)",
+    "app.gateway.routers.probe_mutating": "standalone curl sweep of mutating routes with no auth header; run by hand, never imported by production code (landed by 182cb2e session diagnostics)",
+    "app.gateway.routers.probe_openapi": "standalone fetch of a running Gateway's openapi.json; run by hand, never imported by production code (landed by 182cb2e session diagnostics)",
+    "app.gateway.routers.probe_trust": "standalone AST probe of the run-context trust-boundary key sets in services.py; run by hand, never imported by production code (landed by 182cb2e session diagnostics)",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by
@@ -256,6 +271,7 @@ def _referenced_modules() -> set[str]:
                 tree = None
             if tree is not None:
                 referenced.update(_walk_tree(tree))
+                referenced.update(_facade_export_targets(tree, path))
         # Dotted-path strings cover config-driven dynamic loading. A target may
         # carry a ``:Class`` suffix (``use: alpha.x.y:Klass``) or a ``.py``
         # suffix (langgraph.json file paths); normalise both back to a module.
@@ -263,6 +279,36 @@ def _referenced_modules() -> set[str]:
             for match in pattern.findall(text):
                 referenced.update(_target_modules(match))
     return referenced
+
+
+def _facade_export_targets(tree: ast.AST, path: Path) -> set[str]:
+    """Resolve a PEP 562 facade's ``_EXPORT_MODULES`` map into module targets.
+
+    ``alpha.tools.builtins`` no longer has module-level imports: it maps each
+    public symbol to the *bare* submodule name that provides it and resolves it
+    on first access (``__getattr__``). A bare name has no dot, so neither the
+    dotted-string regexes nor the import walk can see it, and every
+    facade-provided module would read as an orphan.
+
+    This is the same rule ``scripts/generate_feature_manifest.py`` learned in
+    ``d308fa6`` — a dict literal assigned to ``_EXPORT_MODULES`` inside a
+    package is a wiring declaration, and each value names a submodule of the
+    module's own package. A value that is already dotted is kept verbatim.
+    """
+    names: set[str] = set()
+    for node in getattr(tree, "body", ()):
+        if not (isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "_EXPORT_MODULES" for target in node.targets) and isinstance(node.value, ast.Dict)):
+            continue
+        package = _module_name(path, HARNESS) or _module_name(path, BACKEND)
+        if not package:
+            continue
+        for key, value in zip(node.value.keys, node.value.values):
+            if key is None or not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+                continue
+            if isinstance(value, ast.Constant) and isinstance(value.value, str) and value.value:
+                submodule = value.value if "." in value.value else f"{package}.{value.value}"
+                names.add(submodule)
+    return names
 
 
 def _normalize_target(raw: str) -> str:
@@ -486,6 +532,24 @@ def test_dotted_string_references_are_indexed() -> None:
     ]
     for module, target in expected:
         assert _normalize_target(target) in referenced, f"dotted loader target {target!r} was not indexed — the scan regexes are broken again, so {module} would be reported as an orphan"
+
+
+def test_lazy_facade_submodules_are_indexed() -> None:
+    """A PEP 562 facade's ``_EXPORT_MODULES`` map is a wiring reference.
+
+    ``alpha.tools.builtins`` resolves its public symbols on first access, so it
+    holds no module-level ``ImportFrom`` nodes at all — every builtin tool
+    module is named only by the *bare* submodule value in that dict
+    (``"ask_oracle" -> "ask_oracle_tool"``), which the dotted-string regex
+    cannot match (no dot) and the AST import walk cannot see. Without indexing
+    the map, all 84 facade-provided modules read as orphans — the exact drift
+    ``d308fa6`` already fixed on the manifest-generator side
+    (``scripts/generate_feature_manifest.py``); this is the orphan-scan half.
+    """
+    referenced = _referenced_modules()
+
+    # A module whose ONLY production reference is a facade export value.
+    assert "alpha.tools.builtins.ask_oracle_tool" in referenced, "the builtins lazy facade's _EXPORT_MODULES values were not indexed — every facade-provided builtin tool module will be reported as an orphan"
 
 
 def test_gitignored_paths_are_excluded_from_the_guard() -> None:
