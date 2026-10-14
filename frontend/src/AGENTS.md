@@ -387,6 +387,64 @@ mapping, the 422 issue list, draft round-trips) and
 `lib/bot-model-config-view.test.mjs` (mount, the four states, and the rendered
 honesty claims).
 
+## Bot detail page (`/bots/[name]`)
+
+`lib/bot-detail.ts` + `components/bots/BotDetailView.tsx` +
+`components/bots/detail-primitives.tsx`. It is deliberately **not** an
+extension of `lib/bots.ts`: that module owns the cheap fleet roster read, and
+this one fans out to twelve per-bot routes. It is also **not**
+`chat-shell/BotDetailPanel`, which is an *editor* — this route never PATCHes.
+
+- **Twelve reads, twelve failures.** `fetchBotDetail()` is one
+  `Promise.allSettled` over profile, performance, inbox, chat, fleet health,
+  organization chart, projects, groups, companies, working runs, org events and
+  the kill switch; each rejection becomes `{ state: "error", reason }` carrying
+  the server's own words. There is no `Promise.all` in the module — one 503
+  from the group store must not blank a project list that answered.
+  `bot-detail-view.test.mjs` pins that.
+- **Presentation lives in `detail-primitives.tsx`, once.** `Section` owns the
+  failed-read sentence, `Row`/`CountRow` own "not reported", `StatusBadge` owns
+  enum tone *and* the unknown-enum marker, `ListState` separates "sent no
+  list" (`null`) from "sent an empty list" (`[]`), and `Notice` is for a
+  disclosure beside data that *did* arrive — never for a failed read. A second
+  `Section` declared in the view is exactly how "Projects (0)" ends up over a
+  failed read; the view test fails on one appearing.
+- **`null` and `[]` are different facts on every list.** `normalizeProjects` /
+  `normalizeGroups` / `normalizeCompanies` / `normalizeEvents` all use
+  `asList()`, which returns `null` for a missing key. "The Gateway sent no
+  room list" and "the bot is in no rooms" lead to opposite conclusions and get
+  different sentences.
+- **`direct_count` and `effective_count` travel together.** Rendering only the
+  direct number over six visible members is a fabricated count, so both are
+  always shown, each `null` on its own.
+- **`origins` decides what a room means.** A bucket of `inherited` /
+  `rule_matched` is shown as itself — a live roster projection, not somebody
+  who was added to the room — and `effective: false` (excluded, expired) keeps
+  the row visible with a "cannot take part" chip rather than being dropped.
+- **The board read is its own state.** `fetchKanbanTasks()` is issued
+  separately in the view with its own `kanban` state and its own failure, so a
+  board outage cannot take the profile down with it; the client keeps only the
+  *pure* filters (`kanbanTasksFor`, `workRunsForBot`). `kanbanTasksFor` matches
+  the assignee exactly and case-insensitively and returns `[]` for a blank bot
+  name, because `""` would otherwise match every unassigned task on the board.
+- **`reported: false` is a refusal, not an idle fleet.** `workRunsForBot`
+  returns nothing when the run store could not be read, and the section says so
+  in words instead of rendering "no runs".
+- **No chat deep-link, on purpose.** `ChatView` reads no bot parameter, so a
+  `?view=chat&bot=x` link would promise a selection it cannot perform. The
+  canonical thread id is printed as a fact instead. The redirection strip only
+  links to views that genuinely accept the data, and every one goes through
+  `workspaceViewUrl`.
+- **Memory says what it is.** There is no per-bot memory store, so
+  `memory_scoped: "project"` renders as a note naming the scope rather than as
+  an empty block that reads "this bot has no memory".
+
+Coverage: `lib/bot-detail.test.mjs` (the mappers' honesty inversions,
+`asList`'s null-vs-empty distinction, the two filters) and
+`lib/bot-detail-view.test.mjs` (the `Promise.allSettled` pin, every route and
+every section title, the primitives-are-not-redeclared pin, `workspaceViewUrl`,
+the withheld chat deep-link, the separate board state, the paired counts).
+
 ## Internet connectivity in the workspace strip
 
 `WorkspaceVitals` renders a fourth measurement in its "Backend connection"
