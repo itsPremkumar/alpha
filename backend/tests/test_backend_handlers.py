@@ -102,7 +102,14 @@ def test_skill_test_broken_frontmatter_reports_failure():
     assert "[FAIL] Valid frontmatter schema" in res.output
 
 
-def test_loop_handlers():
+def test_loop_handlers(monkeypatch, tmp_path):
+    from alpha.harness.continuous.runner import ContinuousGoalRunner
+    from alpha.harness.continuous.store import GoalStore
+
+    store = GoalStore(storage_path=tmp_path / "goals.json")
+    runner = ContinuousGoalRunner(store=store)
+    monkeypatch.setattr("alpha.harness.continuous.store.get_goal_store", lambda: store)
+    monkeypatch.setattr("alpha.harness.continuous.runner._global_goal_runner", runner)
     # 1. Start loop
     res_start = command_registry.execute("/loop:start Deploy high-availability Kubernetes cluster")
     assert res_start.status == "success"
@@ -116,12 +123,41 @@ def test_loop_handlers():
     assert res_status.data.get("active_loops", 0) > 0
 
     # 3. Pause loop
-    res_pause = command_registry.execute("/loop:pause")
+    res_pause = command_registry.execute(f"/loop:pause {goal_id}")
     assert res_pause.status == "success"
 
     # 4. Resume loop
-    res_resume = command_registry.execute("/loop:resume")
+    res_resume = command_registry.execute(f"/loop:resume {goal_id}")
     assert res_resume.status == "success"
+
+
+def test_loop_pause_and_resume_require_an_unambiguous_target(monkeypatch, tmp_path):
+    from alpha.harness.continuous.store import GoalStore
+
+    store = GoalStore(storage_path=tmp_path / "goals.json")
+    first = store.create_goal(title="First loop", description="first")
+    second = store.create_goal(title="Second loop", description="second")
+    store.update_goal_status(first.goal_id, "executing")
+    store.update_goal_status(second.goal_id, "executing")
+    monkeypatch.setattr("alpha.harness.continuous.store.get_goal_store", lambda: store)
+
+    ambiguous = bh.handle_loop_pause("")
+    assert ambiguous.status == "error"
+    assert set(ambiguous.data["candidate_goal_ids"]) == {first.goal_id, second.goal_id}
+    assert store.get_goal(first.goal_id).status == "executing"
+    assert store.get_goal(second.goal_id).status == "executing"
+
+    paused = bh.handle_loop_pause(second.goal_id)
+    assert paused.status == "success"
+    assert paused.data == {"goal_id": second.goal_id, "status": "paused"}
+    assert store.get_goal(first.goal_id).status == "executing"
+    assert store.get_goal(second.goal_id).status == "paused"
+
+    resumed = bh.handle_loop_resume(second.goal_id)
+    assert resumed.status == "success"
+    assert resumed.data == {"goal_id": second.goal_id, "status": "executing"}
+    assert store.get_goal(first.goal_id).status == "executing"
+    assert store.get_goal(second.goal_id).status == "executing"
 
 
 def test_goal_decompose_handler():

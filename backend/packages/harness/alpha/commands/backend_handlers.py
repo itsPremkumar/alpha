@@ -454,16 +454,31 @@ def handle_loop_status(args: str, context: dict[str, Any] | None = None) -> Comm
 
 
 def handle_loop_pause(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Pauses the currently running loop."""
+    """Pause one loop by id, or the sole active loop when unambiguous."""
     from alpha.harness.continuous.store import get_goal_store
 
     store = get_goal_store()
-    goals = store.list_goals()
-    if not goals:
+    requested_id = args.strip().split(maxsplit=1)[0] if args.strip() else ""
+    active = [g for g in store.list_goals() if g.status in {"planning", "executing", "verifying", "adapting"}]
+    if requested_id:
+        target = store.get_goal(requested_id)
+        if target is None:
+            return CommandExecutionResult(status="error", command="/loop:pause", output=f"Loop {requested_id} was not found.", data={"goal_id": requested_id, "status": "not_found"})
+        if target.status in {"achieved", "blocked"}:
+            return CommandExecutionResult(status="error", command="/loop:pause", output=f"Loop {target.goal_id} is already {target.status} and cannot be paused.", data={"goal_id": target.goal_id, "status": target.status})
+        if target.status == "paused":
+            return CommandExecutionResult(status="success", command="/loop:pause", output=f"Loop {target.goal_id} is already paused.", data={"goal_id": target.goal_id, "status": "paused"})
+    elif not active:
         return CommandExecutionResult(status="success", command="/loop:pause", output="No loops to pause.")
+    elif len(active) > 1:
+        ids = [g.goal_id for g in active]
+        return CommandExecutionResult(status="error", command="/loop:pause", output=f"Multiple active loops exist; specify one goal id: {', '.join(ids)}", data={"candidate_goal_ids": ids})
+    else:
+        target = active[0]
 
-    target = goals[0]
-    store.update_goal_status(target.goal_id, "paused", strategy_note="User paused loop.")
+    updated = store.update_goal_status(target.goal_id, "paused", strategy_note="User paused loop.")
+    if updated is None or not store.is_durable:
+        return CommandExecutionResult(status="error", command="/loop:pause", output=f"Could not confirm that loop {target.goal_id} was paused durably.", data={"goal_id": target.goal_id, "status": "unknown"})
     return CommandExecutionResult(
         status="success",
         command="/loop:pause",
@@ -473,16 +488,29 @@ def handle_loop_pause(args: str, context: dict[str, Any] | None = None) -> Comma
 
 
 def handle_loop_resume(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
-    """Resumes a paused loop."""
+    """Resume one loop by id, or the sole paused loop when unambiguous."""
     from alpha.harness.continuous.store import get_goal_store
 
     store = get_goal_store()
-    goals = store.list_goals()
-    if not goals:
+    requested_id = args.strip().split(maxsplit=1)[0] if args.strip() else ""
+    paused = [g for g in store.list_goals() if g.status == "paused"]
+    if requested_id:
+        target = store.get_goal(requested_id)
+        if target is None:
+            return CommandExecutionResult(status="error", command="/loop:resume", output=f"Loop {requested_id} was not found.", data={"goal_id": requested_id, "status": "not_found"})
+        if target.status != "paused":
+            return CommandExecutionResult(status="error", command="/loop:resume", output=f"Loop {target.goal_id} is {target.status}, not paused.", data={"goal_id": target.goal_id, "status": target.status})
+    elif not paused:
         return CommandExecutionResult(status="success", command="/loop:resume", output="No loops to resume.")
+    elif len(paused) > 1:
+        ids = [g.goal_id for g in paused]
+        return CommandExecutionResult(status="error", command="/loop:resume", output=f"Multiple paused loops exist; specify one goal id: {', '.join(ids)}", data={"candidate_goal_ids": ids})
+    else:
+        target = paused[0]
 
-    target = goals[0]
-    store.update_goal_status(target.goal_id, "executing", strategy_note="User resumed loop.")
+    updated = store.update_goal_status(target.goal_id, "executing", strategy_note="User resumed loop.")
+    if updated is None or not store.is_durable:
+        return CommandExecutionResult(status="error", command="/loop:resume", output=f"Could not confirm that loop {target.goal_id} resumed durably.", data={"goal_id": target.goal_id, "status": "unknown"})
     return CommandExecutionResult(
         status="success",
         command="/loop:resume",

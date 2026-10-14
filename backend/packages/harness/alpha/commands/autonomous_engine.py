@@ -52,8 +52,13 @@ DEFAULT_TRIGGER_RULES: list[TriggerRule] = [
         phase=LifecyclePhase.PLANNING,
         target_command="/goal create",
         description="Automatically decomposes complex long-term objectives into structured milestones",
-        keywords=["goal", "objective", "mission", "milestone", "end-to-end", "from scratch", "build a complete", "roadmap"],
-        regex_patterns=[r"(?:build|create|develop|implement)\s+(?:a|an)\s+(?:complete|full|entire)", r"(?:my|our)\s+goal\s+is"],
+        # `/goal create` starts a durable continuous loop (up to 50 iterations),
+        # so an incidental noun such as "goal" or "objective" is not consent.
+        # Require an explicit lifecycle verb before the goal/mission/loop noun.
+        keywords=[],
+        regex_patterns=[
+            r"\b(?:create|start|launch|provision)\s+(?:(?:a|an|the)\s+)?(?:(?:new|autonomous|continuous|long[- ]running)\s+)*(?:goal|mission|loop)\b",
+        ],
         priority=80,
     ),
     TriggerRule(
@@ -61,7 +66,7 @@ DEFAULT_TRIGGER_RULES: list[TriggerRule] = [
         phase=LifecyclePhase.PLANNING,
         target_command="/plan mode:auto",
         description="Automatically invokes 8-dimensional strategic meta-planner for multi-step architecture",
-        keywords=["plan", "design", "architecture", "strategy", "design pattern", "system design", "spec", "specification"],
+        keywords=["plan", "design", "architecture", "strategy", "design pattern", "system design", "spec", "specification", "from scratch", "build a complete", "build a full"],
         regex_patterns=[r"how\s+should\s+we\s+design", r"(?:design|create|build)\s+(?:an?\s+)?(?:\w+\s+)?(?:architecture|system)"],
         priority=75,
     ),
@@ -229,6 +234,11 @@ class AutonomousCommandEngine:
         # Scan rules
         for rule in sorted(self.rules, key=lambda r: r.priority, reverse=True):
             if rule.rule_id == "auto_verify_tests" and verification_negated:
+                continue
+            if rule.rule_id == "auto_goal_create" and re.search(
+                r"\b(?:do not|don't|dont|never|avoid|without|no need to)\s+(?:create|start|launch|provision)\b",
+                text_lower,
+            ):
                 continue
             score = 0.0
 

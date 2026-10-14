@@ -774,6 +774,8 @@ exactly-once execution.
 - **Agent response workspace** — readable terminal, file-diff, search, browser,
   artifact, and subagent cards; transcript search and Markdown export; and a
   side pane for the files, commands, pages, and artifacts a run produced.
+  Autonomous command receipts show the Gateway's execution status and returned
+  output; intent detection alone is not presented as proof that an action ran.
 - **Workspace-aware lion companion** — the movable companion clears navigation,
   chat controls, archive actions and open dialogs; it rechecks every marked
   region as layouts change and ignores its own UI mutations. Its hit area and

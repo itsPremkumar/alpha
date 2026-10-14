@@ -191,6 +191,20 @@ passes rows in. Full contract, five loop breakers, durability rules:
 
 ## Durable state under `harness/` (`continuous/`, `continual/`)
 
+### Natural-language command triggers
+
+`commands/autonomous_engine.py` calls `command_registry.execute` when a rule
+matches and `auto_execute` is enabled. Treat a persistent command such as
+`/goal create` as a side effect: require an explicit action verb, not a bare
+mention of "goal", "objective", "mission", or "milestone". A negated request
+must not fire. Keep `tests/test_autonomous_commands.py` pinned for incidental,
+negated, and explicit creation wording. The chat UI must display the returned
+execution status and output; a matched intent is not evidence that a command
+ran successfully. `/loop pause` and `/loop resume` must target a requested goal
+id or refuse ambiguity when multiple loops match; never select the first row
+from a persistent store as an implicit target. Verify the transition was saved
+before reporting it as complete.
+
 A JSON-backed store that cannot be read must report **unknown**, never empty.
 The two lead to opposite decisions, so the difference has to survive to the
 caller — a bare `except Exception: pass` in `_load` is not a safe default here,

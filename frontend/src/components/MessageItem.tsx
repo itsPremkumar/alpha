@@ -127,6 +127,14 @@ export const MessageItem = React.memo(function MessageItem({
       ? groupMatch[4]
       : message.content;
 
+  const autonomousExecution = message.autonomousDetection?.execution_result;
+  const autonomousExecutionOutput = autonomousExecution?.output?.trim();
+  const shownAutonomousOutput = autonomousExecutionOutput
+    ? autonomousExecutionOutput.length > 1200
+      ? `${autonomousExecutionOutput.slice(0, 1200)}… (truncated)`
+      : autonomousExecutionOutput
+    : null;
+
   /** Answers past this length collapse behind "Show more". */
   const LONG_ANSWER_CHARS = 4000;
   const isLongAnswer =
@@ -401,6 +409,17 @@ export const MessageItem = React.memo(function MessageItem({
             <p className="text-[11px] text-muted-foreground">
               {message.autonomousDetection.reason}
             </p>
+            <div className="space-y-1 border-t border-primary/15 pt-1">
+              <p className="font-medium text-[11px]">
+                Command result: {autonomousExecution?.status ?? "not reported"}
+              </p>
+              <p className="whitespace-pre-wrap break-words text-[11px] text-muted-foreground">
+                {shownAutonomousOutput ??
+                  (autonomousExecution
+                    ? "The command returned no output."
+                    : "No execution result was returned; command detection alone does not confirm an action.")}
+              </p>
+            </div>
           </div>
         )}
 

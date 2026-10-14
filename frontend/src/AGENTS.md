@@ -94,6 +94,7 @@ source for exact route mappings and honest display states.
 | Projects and group tree | project/group section clients and views | matching `lib/projects*.test.mjs`, `lib/groups*.test.mjs` |
 | Alpha peer network | peer client and network panel | `lib/peer-network*.test.mjs`, `lib/qr-decode.test.mjs` |
 | Message projections and tags | `lib/messages-view.ts`, tag palette | `lib/messages-view.test.mjs`; tag editing is covered by the composer/UI suite. |
+| Autonomous command receipts | `components/MessageItem.tsx` renders the Gateway's command status/output; `types/chat.ts` owns the response contract | `lib/autonomous-command-display.test.mjs` |
 
 Where a focused test filename changes, update this index in the same edit; do
 not replace an absent suite name with a broad `pnpm test` claim.

@@ -192,7 +192,9 @@ an OpenAI-compatible endpoint at `POST /api/compat/openai/chat/completions`.
 Electron Windows desktop app (one-click NSIS installer, per-user, no admin);
 Next.js 15 workspace with Chat, Overview, Workforce, Projects, Kanban, Skills,
 Peers, and Settings; an agent response workspace with inspectable tool cards,
-transcript search/export and a run-product side pane; an uncapped on-device IndexedDB chat archive with honest
+transcript search/export, a run-product side pane, and autonomous command receipts
+that show Gateway execution status/output instead of treating intent detection as
+proof that an action ran; an uncapped on-device IndexedDB chat archive with honest
 degraded states and JSON backup/restore; bot-led multi-bot projects; free local
 real-time voice (local Whisper + local Piper speech, an optional more natural
 Kokoro voice on faster hosts, + local openWakeWord wake word, sentence-level

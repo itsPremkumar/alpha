@@ -41,8 +41,8 @@ def get_default_catalog_entries():
         # Continuous loop aliases backed by the concrete goal-loop handlers
         ("/loop start", CommandCategory.AUTONOMOUS_OPS, "Starts a durable continuous goal loop", "/loop start <objective>", True),
         ("/loop status", CommandCategory.AUTONOMOUS_OPS, "Shows active continuous loops and milestones", "/loop status", True),
-        ("/loop pause", CommandCategory.AUTONOMOUS_OPS, "Pauses the active continuous loop", "/loop pause", True),
-        ("/loop resume", CommandCategory.AUTONOMOUS_OPS, "Resumes a paused continuous loop", "/loop resume", True),
+        ("/loop pause", CommandCategory.AUTONOMOUS_OPS, "Pauses one continuous loop; specify its id when several are active", "/loop pause [goal_id]", True),
+        ("/loop resume", CommandCategory.AUTONOMOUS_OPS, "Resumes one paused continuous loop; specify its id when several are paused", "/loop resume [goal_id]", True),
         # 3. Planning Commands
         ("/plan", CommandCategory.PLANNING, "Creates execution plan without immediately acting", "/plan <objective>", True),
         ("/plan show", CommandCategory.PLANNING, "Displays current execution plan", "/plan show", False),

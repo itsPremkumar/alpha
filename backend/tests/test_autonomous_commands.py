@@ -38,6 +38,35 @@ def test_intent_identification_planning():
     assert len(result.autonomous_directives) > 0
 
 
+def test_incidental_goal_language_does_not_start_a_persistent_loop(monkeypatch):
+    """A request mentioning its goal is not consent to start a 50-iteration loop."""
+    executed: list[str] = []
+    monkeypatch.setattr(
+        "alpha.commands.autonomous_engine.command_registry.execute",
+        lambda command, context=None: executed.append(command) or SimpleNamespace(autonomous_directives=[]),
+    )
+
+    for prompt in (
+        "Goal: create one file and read it back; the goal succeeds only if the readback matches.",
+        "Explain how acceptance criteria verify an objective.",
+        "Do not create an autonomous goal; only complete this one-step task.",
+    ):
+        result = autonomous_command_engine.identify_and_trigger(prompt, auto_execute=True)
+        assert result.matched is False, f"incidental goal language triggered {result.command!r}: {prompt}"
+        assert result.rule_id == "none"
+    assert executed == []
+
+
+def test_explicit_long_running_goal_request_is_detected_without_executing_it():
+    result = autonomous_command_engine.identify_and_trigger(
+        "Create a long-running autonomous goal to maintain the service over time.",
+        auto_execute=False,
+    )
+    assert result.matched is True
+    assert result.command == "/goal create"
+    assert result.execution_result is None
+
+
 def test_intent_identification_swarm():
     # Multi-agent collaboration should automatically trigger /swarm create
     result = autonomous_command_engine.identify_and_trigger(
