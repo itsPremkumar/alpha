@@ -1379,6 +1379,10 @@ test("APEX renders recent history separately from active-session controls", () =
   assert.match(source, /A run status is not acceptance verification/);
   assert.match(source, /session\.acceptance\?\.passed === true[\s\S]{0,120}"passed"/);
   assert.match(source, /Evaluated criteria and evidence/);
+  assert.match(source, /function SessionRunDiagnostic\(/);
+  assert.match(source, /Diagnostic unavailable: \$\{state\.error\}/);
+  assert.match(source, /RunManager recorded no error or stop reason\./);
+  assert.match(source, /SessionRunDiagnostic[\s\S]{0,180}threadId=\{session\.thread_id\}/);
   assert.match(source, /setApexControl\(verb\)/);
 });
 
