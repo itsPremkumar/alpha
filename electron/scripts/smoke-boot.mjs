@@ -29,8 +29,8 @@
  *   node scripts/smoke-boot.mjs --keep     # leave the throwaway profile behind
  *   node scripts/smoke-boot.mjs --timeout 120
  *
- * Requires the Electron binary (`npm install` first). Exits non-zero on failure,
- * so it is usable as a CI gate.
+ * Requires the Electron binary (`npm ci` then `node node_modules/electron/install.js`).
+ * Exits non-zero on failure, so it is usable as a CI gate.
  */
 
 import { spawn } from 'node:child_process';
@@ -138,8 +138,7 @@ function electronBinary() {
   if (!fs.existsSync(exe)) {
     console.error(
       `Electron binary not found at ${exe}.\n` +
-        'npm install must run to completion (npm >= 11 blocks dependency install scripts ' +
-        'by default — run `npm install-scripts approve electron` if the binary is absent).',
+        'Run `node node_modules/electron/install.js` from the electron/ directory to download it.',
     );
     process.exit(1);
   }

@@ -53,15 +53,13 @@ jobs:
       - name: Install Electron build dependencies
         working-directory: electron
         run: npm ci
-        # npm >= 11 blocks dependency install scripts unless they are allow-listed,
-        # and electron's own postinstall is what downloads the binary the tests and
-        # the smoke test below actually run. Without this the install "succeeds"
-        # and leaves node_modules/electron/dist missing, which used to produce an
-        # installer built with no shell in it. `electron-winstaller` is a transitive
-        # dep of electron-builder whose script only selects a 7z arch; it is not
-        # needed for the NSIS path, so it stays blocked deliberately.
-        env:
-          NPM_CONFIG_ALLOW_SCRIPTS: 'electron'
+
+      # Electron 44 no longer downloads its native binary during npm ci. Its
+      # package provides this explicit installer command; invoke it directly so
+      # the clean runner has the executable required by tests, smoke, and build.
+      - name: Download the Electron binary
+        working-directory: electron
+        run: node node_modules/electron/install.js
 
       # The brand marks in electron/assets/ and frontend/public/ are generated
       # from frontend/src/assets/images/alpha.png and then committed, so

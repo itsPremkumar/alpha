@@ -165,7 +165,7 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "PREDICTIVE_RSI_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
-        "Predictive RSI: the Phase 0 audit of what Alpha's RSI plane already has, the one responsibility it provably lacked (estimating a candidate's outcome before choosing it), and the eleven invariants an advisory forecast layer must hold.",
+        "Predictive RSI audit: existing capabilities, the missing pre-choice forecast step, and invariants for an advisory forecast layer.",
     ),
     "CAPABILITY_MESH.md": DocumentSpec(
         "operations",
@@ -173,11 +173,11 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     ),
     "ADVANCED_MULTI_AGENT_BUILD_PLAN.md": DocumentSpec(
         "plans",
-        "Gap analysis and build plan derived from the advanced multi-agent architecture plan: what Alpha already has with paths, the seven competing schedulers, a ranked gap register, and nine phases that wire and unify rather than rebuild.",
+        "Gap analysis for Alpha's multi-agent architecture: existing paths, competing schedulers, ranked gaps, and integration phases.",
     ),
     "ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
-        "Plan extending Alpha's Python agent runtime with Prime Agent ideas: recursive language models, continual harness, persistent subagents, bounded autonomous continuation and verification-driven task states; design only, with each item classified against current implementation before coding.",
+        "Prime Agent-inspired Python runtime plan: recursive language models, continual harness, persistent subagents, bounded autonomy and verified task states; design only, subject to implementation gap checks.",
     ),
     "ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
