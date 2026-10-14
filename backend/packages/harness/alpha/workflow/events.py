@@ -179,6 +179,15 @@ class WorkflowEventDispatcher:
             idempotency_key=idempotency_key,
             payload=_redact_event_value(payload),
         )
+        # Verify the generated id is not already present in the live log before
+        # it leaves the dispatcher. The id is a process-local address: if two
+        # events collide (clock congested, sequence wrap, or two dispatchers
+        # sharing state) the log gains a duplicate address and fork points
+        # resolve to the wrong event. Refuse instead of silently recording a
+        # non-unique address.
+        existing_ids = {e.event_id for e in self._event_log}
+        if event.event_id in existing_ids:
+            raise RuntimeError(f"event id collision ({event.event_id!r}): refusing duplicate address")
         self._event_log.append(event)
         if len(self._event_log) > self.max_events:
             del self._event_log[: len(self._event_log) - self.max_events]
