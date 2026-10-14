@@ -86,201 +86,33 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   `test_mod_cli.py`, `test_mod_command_bindings.py`) aligned. See
   [`packages/harness/alpha/mods/AGENTS.md`](packages/harness/alpha/mods/AGENTS.md).
 
-## Run verification, autonomy, and self-repair contracts
+## Runtime, autonomy, and verification ownership
 
-- **Run verification overlay** — `alpha.runtime.runs.verification` checks optional
-  run acceptance criteria against independently collected evidence; `RunManager`
-  stays the sole lifecycle owner. Gateway run requests may persist validated
-  `acceptance_criteria` into run metadata, but a terminal `success` is never
-  presented as verified without passing evidence for every required kind. For
-  the same criterion and evidence kind, any recorded pass/fail disagreement is
-  a conflict and fails closed; a passing duplicate cannot erase a failed
-  measurement. Tests:
-  `tests/test_run_acceptance_criteria.py`.
-- **Autonomous run mode** — `RunCreateRequest.autonomous` is the Gateway-owned
-  opt-in for prompt-to-completion execution. `start_run()` applies plan mode,
-  permitted subagent delegation and `non_interactive` only after ordinary client
-  context has been sanitized; a client-supplied `context.non_interactive` is not
-  equivalent. This changes agent behavior, never authorization, tool allowlists,
-  sandbox policy, budgets, cancellation or ownership checks.
-- **Checkpoint thread identity** — after `inject_authenticated_user_context()`
-  removes client-supplied server-owned context keys, `start_run()` must restore
-  the validated route `thread_id` in both `configurable` and `context`. The
-  LangGraph checkpointer requires `configurable.thread_id`; omitting it fails
-  before the first model call. `tests/test_gateway_services.py::test_start_run_restores_trusted_thread_id_after_context_sanitization`
-  exercises this boundary with a spoofed request value.
-- **Internal run identity** — `inject_authenticated_user_context()` may retain
-  a pre-stamped `context.user_id` only when Gateway state identifies an
-  internal principal; external request context is always scrubbed. Keep the
-  internal-role and spoofed-attribution regressions in
-  `tests/test_gateway_services.py` aligned with this boundary.
-- **APEX policy drift** — `alpha.apex.executive.run_cycle()` must use the
-  `check_policy` result before selecting work. A stored session contract digest
-  that differs from the active contract is a fail-closed
-  `policy_drift` decision; it must never proceed to a plan or dispatch. Keep a
-  regression test in `tests/test_apex_executive.py` when changing this cycle.
-  The `apex_tick` adapter must also consult the persisted per-scope mode for
-  each session; a missing or unreadable mode cannot grant background work.
-- **APEX host execution** — `app.gateway.autonomy.loops.apex_execution_tick()`
-  is the only APEX dispatcher and calls
-  `services.launch_apex_session_run()` → `start_run()` → `RunManager`. Do not
-  start or terminalize APEX work from the executive, router, or another loop.
-  Dispatch generations and RunStore idempotency recover the admission window.
-  APEX session, mode, and goal changes plus event appends use cross-process local file
-  locks and refresh stale worker caches; failed mode writes leave the old
-  authority in force. These stores are still not distributed exactly-once
-  across hosts or filesystems without working advisory locks.
-  Usage cursors and counters are durable together. A cursor advances for a
-  usage-less event, but it does not count as zero; incomplete event accounting
-  is replaced by cumulative RunManager snapshots, without double-counting.
-  Preserve source-selection, mixed-event, and restart regressions in
-  `tests/test_apex_dispatcher.py` and `tests/test_apex_store_durability.py`.
-  Completed RunManager work enters `awaiting_verification`; it is never
-  promoted to APEX completion without a complete measured acceptance report.
-  **Every terminal RunManager status must be projected as one.** `RunStatus.timeout`
-  is terminal in `services._TERMINAL_RUN_STATUSES`, in the durable `SessionState`
-  machine, and in edit-replay visibility, but `record_run_status` derives dispatch
-  state from a smaller fixed vocabulary, so recording `timeout` verbatim lands in
-  its `else` branch: the session is stored `running`, which `claim_dispatch`,
-  `requeue_approved_tool_action`, and `replan_failed_run` all refuse and
-  `record_run_status` re-derives forever — a dead session while every tick summary
-  claims live work. The adapter projects such a status onto its failure class and
-  journals the observed name in `run.status_projected`, so the row is movable and
-  the journal keeps the real outcome. Both budget ceilings are journalled
-  (`budget.tokens_exhausted`, `budget.runtime_exhausted`) and both count
-  `budget_exhausted`; a stop caused by elapsed time is a failure with a cause, not
-  a bare one.
-  **A durability link with no readable record is disclosed, not classified.**
-  `run.record_unavailable` / `run.status_unreadable` are journalled and counted in
-  the summary's `unobserved` bucket. Parking it would invent a terminal state nobody
-  measured; counting it `running` claims execution nobody can observe, and neither
-  may be silently dropped.
-  **A refused dispatch link parks; it does not retry.** When
-  `record_dispatch_run` refuses, the generation is already consumed, so leaving the
-  row in `starting` re-claims the same generation and re-enters run admission on
-  every pass forever. The adapter parks it via `record_dispatch_failure` (itself a
-  compare-and-set, so a concurrent observer that already moved the row is never
-  overwritten) naming the admitted run id.
-  **Parking writes through the same transaction that can fail**, so the failure
-  handler is guarded: an unguarded raise escapes the adapter, silently strands every
-  remaining session of the pass, and counts against the supervisor restart budget
-  until it parks the loop for all of them. `launch_apex_session_run()` likewise
-  fails closed on a stale dispatch generation before admission, because
-  `start_run` stamps the durable generation into run metadata while the idempotency
-  key comes from the caller's parameter.
-  If an exact `apex.tool_policy` approval is granted after its requesting run
-  already completed, an unconsumed approval releases that terminal run link so
-  the supervisor can dispatch a fresh generation; live runs and consumed or
-  rejected actions are not replayed.
-  The owner-scoped `/sessions/{id}/acceptance` route accepts one result per
-  criterion; a failed report is journaled before recovery clears the stale run
-  link. Keep
-  the dispatcher and usage-projection tests in `tests/test_apex_dispatcher.py`
-  and `tests/test_apex_store_durability.py` aligned.
-  The normal `task` tool's middleware also clamps parallel delegation to the
-  persisted APEX profile and fails closed when a stamped session is invalid.
-- APEX acceptance reports are durable session state. Completion requires a
-  measured report that covers every declared criterion exactly once; criteria
-  without a report mean work has not reached verification yet. Keep report
-  coverage and restart persistence tests when changing this path. The API does
-  not infer results from model summaries.
-- **Acceptance evidence carries provenance, and the readers only read what
-  already exists.** `alpha.mission.acceptance` accepts a caller-supplied
-  `criterion -> bool` mapping and, alongside it, provenance-bearing
-  `EvidenceRecord`s. An `EvidenceRecord` refuses construction without a known
-  `EvidenceKind`, a real `bool` (a truthy string is refused), a non-empty bounded
-  source and a timestamp that is not in the future. `collect_test_exit_report`
-  and `collect_artifact_digest` are **readers**: they parse a test exit report or
-  stat/hash an artifact inside a confined root and return `None` — unverified,
-  never a guess — when the source is missing, unreadable or malformed.
-  `evaluate_trusted_acceptance` builds the same report the gate already accepts:
-  one record decides a criterion, no record leaves it `UNVERIFIED`, and **two or
-  more records for one criterion decide nothing** and are disclosed as a
-  conflict — silently picking one would let duplicate or contradictory evidence
-  win the verdict. A path that resolves outside its root raises instead of
-  following the escape. Tests: `tests/test_apex_acceptance_evidence.py`; the
-  pre-existing semantics stay pinned by
-  `tests/test_mission_acceptance_and_live_feed.py`.
-- **Automatic evidence collectors exist — nothing wires them into a run
-  yet.** `alpha.mission.collectors` is the producer side of the acceptance
-  contract: an `EvidenceCollector` is any object with a `criterion` and a
-  `measure()` returning a `Measurement` — either a real `EvidenceRecord`
-  (`measured`) or a `reason` and no record (`UNVERIFIED`) — so a collector can
-  never invent a number. `CommandEvidenceCollector` reuses
-  `goalloop.gates.GateRunner` with an injectable `ProcessRunner` (so tests
-  never shell out): exit 0 measures pass, a real non-zero exit measures fail,
-  and `TIMEOUT`/`ERROR`/an empty command/no exit code/exit 126/127 all
-  yield `UNVERIFIED`, because the shell never ran and "failed" would be a
-  lie. A raising collector produces a note plus `UNVERIFIED`, never an
-  exception that fails the run; `collect_evidence` refuses a bad batch whole
-  and never short-circuits it. `ArtifactEvidenceCollector` wraps
-  `collect_artifact_digest`; `collect_evidence` splits a pass into
-  `records`/`notes`, and `collect_and_evaluate` assembles the same
-  `AcceptanceReport` `evaluate_trusted_acceptance` already accepts.
-  What remains true: **nothing selects and invokes a collector for a run
-  automatically** — wiring a collector to an acceptance criterion is still a
-  caller's decision. Tests: `tests/test_mission_evidence_collectors.py`.
-- **One authority for depth/fan-out ceilings** — `alpha.config.limits` owns
-  every mechanically-enforced depth/fan-out number (delegation depth 3,
-  children per parent 10, fan-out per node 4, hops 6, native subagent
-  concurrency 3/64, wave concurrency 4/32 shared by the wave executor and the
-  `SWARM` node, the group axis 4/8/3, and the swarm *plan* ceiling 64 that
-  pairs the router's refusal with the coordinator's clamp). Consumers import a
-  name and never re-state the literal, so two modules that must agree cannot
-  disagree. The module is **stdlib-free on purpose** — it loads at module
-  scope in config models, the subagent lifecycle manager, workflow execution
-  and the groups scope. A *profile* bound (APEX's `max_delegation_depth`, a
-  bot model-config bound) is policy intersected against these ceilings at read
-  time by `alpha.apex.agents.resolve_delegation_limits`, never merged into
-  them. Values are unchanged from before the move; drift is pinned by
-  `tests/test_limit_authority_consistency.py`.
-- **Two builtin workflow-template blueprints ship as code, not a captured run**
-  — `alpha.workflow.builtin_templates` declares `code_change` (plan →
-  implement → test → review → accept) and `bug_fix` (reproduce → diagnose → fix
-  → regression-test → review → accept), seeded by `get_template_store()` on
-  first construction. Each carries a bounded repair `RetryPolicy`, a declared
-  `verification_cmd` (a declaration, never a spawned subprocess), and a
-  `GOAL_GATE` acceptance criterion in the safe-AST expression form. They are
-  DRAFT templates with `provenance.source == "builtin"`: `instantiate` may
-  start a **builtin** draft (tagging it `[builtin blueprint, unverified]`) but
-  still refuses any **captured** draft, because a captured draft is a graph
-  taken from a run that has not been re-checked. Promotion stays evidence-gated
-  for both — a blueprint cannot promote itself. Seeding is idempotent and
-  non-destructive. Tests: `tests/test_builtin_workflow_templates.py`.
-- **APEX goal ownership follows its graph and session links.** A subgoal must
-  retain its parent's owner, and a goal's linked session must have that same
-  owner. The goal-decision projection rechecks the persisted session row before
-  reading its journal, so legacy or manually corrupted foreign links fail
-  closed. Keep these boundaries covered in `tests/test_apex_authz.py` and
-  `tests/test_apex_control.py` whenever goal creation or decision projection
-  changes.
-- **APEX member reads recheck degradation after disk refresh.** `get()` may
-  discover corrupt persisted state during the lookup, after the route's initial
-  health check; check `is_degraded` again before translating a missing row to
-  `404`, or after a collection read before returning `available: true` and
-  `count: 0`. Keep the mid-read corruption cases in `tests/test_apex_authz.py`.
-- **Operator replans after terminal failure** — `POST /api/apex/sessions/{id}/replan`
-  is admin-only, re-reads the linked terminal `RunManager` failure, requires an
-  explicit possible-side-effect acknowledgement and reason, and applies the
-  frozen contract ceiling. The store compare-and-set also refuses a source run
-  with a reserved safe-recovery retry. The route only clears the APEX projection;
-  the existing supervisor remains the only dispatcher. Keep
-  `tests/test_apex_api.py::TestFailedRunReplan` aligned with that boundary.
-- **Autonomous release gate** — `alpha.benchmarks.release_gate` applies
-  fail-closed, provider-neutral numeric promotion gates to versioned benchmark
-  measurements, covering task success, authorization isolation, recovery and
-  prompt-injection resistance; CI/deployment must supply real benchmark values
-  rather than treating defaults as evidence. Tests: `tests/test_release_gate.py`.
-- **Self-repair verification** — `selfrepair/engine.py` provides symptom
-  classification and disk-health observations, never automatic repair execution:
-  `verify_repair` returns false with an explicit missing-verifier reason,
-  `attempt_repair` refuses unimplemented actions without changing runtime state.
-  Never report `fixed` from a repair-kind label or diagnostic suggestion. Future
-  repair adapters must perform a scoped action and collect independent
-  post-action runtime evidence before success; existing refusal reasons and
-  record serialization remain supported. Coverage:
-  `tests/test_workforce_intelligence.py`.
-
+- `RunManager` is the sole Gateway run-lifecycle owner; durable event streams,
+  context trust, recovery, and run-acceptance behavior are owned by
+  [`packages/harness/alpha/runtime/AGENTS.md`](packages/harness/alpha/runtime/AGENTS.md).
+- APEX is a bounded control plane over that run path, not a second executor.
+  Its executive contract and UI/API controls are documented in
+  [`docs/APEX_AUTOPILOT.md`](../docs/APEX_AUTOPILOT.md) and
+  [`packages/harness/alpha/apex/README.md`](packages/harness/alpha/apex/README.md).
+- The opt-in Completion Engine owns typed checks, freshness-bound evidence,
+  approvals, manual review and the finalization guard:
+  [`packages/harness/alpha/completion/AGENTS.md`](packages/harness/alpha/completion/AGENTS.md).
+- Mission acceptance evidence and readers live in `alpha.mission.acceptance`;
+  collectors live in `alpha.mission.collectors`. Keep absent/ambiguous evidence
+  unverified and preserve the existing conflict rules in
+  `tests/test_apex_acceptance_evidence.py` and
+  `tests/test_mission_evidence_collectors.py`.
+- Mechanically enforced delegation, fan-out, workflow and group ceilings are
+  owned by `alpha.config.limits`; consumers import the shared constants.
+  `tests/test_limit_authority_consistency.py` pins that boundary.
+- Workflow templates are proposals, not proof: built-in blueprints are seeded
+  by `alpha.workflow.builtin_templates`; promotion requires measured evidence.
+  See `tests/test_builtin_workflow_templates.py` and
+  `tests/test_workflow_templates_and_improvement.py`.
+- Release promotion gates are owned by `alpha.benchmarks.release_gate`; use
+  real versioned measurements, never defaults, as evidence. Self-repair remains
+  refusal-only until an action has an independent post-action verifier.
 ## Project Overview
 
 Alpha is a LangGraph-based AI super agent system. The backend provides a "super

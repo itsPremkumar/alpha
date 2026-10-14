@@ -1,141 +1,22 @@
 ### Sentinel repair loop (`runtime/sentinel/`)
 
-The autonomous repair loop — observe a fault, fix it behind a checkpoint,
-re-check it, then commit or revert — and the fold that reads its history. The
-module's own [`AGENTS.md`](sentinel/AGENTS.md) is the normative contract;
-[`docs/SENTINEL.md`](../../../../../docs/SENTINEL.md) is the operator's page.
+The sentinel package's local [`AGENTS.md`](sentinel/AGENTS.md) owns repair,
+rollback, journal integrity, and analytics invariants. Operator workflow:
+[`docs/SENTINEL.md`](../../../../../docs/SENTINEL.md). A red or unknown check
+never commits, repair never auto-pushes, and process-local signals are not shared
+across Gateway workers. Keep its listed backend and frontend suites aligned.
+### Durable runtime layer
 
-Ownership worth naming here because both boundaries have been wrong before:
-
-- **`analytics.py` is pure and I/O-free.** `aggregate(entries)` takes the
-  entries a read already produced and returns a frozen `SentinelAnalytics`, so
-  the Gateway can fold a journal inside `asyncio.to_thread` without adding a
-  failure mode. A value nobody measured is `None`, never `0`; a verdict cites
-  the statuses that kind actually reached; every reading names the window it
-  was measured over.
-- **A fix snapshots before it edits.** `SentinelLoop.handle` refuses a fix that
-  edited without snapshotting, because a "revert" that restores the failing
-  state is worse than no repair at all. A red or unknown check reverts and
-  escalates — it never commits.
-- **The journal reads and writes fail closed both ways.** `report_store.py`
-  reports a corrupt line with the file and line rather than skipping it, and
-  validates before the bytes land so a returned success means durable. The
-  Gateway mirrors that: `/sentinel/reports` and `/sentinel/analytics` answer
-  500 naming the file, `/sentinel/escalations` answers 503 naming the store —
-  never an empty body standing in for an unreadable one.
-- **The committer commits locally and stops.** There is no auto-push. The
-  journal, the escalation store and the process-local signal state are atomic
-  and restart-recoverable for one Gateway process, not a shared multi-worker
-  exactly-once repository.
-
-Tests: `tests/test_sentinel_analytics.py`, `test_sentinel_api.py`,
-`test_sentinel_report_store.py`, `test_sentinel_scan_coverage.py`,
-`test_sentinel_log_classifier.py`; frontend `src/lib/sentinel.test.mjs` and
-`src/lib/sentinel-view.test.mjs`.
-
-### Durable runtime layer (`runtime/sessions/`, `runtime/network/`, `runtime/side_effects/`, `runtime/supervisor/`, `runtime/shutdown.py`)
-These five modules fill the specific gaps that stopped the durable-runtime
-guarantee ("a process/UI/network/provider failure must not become a task
-failure") from being true. They are **additive** and none of them is a second
-lifecycle owner: `RunManager` remains the sole lifecycle owner, and
-`app.gateway.run_recovery.SafeRunRecoveryService` remains the only safe
-continuation authority. The user-facing map is
-[docs/architecture/durable-runtime.md](../../../../../docs/architecture/durable-runtime.md);
-each module's own `AGENTS.md` is the normative contract.
-
-- **`runtime/sessions/`** — the missing lifecycle vocabulary. `SessionState`
-  (seventeen states) classified into `ACTIVE` / `WAITING` / `TERMINAL`, derived
-  from signals existing owners already hold. `is_resumable` is the property a
-  recovery pass asks. Precedence is the contract: a terminal run status outranks
-  every live condition, and a park outranks an in-flight phase. `COMPLETED` still
-  means "the run finished", never "verified". Tests:
-  `tests/test_durable_session_state_machine.py`.
-- **`runtime/network/`** — connectivity as a first-class state. Four states, not
-  two: `UNKNOWN` is real and is never rounded to `OFFLINE`, and it *still
-  permits* a network attempt, so a misconfigured probe cannot park every
-  session on a lie. `DEGRADED` never parks anything. A single probe never flips
-  anything except the very first one. `classify_network_error().proves_link_down`
-  is true only for DNS failure / refused / explicit unreachable — a `TIMEOUT`
-  proves nothing and must not park work. TCP-connect only, no payload, no user
-  data. `config.yaml -> network` is startup-only. `wait_registry.py` owns the
-  durable record of parked sessions; the worker's terminal-exception handler calls
-  `park_session_if_available()` through the process-wide accessor, and a parked
-  run's `network_waiting` stop reason is persisted in the same worker transition
-  and is in `RECOVERABLE_RUN_STOP_REASONS`. `SafeRunRecoveryService` defers it
-  while the live network monitor confirms `OFFLINE`, then uses the normal
-  checkpoint/side-effect gate when connectivity is no longer confirmed offline.
-  `NetworkWaitService` does not launch runs: the continuation path belongs to the
-  recovery service, and a second per-thread resume would bypass the side-effect
-  gate. Tests:
-  `tests/test_network_resilience.py`, `tests/test_network_wait_registry.py`,
-  `tests/test_network_wiring.py`.
-- **`runtime/side_effects/`** — the per-effect answer to "what might have
-  happened?". `UNKNOWN` is first-class, durable and enumerable; a lost worker
-  (expired lease) is what creates it, including from `PENDING`; `UNDETERMINED`
-  *reopens* rather than settling, because recording "could not tell" as a
-  failure is how a duplicate side effect gets created. Digests only, never
-  arguments or results. The semantics live here; the durable SQL implementation
-  and its cross-process conditional transitions are in
-  `alpha.persistence.side_effects`. Tests: `tests/test_side_effect_ledger.py`,
-  `tests/test_side_effect_ledger_sql.py`.
-- **`runtime/supervisor/`** — a restart policy that cannot loop forever. Reuses
-  `resilience.RetryPolicy` for the backoff maths but adds a **sliding-window**
-  restart budget, because consecutive-failure counters cannot catch "crashes once
-  an hour, forever". `RESTART` / `SAFE_MODE` (once per episode) / `GIVE_UP`.
-  Liveness is not health. Tests: `tests/test_process_supervisor.py`.
-- **`runtime/shutdown.py`** — the eight-phase ordered drain. A failed or
-  unregistered prerequisite *skips* its dependent step; `is_clean` is true only
-  when every step completed; the emergency path is hard-capped at 5s. The
-  Gateway lifespan drain in `app/gateway/deps.py` runs through it, so a partial
-  drain is logged instead of looking clean. Tests: `tests/test_planned_shutdown.py`.
-
-**Honesty boundary, stated so nobody reads a claim into these modules that the
-code does not make.** One of these remains a gap. The first pair records how one gap
-closed, because "the storage does not exist" and "nothing writes to the storage"
-are different findings that call for different work, and both directions of that
-distinction have been wrong in this file before.
-
-- **Side effects are announced durably when the Gateway runs on a SQL backend,
-  and that is what makes exactly-once *of an announced effect* reachable across
-  processes.** `app/gateway/deps.py` constructs
-  `alpha.persistence.side_effects.SqlSideEffectLedger` (migration
-  `0027_side_effect_ledger`) into the process-wide `SideEffectRecorder`, and
-  starts `SideEffectReclaimer` beside it - a ledger written but never reclaimed
-  would leave a row `in_flight` under a dead lease forever, which is the silent
-  gap the reclaimer exists to close. On that path an effect site calls
-  `begin`/`complete`/`fail`, a second process's late `complete` is refused by
-  the conditional transition instead of overwriting an `UNKNOWN`, and two
-  reconcilers cannot both settle one entry
-  (`tests/test_side_effect_ledger_sql.py`). Two limits stay true and must stay
-  stated: with `database.backend: memory` there is no store at all, and the
-  JSON/JSONL state behind swarms, dynamic workflows and the peer network is
-  process-local and restart-recoverable, not exactly-once - announcing an effect
-  is still a caller decision, so an effect nothing announces cannot be
-  deduplicated either.
-- **The Python `ProcessSupervisor` is not wired into `start.ps1`.** Windows
-  automatic restart is owned by the separate four-layer chain in `recovery/`
-  and `start.ps1`; do not infer that its policies or diagnostics are shared with
-  `ProcessSupervisor`. Proving the Windows chain end to end still requires a
-  deliberate reboot/crash recovery drill.
-- **The network-wait registry has no resume launcher by design.**
-  `wait_registry.py`'s `NetworkWaitService` over
-  `NetworkWaitRepository` (migration `0026_network_waits`) is wired at
-  `app/gateway/deps.py`, so a park survives a process restart rather than being
-  re-derived. It records attempts and timing; `SafeRunRecoveryService` owns
-  checkpoint inspection and resumption instead.
-
-Each module's `AGENTS.md` repeats the gaps it owns.
-
-<!-- honesty-claims
-side_effect_ledger_sql_repository: exists
-side_effect_ledger_production_writer: exists
-parked_session_durable_registry: exists
-parked_session_resume_launcher: absent
-cross_process_exactly_once: exists
-process_supervisor_in_windows_launcher: absent
-windows_watchdog_restart_chain: exists
--->
-
+The layer map, status, and remaining implementation gaps live in
+[`docs/architecture/durable-runtime.md`](../../../../../docs/architecture/durable-runtime.md);
+`runtime/sessions/AGENTS.md`, `runtime/network/AGENTS.md`,
+`runtime/side_effects/AGENTS.md`, `runtime/supervisor/AGENTS.md`, and
+`runtime/shutdown.py`'s adjacent contract own their details. `RunManager` remains
+the only run-lifecycle owner; `SafeRunRecoveryService` remains the only safe
+continuation authority. The Python `ProcessSupervisor` is not wired into the
+Windows launcher: `recovery/` and `start.ps1` own that separate restart chain.
+Memory persistence is process-local; do not claim cross-worker exactly-once for
+JSON/JSONL state. `NetworkWaitService` records parks but does not launch resumes.
 ### Workspace Snapshot Cancellation
 
 `packages/harness/alpha/workspace_changes/recorder.py`: after `_prepare_capture()`
@@ -165,31 +46,20 @@ cancellation and text-cache drain/cleanup.
 
 ### Acceptance verification result event
 
-`GET /api/threads/{thread_id}/runs/{run_id}/verification` measures exact-text
-file readback only after a complete terminal event scan. It stores the first
-result with `RunEventStore.put_if_absent()` as `run.verification`; later reads
-reuse that singleton, and a criteria SHA-256 prevents presenting it for changed
-acceptance criteria. A write/read failure or malformed/conflicting event is
-`unverified`. Persistence and multi-process guarantees follow the configured
-run-event backend: memory is process-local; JSONL is single-process; the DB
-store uses its transactional writer. This event records evidence status and
-never changes the RunManager lifecycle. Typed collectors and explicit
-re-verification history remain separate work.
-
+The Gateway run verification endpoint and its honest scope, persistence
+semantics, and next gaps are defined here and in the adjacent run-verification
+contract: [`runtime/AGENTS.md`](AGENTS.md#acceptance-verification-result-event).
+Never equate a terminal run status with verified acceptance.
 ### Safe Run Auto-Recovery
 
-Gateway run creation defaults SSE disconnects to `on_disconnect=continue`; the explicit cancel endpoint remains the user stop mechanism. Startup and periodic lease reconciliation still terminalize orphaned active rows as `error/orphan_recovered`, but `app.gateway.run_recovery.SafeRunRecoveryService` then performs a bounded durable scan and creates a new idempotent run from the latest safe checkpoint. Graceful shutdown persists `stop_reason=gateway_shutdown`; provider fallback persists `model_failure`. Recovery lineage is carried in run metadata (`recovery_attempt`, `resumed_from_run_id`, `auto_recovery`) and bounded by `run_ownership.max_resume_attempts` with a deterministic `auto-recovery:<source_run_id>` admission key.
-
-Recovery is fail-closed around side effects. It requires a real compiled graph so full-mode raw blobs (which erase `next`/`tasks`) can never be mistaken for "no pending work", then resumes only when every pending LangGraph node is a known model/agent node. An active durable goal is also a safe continuation source even when the graph has no pending node, so the bounded goal loop can re-enter after a crash. Scheduled-task and durable MCP-notification run rows are excluded because their queue/dispatcher owns occurrence identity and terminal accounting; replaying them as ordinary chat would fork that identity. Durable cancellation requests are also excluded from candidate scans, even if shutdown or reconciliation writes a recoverable-looking terminal reason. A pending `tools`, MCP, custom middleware, shell, browser, write/delete, payment, or unknown node is terminalized as `recovery_confirmation_required`, because the external action may already have taken effect before its result was checkpointed. Other terminal dispositions are CAS-fenced through `RunStore.transition_recovery_stop_reason`: `recovery_exhausted`, `recovery_superseded`, `recovery_no_work`, `recovery_owner_missing`, and `recovery_blocked`. A model-failure replay may rewind exactly one parent checkpoint only when the head's last assistant message is explicitly stamped `alpha_error_fallback`; no generic crash rewinds visible work. Only transient/busy/burst/circuit-open fallback reasons qualify; auth, quota, configuration, and generic deterministic failures are not replayed. The resumed request deliberately does not pin the failed model name, so the graph is rebuilt with current model configuration. Checkpoint compatibility, ownership, graph schema, tool allowlists, sandbox policy, and user context are re-evaluated by the normal `start_run` path. Configuration is startup-only under `run_ownership`; tests: `tests/test_safe_run_recovery.py`, `test_gateway_run_recovery.py`, `test_run_repository.py`, and `test_gateway_run_drain_shutdown.py`.
-
-Definitive DNS/refused/unreachable exceptions are persisted with stop reason
-`network_waiting` and recorded in the network-wait registry. Recovery defers
-those candidates while the live monitor reports `OFFLINE`, then applies the
-ordinary checkpoint safety gate. Timeouts, unknown probe state, and a missing
-monitor do not prove an outage. Regression coverage is in
-`tests/test_run_worker_terminal_error_events.py` and
-`tests/test_safe_run_recovery.py`.
-
+The detailed continuation contract belongs to
+[`app/gateway/AGENTS.md`](../../../../../app/gateway/AGENTS.md#safe-run-continuation)
+and [`docs/architecture/durable-runtime.md`](../../../../../docs/architecture/durable-runtime.md).
+Recovery is restricted to known safe model/agent checkpoints; possible external
+side effects, unknown state, ownership failures, and cancellation remain explicit
+stops. `RunManager` is the sole lifecycle owner, and continuation re-enters the
+normal trusted run-admission path. Keep the Gateway and recovery suites there in
+sync when changing this behavior.
 ### Stream Bridge Heartbeats
 
 Memory and Redis bridges take their default idle heartbeat cadence from the startup-only `stream_bridge.heartbeat_interval_seconds` setting. Keep the default on the bridge instance so SSE, `/wait`, and internal subscribers stay aligned; an explicit `subscribe(..., heartbeat_interval=...)` remains a per-subscription override.

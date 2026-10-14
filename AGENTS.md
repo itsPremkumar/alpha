@@ -207,208 +207,35 @@ and desktop shortcuts (`installer/create-shortcuts.ps1`), taskbar and window ico
 `electron-builder.yml` must keep `assets/**` in `files`), splash screen
 (`electron/splash.html`).
 
-## Nested groups (the community shape)
+## Nested groups
 
-A group can contain other groups, added at any time. The design rests on one
-split:
-
-> **Visibility may fan out to many parents. Authority is at most ONE.**
-
-"Whose rules apply" must be a single pointer or policy inheritance becomes a
-negotiation between rooms: `GroupScope.parents` is a list,
-`GroupScope.authority_parent` a single optional room id, and
-`assert_authority_parent_consistent()` requires the authority parent to also be
-a visibility parent — authority refines visibility rather than contradicting it.
-
-| File | Owns |
-| --- | --- |
-| `packages/harness/alpha/groups/scope.py` | the forest: parents, authority, path, depth, lifecycle, relay planning |
-| `packages/harness/alpha/groups/roster.py` | membership by origin: direct, rule-matched, inherited, excluded, expired |
-| `packages/harness/alpha/groups/service.py` | `create_subgroup`, `move_room`, `promote_room`, `merge_children`, `tree`, `breadcrumbs`, `relay_all` |
-| `app/gateway/routers/groups.py` | `/tree`, `/subgroups`, `/children`, `/ancestors`, `/descendants`, `/roster`, `/members`, `/rules`, `/merge`, `/promote`, `/move`, `/policy`, `/lifecycle` |
-| `frontend/src/lib/groups-tree.ts` | pure tree derivation, membership headline, roster bucketing |
-| `frontend/src/components/sections/GroupTreeSidebar.tsx` | the forest sidebar, subgroup form, breadcrumbs |
-
-**The crew boundary is the load-bearing constraint.** `GroupRoom.members` is
-owned by `alpha.projects.crew.ensure_crew`, which *deletes* any entry project
-membership does not claim. A nested or rule-based member written into
-`room.members` would therefore be erased on the next reconcile — so
-`GroupRoster` exists beside that field and never writes to it, and the crew
-reconcile is left alone. Do not "simplify" by merging the two.
-
-**Inheritance is a projection, never a stored copy.** `resolved_roster()`
-recomputes each parent's effective roster on every read. That is what stops an
-inherited member from going stale or being orphaned by editing the child. Both
-counts therefore always travel together — `direct_count` beside
-`effective_count` — because a header claiming "3 members" over six visible bots
-is a fabricated count.
-
-**Rules resolve live against the Bot Registry** (`role`/`skill`/`toolset`/
-`department`/`model`/`capability`), so hiring a tester populates every matching
-group with no join step. `GET /{name}/rules/preview` is not optional: a rule
-that matches nobody is otherwise indistinguishable from a room nobody joined. A
-list-valued field with `op: eq` is refused at declaration, since comparing a
-list to a string is a silent always-false.
-
-**Relay is a copy with provenance, never the same row.** `relay_all()` writes a
-fresh message carrying `forwarded_from` and `relayed: true`; reusing the source
-id would make reactions and edits ambiguous across rooms. `max_hop` (default 3) is
-the loop guard for `outbound: siblings` + `inbound: broadcast`, and it reports a
-per-room receipt rather than claiming a delivery. Default `outbound` is `none`,
-so a first-time nest does not flood the parent.
-
-**Route order is load-bearing.** `GET /tree` and `GET /{name}/rules/preview` are
-declared before the `/{name}` and `/rules/{rule_id}` catch-alls, or Starlette
-answers `Room 'tree' not found` — the same trap as `skills/{skill_name}` and
-`workflows/{workflow_id}`. `DELETE /{name}` refuses while children exist unless
-`cascade=true`, and names what it would remove.
-
-`MAX_DEPTH` is 4: deeper makes the rendered path unreadable and turns relay
-fan-out into a cost problem. The limit is refused, never clamped. Tests:
-`tests/test_group_nesting.py`, `tests/test_group_nesting_routes.py`;
-frontend `src/lib/groups-tree.test.mjs` and
-`src/lib/groups-nesting-honesty.test.mjs`.
-
+The group forest, roster authority, relay safety and Gateway route ordering are
+owned by [`backend/packages/harness/alpha/groups/AGENTS.md`](backend/packages/harness/alpha/groups/AGENTS.md).
+The UI projection and tree sidebar live in `frontend/src/lib/groups-tree.ts` and
+`frontend/src/components/sections/GroupTreeSidebar.tsx`. Keep the group's
+visibility-parent list separate from its single authority-parent pointer; the
+module guide owns the full invariant and test map.
 ## Cross-component contracts owned elsewhere
 
-These contracts are stated once, in the guide that owns them. Do not restate them
-in another layer; follow the pointer.
+Use the guide that owns each contract; this root file is only the repository map.
 
-- **Alpha-to-Alpha peer network** — cross-installation identity, discovery,
-  pairing, transport, receipts, topology semantics and the bounded model tool:
-  **[docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md)**. Discovery never
-  grants access; pairing uses a high-entropy out-of-band code; public Agent
-  Card/pair/inbound routes are exact-path surfaces with their own token checks
-  while local management routes keep Gateway auth and `threads:read/write`;
-  public/model callers cannot self-assert a sender id and the model tool strips
-  endpoints, cards, pairing codes and credentials; libp2p reports unavailable
-  until a real authenticated adapter is wired; installation-scoped SQLite is
-  never cross-process exactly-once. Connecting uses **one connection string**
-  (`alpha://connect?…`, `peer_network/invite.py`) copied once and pasted once;
-  it is **single use via an issuer-side epoch**, *not* by rotating the code on
-  redemption, which would protect nothing — the redeemer has no authority over
-  the credential that leaked. `GET /invite` is admin-gated because the string
-  *is* the inbound bearer. Reading a QR code is enabled: the camera and
-  image-upload paths decode in the browser with `jsqr`, and the production
-  decoder stays gated on the round-trip test in
-  `frontend/src/lib/qr-decode.test.mjs`, so it cannot be enabled by flipping
-  the boolean alone. Showing one works, and the manual address+code path
-  still works.
-
-- **Integration health + autonomy ownership** — generated feature manifest wiring,
-  orphan-module scan, `@tool` signature rules, and the background-loop lifecycle
-  owner: **[backend/AGENTS.md](backend/AGENTS.md#integration-health--autonomy-ownership)**.
-  **Capability counts are generated, never hand-typed.**
-  `contracts/feature_manifest.json` is produced by
-  `backend/scripts/generate_feature_manifest.py` and proves every tool, router,
-  middleware, supervisor loop and engine module is wired; a registry change
-  means regenerating the manifest *and* fixing the numbers in `README.md`,
-  `llms.txt`, `llms-full.txt`, `docs/FAQ.md` and `docs/COMPARISON.md` in the same
-  change set. `GET /api/ops/integration-health` exposes live coverage +
-  supervisor status; the frontend Integration tab renders it.
-- **Self-inventory plane (self-knowledge)** — what Alpha is and what it can do,
-  from live local state in one bounded call:
-  **[docs/SELF_AWARENESS.md](docs/SELF_AWARENESS.md)**. `alpha.workflow.registry`
-  is the single source per fact: `identity`, `tools`, `skills`, `mcp`, `models`,
-  `bots`, `commands`, `capabilities`, `engines`, `wiring`, `memory`, each answering
-  `list` / `describe` / `health` with one `CapabilityDescriptor` shape. A registry
-  **re-derives nothing** — `engines` and `wiring` read the generated
-  `contracts/feature_manifest.json` through the single `manifest_source` loader and
-  `models` reads the live `AppConfig`, because every capability count here is
-  generated and drift-gated, so a second opinion would be an unreviewed answer to a
-  question the build already settles. `alpha.intelligence.self_inventory` aggregates
-  the kinds; `alpha_capability` (one tool, actions `inventory` / `identity` /
-  `capability` / `search` / `status` / `diagnose` / `symbols` / `symbol` /
-  `symbols_status`) is the model-facing surface, and `GET /api/intelligence/inventory`
-  the HTTP one. `alpha.ops.config_diagnosis` is **read-only and proposes, never
-  applies** — a model-writable `config.yaml` would be a fourth writer competing with
-  the dual write locks above. Three load-bearing invariants: an unreadable source
-  reports `count: null` and never `0`; `health` is `unverified` on every descriptor
-  because nothing here executes what it lists; and
-  `alpha.knowledge.code_index` returns names/signatures/`path:line` but **never a
-  function body** (the 67.8%-vs-29.2% ablation), with TypeScript rows labelled
-  `extraction="regex"` so a regex signature is never presented as parser-derived.
-  Tests: `backend/tests/test_self_inventory_plane.py`.
-- **Alpha-to-Alpha peer network** — cross-installation identity, discovery,
-  pairing, transport, receipts, topology semantics and the bounded model tool:
-  **[docs/ALPHA_PEER_NETWORK.md](docs/ALPHA_PEER_NETWORK.md)**. Discovery never
-  grants access; pairing uses a high-entropy out-of-band code; public Agent
-  Card/pair/inbound routes are exact-path surfaces with their own token checks
-  while local management routes keep Gateway auth and `threads:read/write`;
-  public/model callers cannot self-assert a sender id and the model tool strips
-  endpoints, cards, pairing codes and credentials; libp2p reports unavailable
-  until a real authenticated adapter is wired; installation-scoped SQLite is
-  never cross-process exactly-once.
-- **APEX — the executive control plane** — one autonomy contract, one bounded
-  decision cycle, one read-only status projection, and one control surface over
-  the engines that already exist: **[docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md)**. It is
-  **additive and deliberately thin**: `RunManager` stays the sole run-lifecycle
-  owner and `AutonomySupervisor` the sole background-loop owner, so the loop is
-  declared in `register_default_loops()` beside the other nine and every policy
-  verdict is delegated (tool risk to `alpha.tools.governance`, shell to
-  `alpha.guardrails.command_policy`, the capability ceiling to
-  `alpha.bots.authority_ceiling`, the emergency stop to `alpha.runtime.control`).
-  `AutonomyContract.policy_sites` records that delegation in machine-readable
-  form and `alpha.apex.invariants` maps spec §188 I1–I12 to their live
-  enforcement sites, so both claims are checkable rather than asserted. Four
-  refusals are load-bearing: `ApexControls(emergency_stop=False)` raises, every
-  terminal state is unreachable over HTTP (only
-  `alpha.mission.acceptance.assert_acceptance_passed` writes one),
-  `narrow_contract` refuses to widen, and a `BLOCKED` session is the approval
-  gate's to move — the fourteen `/apex` verbs' `pause`/`resume`/`stop`/
-  `take-over` and their HTTP twins refuse it by name with the pending approval
-  named, so pause-then-resume cannot un-park parked work in two commands. Route
-  authorisation is one shared decision: `is_admin_user` for admin (a PAT never
-  qualifies), owner-scoped `404` for member routes, `503` for an unreadable
-  store, and a bounded `/approvals`. The Phase 0 inventory —
-  `docs/APEX_INTEGRATION_MAP.md` — records which of the 198 specification
-  sections already existed, and is the reason this package is a control plane
-  rather than the ~35 modules the spec's module list implies. Tests:
-  `tests/test_apex_contract.py`, `test_apex_executive.py`, `test_apex_api.py`,
-  `test_apex_control.py`, `test_apex_authz.py`; frontend
-  `src/lib/apex.test.mjs`.
-- **Cognitive memory** — server-resolved owner, per-owner/per-directory process
-  cache, atomic fsync-backed snapshots and fail-closed owner/corrupt-state
-  handling:
-  **[backend/packages/harness/alpha/memory/cognitive/AGENTS.md](backend/packages/harness/alpha/memory/cognitive/AGENTS.md)**.
-  Production storage resolves under `Paths.user_dir(owner) / "cognitive_memory"` —
-  keep HTTP/model-supplied owners and paths out of this boundary; those locks
-  give no multi-process coherence; retained persistent records (not display
-  pages) belong in snapshots, working memory stays ephemeral. See also
-  **[docs/MEMORY.md](docs/MEMORY.md)**.
-- **Alpha Completion Engine** — the opt-in subsystem that answers *did the work
-  actually succeed?* with an acceptance contract fixed before work starts, a
-  typed registry of six reviewed checks (never free-form shell text from a
-  model), evidence bound to its definition and inputs, and a finalization guard
-  that is the **only** route to `complete`. **Additive and deliberately thin**:
-  `RunManager` stays the sole run-lifecycle owner, every argv is judged by
-  `alpha.guardrails.command_policy` (the same policy that gates `bash`), the
-  ledger is JSON under an advisory `FileLock` — single-process and
-  restart-recoverable, never cross-process exactly-once — and the model-facing
-  surface is actions on one existing tool rather than a new tool name. Three
-  vocabulary rules are load-bearing and are never relaxed: **returned is not
-  verified** (only a task's own gates verify it); **not run is not passed**
-  (`NOT_RUN`/`PENDING`/`WAIVED` can never satisfy a required gate); and
-  **observe mode never claims a completion it did not apply** — the decision is
-  computed and recorded with `enforced: false` while the status is left alone.
-  Owners are server-assigned and every Gateway mutation is admin-gated, because
-  writing this ledger is what decides whether work counts as done. Contract,
-  refusals and layering:
-  **[backend/packages/harness/alpha/completion/AGENTS.md](backend/packages/harness/alpha/completion/AGENTS.md)**;
-  Gateway surface: `app/gateway/routers/completion.py`. Tests:
-  `backend/tests/test_completion_*.py`.
-- **Durable runtime** — makes "a process, UI, network, provider or Windows
-  restart must not become a task failure" true. **Additive**: `RunManager` stays
-  the sole lifecycle owner, `SafeRunRecoveryService` the only safe-continuation
-  authority — never a second execution path. It adds session lifecycle
-  (`runtime/sessions/`), connectivity as a first-class state (`runtime/network/`),
-  a per-effect `UNKNOWN` + reconciliation ledger (`runtime/side_effects/`), a
-  crash-loop-bounded process supervisor (`runtime/supervisor/`) and an ordered,
-  honestly-reported shutdown (`runtime/shutdown.py`, run by the Gateway lifespan
-  drain). Map and the **not-yet-implemented** list:
-  **[docs/architecture/durable-runtime.md](docs/architecture/durable-runtime.md)**;
-  normative contracts: the `AGENTS.md` beside each module.
-
+- Peer identity, pairing, transport and receipts:
+  [`docs/ALPHA_PEER_NETWORK.md`](docs/ALPHA_PEER_NETWORK.md).
+- Feature-manifest wiring and autonomy-loop ownership:
+  [`backend/AGENTS.md`](backend/AGENTS.md#integration-health--autonomy-ownership).
+- Live self-inventory and model-facing capability surface:
+  [`docs/SELF_AWARENESS.md`](docs/SELF_AWARENESS.md).
+- APEX control-plane policies and refusal rules:
+  [`docs/APEX_AUTOPILOT.md`](docs/APEX_AUTOPILOT.md) and
+  [`backend/packages/harness/alpha/apex/README.md`](backend/packages/harness/alpha/apex/README.md).
+- Cognitive-memory ownership, storage and failure handling:
+  [`backend/packages/harness/alpha/memory/cognitive/AGENTS.md`](backend/packages/harness/alpha/memory/cognitive/AGENTS.md)
+  and [`docs/MEMORY.md`](docs/MEMORY.md).
+- Completion contracts, evidence and finalization:
+  [`backend/packages/harness/alpha/completion/AGENTS.md`](backend/packages/harness/alpha/completion/AGENTS.md).
+- Durable runtime map, lifecycle and remaining gaps:
+  [`docs/architecture/durable-runtime.md`](docs/architecture/durable-runtime.md)
+  and [`backend/packages/harness/alpha/runtime/AGENTS.md`](backend/packages/harness/alpha/runtime/AGENTS.md).
 ## Cross-Cutting Conventions
 
 These apply repo-wide; module guides own the module-specific detail.
