@@ -775,8 +775,10 @@ exactly-once execution.
   artifact, and subagent cards; transcript search and Markdown export; and a
   side pane for the files, commands, pages, and artifacts a run produced.
 - **Workspace-aware lion companion** — the movable companion clears navigation,
-  chat controls, archive actions and open dialogs; its hit area and status bubble
-  also scale for narrow screens so it stays within its measured placement box.
+  chat controls, archive actions and open dialogs; it rechecks every marked
+  region as layouts change and ignores its own UI mutations. Its hit area and
+  status bubble also scale for narrow screens so it stays within its measured
+  placement box.
 - **Complete on-device chat history** — uncapped IndexedDB archive, full server
   history pagination, migration from the old capped cache, and honest degraded
   states (a banner when you are reading the local copy, a partial-load notice, and

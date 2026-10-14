@@ -21,9 +21,11 @@ Read the nearest feature test before changing a behavior it pins.
 lifecycle, bounded local travel and CSS. `ChatView` passes only bounded
 lifecycle state and an optional chat action; never prompt text or thread IDs.
 The top bar, chat header, composer, sidebar footer and dialogs are keep-out
-regions. Placement must escape those regions when a safe position exists. The
-clickable hit area must stay inside the measured shell at responsive widths;
-CSS scaling and placement geometry must agree. The compatibility exports
+regions. Placement must escape those regions when a safe position exists, and
+resize observation must track every marked region and dialog as the DOM changes
+while ignoring companion-owned mutations. The clickable hit area must stay
+inside the measured shell at responsive widths; CSS scaling and placement
+geometry must agree. The compatibility exports
 `components/LionPet.tsx` and `lib/lion-pet.ts` stay facades. Tests:
 `lib/lion-pet.test.mjs`.
 

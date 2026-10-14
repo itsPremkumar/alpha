@@ -355,6 +355,12 @@ test("the component notices a drawer opening, and a drawer has dialog semantics"
   assert.match(componentSource, /new MutationObserver\(/, "opening a drawer must re-check the pet's position");
   assert.match(componentSource, /mutations\.observe\(/);
   assert.match(componentSource, /mutations\?\.disconnect\(\)/, "and the observer must be torn down");
+  assert.match(componentSource, /keepOutSelector = '\[data-lion-pet-keepout\], \[role="dialog"\], \[aria-modal="true"\]'/);
+  assert.match(componentSource, /observedKeepOuts = new Set<Element>\(\)/);
+  assert.match(componentSource, /observer\?\.unobserve\(element\)/, "removed regions must leave the resize observer");
+  assert.match(componentSource, /observer\?\.observe\(element\)/, "every newly discovered region must be observed");
+  assert.match(componentSource, /syncObservedKeepOuts\(\);\s+nudgeClear\(\);/, "DOM changes must reconcile regions before rechecking placement");
+  assert.match(componentSource, /petShell\.contains\(target\)/, "companion-owned mutations must not trigger a correction loop");
 
   // The bot panel is a hand-copied variant of the shared Modal and had lost the
   // dialog attributes, so nothing announced it and nothing could detect it.

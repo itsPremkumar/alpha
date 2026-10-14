@@ -556,13 +556,35 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
     // measured a zero-height keep-out, skipped the correction, and never ran
     // again - leaving the pet parked on the input.
     //
-    // So observe the keep-out itself. It re-fires whenever the composer's box
-    // actually changes, which is exactly when the answer can have changed.
-    const keepOutEl = document.querySelector("[data-lion-pet-keepout]");
-    const observer = typeof ResizeObserver === "function" && keepOutEl
+    // Keep every current composer/sidebar/dialog region observed. The layout
+    // guard uses all of these rectangles, so observing only the first marker
+    // misses later regions when they resize without a DOM mutation.
+    const keepOutSelector = '[data-lion-pet-keepout], [role="dialog"], [aria-modal="true"]';
+    const petShell = shellRef.current;
+    const observedKeepOuts = new Set<Element>();
+    const observer = typeof ResizeObserver === "function"
       ? new ResizeObserver(() => nudgeClear())
       : null;
-    if (observer && keepOutEl) observer.observe(keepOutEl);
+    const syncObservedKeepOuts = () => {
+      const current = new Set(
+        Array.from(document.querySelectorAll(keepOutSelector)).filter(
+          (element) => !petShell?.contains(element),
+        ),
+      );
+      for (const element of observedKeepOuts) {
+        if (!current.has(element)) {
+          observer?.unobserve(element);
+          observedKeepOuts.delete(element);
+        }
+      }
+      for (const element of current) {
+        if (!observedKeepOuts.has(element)) {
+          observer?.observe(element);
+          observedKeepOuts.add(element);
+        }
+      }
+    };
+    syncObservedKeepOuts();
 
     // A modal drawer is the other keep-out, and it appears and disappears
     // without resizing the composer, so a ResizeObserver on the composer never
@@ -570,8 +592,22 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
     // sitting inside the drawer, on top of the agent's Soul text. A
     // MutationObserver on the document catches both the drawer being added and
     // it being closed, which is when the pet should be allowed back.
-    const mutations =
-      typeof MutationObserver === "function" ? new MutationObserver(() => nudgeClear()) : null;
+    const mutations = typeof MutationObserver === "function"
+      ? new MutationObserver((records) => {
+          const appLayoutChanged = records.some((record) => {
+            const target = record.target;
+            if (petShell && (target === petShell || petShell.contains(target))) return false;
+            if (record.type !== "childList" || !petShell) return true;
+            const changedNodes = [...record.addedNodes, ...record.removedNodes];
+            return changedNodes.length === 0 || changedNodes.some(
+              (node) => node !== petShell && !(node instanceof Element && node.contains(petShell)),
+            );
+          });
+          if (!appLayoutChanged) return;
+          syncObservedKeepOuts();
+          nudgeClear();
+        })
+      : null;
     if (mutations && document.body) {
       mutations.observe(document.body, { childList: true, subtree: true, attributes: true });
     }
@@ -582,6 +618,7 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", nudgeClear);
       observer?.disconnect();
+      observedKeepOuts.clear();
       mutations?.disconnect();
     };
   }, [hydrated, settings.visible, settings.desktopOverlay]);
