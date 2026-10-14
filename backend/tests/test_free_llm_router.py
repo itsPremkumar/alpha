@@ -29,6 +29,7 @@ from alpha.config.sandbox_config import SandboxConfig
 from alpha.models import factory as factory_module
 from alpha.models.fallback import FallbackChatModel, is_retryable_llm_error
 from alpha.models.free_router import PROVIDER_ORDER, ProviderError
+from alpha.models.free_router import catalog as catalog_mod
 from alpha.models.free_router import providers as providers_mod
 from alpha.models.free_router.catalog import (
     COOLDOWN_MAX_SECONDS,
@@ -64,7 +65,7 @@ class _Handler:
 
     def __call__(self, method, url, *, headers=None, params=None, json_body=None, timeout=None):
         with self._lock:
-            self.calls.append({"method": method, "url": url, "json": json_body})
+            self.calls.append({"method": method, "url": url, "json": json_body, "timeout": timeout})
         is_chat = "chat/completions" in url or url.endswith("/openai") or "generate/text" in url
         if self._block_release is not None and not is_chat:
             self._block_release.wait(10)
@@ -305,6 +306,42 @@ def test_chat_fails_over_and_marks_providers(tmp_path, monkeypatch):
     router.chat([{"role": "user", "content": "again"}])
     assert len(chat_calls(first_name)) == 1
     assert len(chat_calls(second_name)) == 2
+
+
+def test_chat_caps_each_provider_attempt_even_when_model_timeout_is_long(tmp_path, monkeypatch):
+    handler = install(monkeypatch, chat=chat_http_500)
+    router = make_router(tmp_path)
+
+    with pytest.raises(FreeLLMUnavailableError):
+        router.chat([{"role": "user", "content": "hi"}], timeout=600.0)
+
+    chat_calls = [call for call in handler.calls if "chat/completions" in call["url"] or call["url"].endswith("/openai") or "generate/text" in call["url"]]
+    assert len(chat_calls) == len(PROVIDER_ORDER)
+    assert {call["timeout"] for call in chat_calls} == {catalog_mod.CHAT_ATTEMPT_TIMEOUT_SECONDS}
+
+
+def test_chat_stops_failover_at_the_bounded_total_deadline(tmp_path, monkeypatch):
+    install(monkeypatch)
+    router = make_router(tmp_path)
+    router.refresh()
+    elapsed = [0.0]
+    timeouts: list[float] = []
+
+    def slow_failure(spec, model_id, messages, *, temperature=None, max_tokens=None, timeout=None, extra_body=None):
+        del spec, model_id, messages, temperature, max_tokens, extra_body
+        timeouts.append(timeout)
+        elapsed[0] += float(timeout or 0.0)
+        raise TimeoutError("provider attempt timed out")
+
+    monkeypatch.setattr(catalog_mod.time, "monotonic", lambda: elapsed[0])
+    monkeypatch.setattr(providers_mod, "chat_completion", slow_failure)
+
+    with pytest.raises(FreeLLMUnavailableError, match="router deadline") as excinfo:
+        router.chat([{"role": "user", "content": "hi"}], timeout=600.0)
+
+    assert len(timeouts) == catalog_mod.CHAT_TOTAL_TIMEOUT_SECONDS // catalog_mod.CHAT_ATTEMPT_TIMEOUT_SECONDS
+    assert timeouts == [catalog_mod.CHAT_ATTEMPT_TIMEOUT_SECONDS] * len(timeouts)
+    assert len(excinfo.value.attempts) == len(timeouts)
 
 
 def test_all_fail_raises_retryable_honest_error_without_body_leak(tmp_path, monkeypatch):

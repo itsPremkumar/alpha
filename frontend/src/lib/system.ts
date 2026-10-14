@@ -1,11 +1,11 @@
 import { get } from "./http";
 import { fetchConsoleStats } from "./workspace";
 import { fetchMemory } from "./memory";
+import { listCompanies } from "./company";
 import { listSkills } from "./skills";
 import { listScheduledTasks } from "./scheduled";
 import { channelStatus } from "./channels";
 import { watchdogDetail, parseFleetWorkers, observedReason, isWatching } from "./supervision";
-import { companyStatus } from "./teamops";
 import { fetchMcpConfig } from "./mcp";
 import { getCapabilities } from "./multimodal";
 
@@ -18,23 +18,6 @@ export interface Probe {
   ms: number;
 }
 
-/**
- * Why a probe could not read its subsystem, when the answer is not just "no".
- *
- * `GET /api/company/status` answers **404 "No active organizations found.
- * Bootstrap a company first."** when no company has been bootstrapped. That is
- * an ordinary, actionable answer from a route that does exist — not a broken
- * route, and not an engine sitting idle with nothing to do.
- *
- * The probe used to swallow the `ApiClientError` and substitute its own
- * sentence, `"Company engine idle"`. That string is dishonest twice over: it
- * discards the reason the server actually gave, and it asserts a state
- * ("an engine exists and is idle") that the server explicitly contradicted. It
- * rendered in the workspace header as a grey dot and in the System control
- * center as a capability line, so the lie was on screen in two places.
- *
- * The server's own `detail` is now what reaches the UI, verbatim.
- */
 export function probeReason(e: unknown): string {
   const message = e instanceof Error ? e.message.trim() : "";
   if (message) return message.slice(0, 200);
@@ -141,15 +124,22 @@ export async function probeAll(): Promise<Probe[]> {
         return watching === false && reason ? `${detail} — server reason: ${reason}` : detail;
       },
     ),
-    // No `catch` here, and no invented fallback wording. `companyStatus()` now
-    // propagates the Gateway's own 404 detail, so both the workspace header and
-    // the System control centre read exactly what the server said:
-    // "No active organizations found. Bootstrap a company first."
-    runProbe("company", "Autonomous company", "KPIs, board, briefings", async () => {
-      const c = await companyStatus();
-      if (!c) throw new Error("The Gateway returned an empty company status document.");
-      return c;
-    }, () => "active"),
+    // Probe the same owner-scoped Company OS directory used by the Companies
+    // workspace. The legacy `/api/company/status` belongs to a separate store;
+    // its empty 404 made a live Company OS appear broken in the readiness strip.
+    // An empty list is a successfully-read, unconfigured workspace, not an API
+    // failure, and remains explicitly labelled as such.
+    runProbe(
+      "company",
+      "Autonomous company",
+      "Owner-scoped Company OS directory",
+      () => listCompanies(),
+      (companies) => {
+        if (companies.length === 0) return "no organizations configured";
+        const active = companies.filter((company) => company.state === "active").length;
+        return `${active} active · ${companies.length} total`;
+      },
+    ),
     // Voice is its own subsystem and must be probed from its OWN capabilities
     // report, never inferred from a channel link: a perfectly healthy IM channel
     // would otherwise make a speech install with no models look ready (and,

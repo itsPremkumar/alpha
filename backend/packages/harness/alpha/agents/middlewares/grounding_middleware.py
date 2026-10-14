@@ -54,7 +54,7 @@ run has verified nothing, and "no result" is not "no problem".
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, Any, override
 
 from alpha_extension_api import ContentKind, provenance_kwargs
@@ -383,6 +383,7 @@ class GroundingMiddleware(AgentMiddleware):
         return GateSubject(
             available_tools=frozenset(names) if names else None,
             tool_calls=(str(tool_call.get("name") or ""),),
+            tool_input=tool_call.get("args") if isinstance(tool_call.get("args"), Mapping) else None,
             ledger=self._service_for().ledger,
             reuse_probe_run=self._consulted,
         )

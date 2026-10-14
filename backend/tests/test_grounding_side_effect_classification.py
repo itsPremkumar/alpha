@@ -34,6 +34,7 @@ from alpha.grounding.gates import (
     DEFAULT_SIDE_EFFECTS,
     GateSubject,
     SideEffectClass,
+    check_reuse_probe,
     check_side_effect,
 )
 from alpha.tools.tools import BUILTIN_TOOLS
@@ -125,6 +126,52 @@ def test_command_safety_review_is_read_only_and_computer_execution_stays_blocked
     assert execution.blocked is True
 
 
+def test_computer_command_classification_and_audit_read_are_read_only_actions() -> None:
+    """Pure actions on the multifunction computer tool must not inherit its unknown write action."""
+    assert "execute_sandboxed_computer_action" not in DEFAULT_SIDE_EFFECTS
+    for action in ("classify_command", "get_audit_log"):
+        subject = _subject(
+            tool_calls=("execute_sandboxed_computer_action",),
+            tool_input={"action": action, "command": "rm -rf /"},
+            forbid_unconfirmed_side_effects=True,
+            planned_tools=(),
+        )
+        effect = check_side_effect(subject)
+        reuse = check_reuse_probe(subject)
+        assert effect.blocked is False, f"the read-only {action} action was refused: {effect.reason}"
+        assert reuse.blocked is False, f"the read-only {action} action could not satisfy consultation: {reuse.reason}"
+
+
+def test_computer_command_validation_and_unknown_actions_remain_fail_closed() -> None:
+    """Only explicit pure actions get the read-only path; validation remains unknown."""
+    for action in ("execute_command", "unknown", ["classify_command"]):
+        subject = _subject(
+            tool_calls=("execute_sandboxed_computer_action",),
+            tool_input={"action": action, "command": "echo safe"},
+            forbid_unconfirmed_side_effects=True,
+            planned_tools=(),
+        )
+        result = check_side_effect(subject)
+        assert result.blocked is True, f"the {action} action unexpectedly passed the side-effect gate"
+        assert "execute_sandboxed_computer_action" in (result.detail or {}).get("unclassified", [])
+
+
+def test_grounding_middleware_passes_structured_action_to_side_effect_gate(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from alpha.agents.middlewares.grounding_middleware import GroundingMiddleware
+    from alpha.grounding.manifest import CapabilityManifest
+
+    middleware = GroundingMiddleware(available_tools=frozenset({"execute_sandboxed_computer_action"}))
+    monkeypatch.setattr(middleware, "_build_manifest", lambda: CapabilityManifest())
+    monkeypatch.setattr(middleware, "_service_for", lambda: SimpleNamespace(ledger=None))
+    subject = middleware._subject_for({"name": "execute_sandboxed_computer_action", "args": {"action": "classify_command", "command": "ls"}})
+
+    assert subject.tool_input == {"action": "classify_command", "command": "ls"}
+    assert check_side_effect(subject).blocked is False
+    assert check_reuse_probe(subject).blocked is False
+
+
 def test_a_registered_tool_is_classified_or_the_gate_will_refuse_it() -> None:
     """The failure this table keeps producing, turned into a build error.
 
@@ -163,7 +210,7 @@ def test_the_strict_branch_still_refuses_a_genuinely_irreversible_call() -> None
 def test_an_unclassified_tool_is_still_refused_rather_than_assumed_read_only() -> None:
     """The fail-closed default survives this change.
 
-    115 builtin tools are unclassified and this file does not pretend otherwise.
+    111 of 136 builtin tools are unclassified and this file does not pretend otherwise.
     What it pins is that the *default* stays UNKNOWN, so the remaining gap is a
     disclosed gap and not a silently permittable one.
     """
@@ -184,11 +231,11 @@ def test_unclassified_tool_count_is_disclosed_not_silently_large() -> None:
     This is a disclosure assertion, not a target: it fails loudly when the count
     moves in EITHER direction, so a fix that classifies tools and a regression
     that adds unclassified ones both show up. The assert message carries the
-    list, because "115" alone does not tell a reviewer which tools.
+    list, because "111" alone does not tell a reviewer which tools.
     """
     names = sorted({getattr(t, "name", str(t)) for t in BUILTIN_TOOLS})
     missing = [n for n in names if n not in DEFAULT_SIDE_EFFECTS]
-    assert len(missing) == 112, (
+    assert len(missing) == 111, (
         f"{len(missing)} of {len(names)} builtin tools have no side-effect classification "
         f"({len(names) - len(missing)} classified). If this moved because tools were "
         f"classified, update docs/audits/ORCHESTRATION_PROBES.md. Newly unclassified: "

@@ -614,7 +614,10 @@ run status, and persisted acceptance verdict; expanding a row shows its report
 id, criterion verdicts and submitted evidence, run id, dispatch state, and
 measured usage. A missing report is shown as **not verified**. Historical rows
 are read-only, so selecting one cannot redirect pause, resume, stop, or steering
-actions away from the server-designated active session.
+actions away from the server-designated active session. Expanding a failed,
+interrupted, timed-out, or cancelled run lazily reads its RunManager record and
+shows the recorded error and stop reason; if that record cannot be read, the UI
+shows the retrieval failure instead of leaving the diagnostic blank.
 
 ### The `/apex` commands
 

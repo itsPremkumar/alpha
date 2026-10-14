@@ -1808,6 +1808,10 @@ async def start_run(
         # id, disagreeing with the response header, the logs, and the
         # checkpoint. The caller's own metadata keys are preserved.
         run_metadata = dict(body.metadata) if isinstance(body.metadata, dict) else {}
+        # Acceptance contracts must come through the typed request field below;
+        # otherwise arbitrary metadata could bypass the criterion schema and
+        # length/uniqueness validation used by run verification.
+        run_metadata.pop("acceptance_criteria", None)
         # These bind a run to the APEX host adapter. Caller metadata must never
         # claim that authority; only the validated internal path below stamps it.
         for key in _SERVER_OWNED_APEX_RUN_METADATA_KEYS:

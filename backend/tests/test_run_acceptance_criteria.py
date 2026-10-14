@@ -131,6 +131,22 @@ def test_only_an_exact_true_counts_as_passing_evidence() -> None:
     assert result.verdicts[0].evidence_references == ()
 
 
+def test_conflicting_evidence_for_one_kind_fails_closed() -> None:
+    """A passing row cannot hide a contradictory measurement for that kind."""
+    result = verify_acceptance_criteria(
+        [{"id": "release", "required_evidence_kinds": ["test_result"]}],
+        [
+            {"criterion_id": "release", "kind": "test_result", "passed": True, "reference": "pytest://pass"},
+            {"criterion_id": "release", "kind": "test_result", "passed": False, "reference": "pytest://failure"},
+        ],
+    )
+
+    assert result.verified is False
+    assert result.verdicts[0].verified is False
+    assert result.verdicts[0].reason == "Conflicting evidence: test_result; missing passing evidence: test_result"
+    assert result.verdicts[0].evidence_references == ()
+
+
 def test_a_reference_is_cited_provenance_not_verified_provenance() -> None:
     """The overlay records where the caller says the proof lives; it cannot
     check that it does. A reference must never substitute for the measurement,

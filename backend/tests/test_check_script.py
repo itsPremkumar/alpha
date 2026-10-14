@@ -31,7 +31,11 @@ def test_find_pnpm_command_prefers_resolved_executable(monkeypatch):
 
     monkeypatch.setattr(pnpm_script.shutil, "which", fake_which)
 
-    assert pnpm_script.find_pnpm_command() == [r"C:\Users\tester\AppData\Roaming\npm\pnpm.CMD"]
+    resolved = pnpm_script.find_pnpm_command()
+    assert resolved is not None
+    # Windows paths are case-insensitive and shutil.which() may return the
+    # spelling of the PATH entry rather than the requested extension casing.
+    assert resolved[0].casefold() == r"C:\Users\tester\AppData\Roaming\npm\pnpm.cmd".casefold()
 
 
 def test_find_pnpm_command_falls_back_to_corepack(monkeypatch):
@@ -130,13 +134,14 @@ def test_check_status_labels_corepack_fallback(monkeypatch, capsys):
     check_script = _load_script(CHECK_SCRIPT_PATH, "alpha_check_script_status")
 
     monkeypatch.setattr(check_script.shutil, "which", lambda name: f"/fake/{name}")
+    monkeypatch.setattr(check_script, "resolve_nginx", lambda: "/fake/nginx")
     monkeypatch.setattr(
         check_script,
         "run_command",
         lambda command: {
             "node": "v22.0.0",
             "uv": "uv 0.11.31",
-            "nginx": "nginx/1.31.3",
+            "/fake/nginx": "nginx/1.31.3",
         }[command[0]],
     )
     monkeypatch.setattr(

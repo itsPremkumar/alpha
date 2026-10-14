@@ -12,6 +12,9 @@ Two honesty rules, both pinned by tests:
   criterion, or names one that was never declared, is reported in
   :attr:`VerificationResult.notes` instead of vanishing — a typo in a
   ``criterion_id`` must not read as coverage while hiding the proof.
+- **Contradictions do not average into a pass.**  Passing and failing
+  measurements for the same criterion and evidence kind make that kind
+  conflicted; a passing duplicate cannot hide a failed measurement.
 """
 
 from __future__ import annotations
@@ -78,11 +81,24 @@ def verify_acceptance_criteria(
         if not isinstance(required_kinds, (list, tuple)) or not all(isinstance(kind, str) and kind for kind in required_kinds):
             raise ValueError(f"criterion {criterion_id!r} has invalid required_evidence_kinds")
 
-        passing = [item for item in evidence_by_criterion.get(criterion_id, []) if item.get("passed") is True]
+        criterion_evidence = evidence_by_criterion.get(criterion_id, [])
+        outcomes_by_kind: dict[str, set[bool]] = {}
+        for item in criterion_evidence:
+            kind = item.get("kind")
+            outcome = item.get("passed")
+            if isinstance(kind, str) and kind and type(outcome) is bool:
+                outcomes_by_kind.setdefault(kind, set()).add(outcome)
+        conflicted_kinds = {kind for kind, outcomes in outcomes_by_kind.items() if len(outcomes) > 1}
+        passing = [item for item in criterion_evidence if item.get("passed") is True and item.get("kind") not in conflicted_kinds]
         present_kinds = {item.get("kind") for item in passing if isinstance(item.get("kind"), str)}
         missing_kinds = [kind for kind in required_kinds if kind not in present_kinds]
         references = tuple(reference for item in passing if isinstance(reference := item.get("reference"), str) and reference)
-        if missing_kinds:
+        if conflicted_kinds:
+            conflict_note = f"Conflicting evidence: {', '.join(sorted(conflicted_kinds))}"
+            if missing_kinds:
+                conflict_note += f"; missing passing evidence: {', '.join(missing_kinds)}"
+            verdicts.append(CriterionVerdict(criterion_id, False, conflict_note, references))
+        elif missing_kinds:
             verdicts.append(CriterionVerdict(criterion_id, False, f"Missing passing evidence: {', '.join(missing_kinds)}", references))
         elif not passing:
             verdicts.append(CriterionVerdict(criterion_id, False, "No passing evidence recorded", ()))

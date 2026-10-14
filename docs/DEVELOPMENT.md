@@ -144,6 +144,46 @@ cd backend && make lint
 - **Line length**: 100 characters
 - **Import style**: isort (Ruff built-in)
 
+#### Compile, lint, type, and runtime diagnostics
+
+From the repository root, run `make python-health` for a fast check across all
+tracked Python files. It compiles source without importing it, then runs Ruff
+lint and formatting checks. For mypy and executable backend checks, run:
+
+```bash
+make python-health PYTHON_HEALTH_ARGS=--full
+```
+
+The full run first collects the backend tests to catch their import and
+collection-time failures, then executes mypy, the offline backend tests, and
+the blocking-I/O test suite. To run just the import/collection smoke check:
+
+```bash
+make python-health PYTHON_HEALTH_ARGS=--runtime-smoke
+```
+
+To get a clean syntax-and-import signal without existing lint/type debt affecting
+the exit status, run:
+
+```bash
+make python-health PYTHON_HEALTH_ARGS=--diagnostics-only
+```
+
+This compiles tracked Python source and collects backend tests, but does not run
+test bodies. Use `--full` to execute the offline backend and blocking-I/O suites
+as well; those are the checks that can expose runtime behavior failures. No
+static compiler can prove every runtime path works.
+
+Reports are written to `.alpha/reports/python-health-latest.json` and one log
+per stage; pytest also writes JUnit XML reports for executed suites. A compiler
+pass only proves source syntax is compilable. Collection catches imports only
+along pytest's discovery paths; it does not import every module, because doing
+so can trigger optional-service requirements or module side effects. Ruff and
+mypy are static checks, and runtime correctness is evidenced only by tests
+that actually execute the relevant behavior. The current mypy CI step is
+informational because the repository still has a large existing type-error
+backlog, so a mypy failure is reported honestly rather than hidden.
+
 #### Type Hints
 - Required for all public functions
 - Use `from __future__ import annotations`

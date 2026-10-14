@@ -26,16 +26,16 @@ target-version = "py312"
 
 [lint]
 select = ["E", "F", "I", "UP"]
-ignore = []
+ignore = ["UP042"]
 
 # UP042 (replace-str-enum): 66 intentional `str, Enum` mixins across the
 # codebase. These are public enums where `str(X.VALUE)` returns the qualified
 # name "X.VALUE" (not the value "value"), which is the expected behavior for
 # logging, serialization, and debugging. Converting to `StrEnum` would change
 # `str()` and `f"{}"` semantics and is a separate behavioral refactor tracked
-# independently; these are not oversights.
-[lint.per-file-ignores]
-"*.py" = ["UP042"]
+# independently; these are not oversights. This is a single, explicit global
+# rule exclusion rather than a per-file exemption that can hide unrelated
+# findings from the changed-file gate.
 
 [lint.isort]
 # alpha/ and app/ are this repository's own packages and must group as

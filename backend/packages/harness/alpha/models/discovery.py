@@ -56,7 +56,7 @@ DEFAULT_TTL_SECONDS = 6 * 3600
 #: a down provider is re-probed on every single request.
 NEGATIVE_TTL_SECONDS = 900
 #: Per-request deadline. Discovery must never hold a Gateway response open.
-FETCH_TIMEOUT_SECONDS = 12.0
+FETCH_TIMEOUT_SECONDS = 6.0
 #: Cap on models returned per provider, so a 4000-entry registry cannot blow up
 #: the response or the cache file.
 MAX_MODELS_PER_PROVIDER = 2000

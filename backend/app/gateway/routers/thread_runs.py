@@ -1267,6 +1267,83 @@ async def get_run(thread_id: ThreadId, run_id: str, request: Request) -> RunResp
     return _record_to_response(record)
 
 
+@router.get("/{thread_id}/runs/{run_id}/verification")
+@require_permission("runs", "read", owner_check=True)
+async def get_run_verification(thread_id: ThreadId, run_id: str, request: Request) -> dict[str, Any]:
+    """Return a measured acceptance projection for the run's declared criteria.
+
+    Automatic verification is intentionally limited to exact-text file
+    readback. General criteria stay unverified for an operator or a typed
+    collector; neither a successful run status nor the model's final prose is
+    evidence. The report is recomputed from the durable run event stream.
+    """
+    run_manager = get_run_manager(request)
+    user_id = await get_current_user(request)
+    record = await run_manager.get(run_id, user_id=user_id)
+    if record is None or record.thread_id != thread_id:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    criteria = (record.metadata or {}).get("acceptance_criteria")
+    if not isinstance(criteria, list) or not criteria:
+        return {"status": "not_requested", "reason": "No acceptance criteria were declared for this run.", "report": None}
+    if record.status in {RunStatus.pending, RunStatus.running}:
+        return {"status": "pending", "reason": "Acceptance is evaluated after the run reaches a terminal state.", "report": None}
+    if record.status is not RunStatus.success:
+        return {"status": "unverified", "reason": f"Run status {record.status.value!r} is not a successful terminal result.", "report": None}
+
+    descriptions = [item.get("description") for item in criteria if isinstance(item, Mapping)]
+    if len(descriptions) != len(criteria) or not all(isinstance(item, str) and item.strip() for item in descriptions):
+        return {"status": "unverified", "reason": "Stored acceptance criteria are unreadable.", "report": None}
+
+    events = await _complete_verification_event_scan(
+        get_run_event_store(request),
+        thread_id=str(thread_id),
+        run_id=run_id,
+    )
+    if events is None:
+        return {"status": "unverified", "reason": "The complete run event stream could not be read; partial events cannot verify work.", "report": None}
+
+    from alpha.apex.auto_acceptance import evaluate_tool_readback_criteria
+
+    report = evaluate_tool_readback_criteria(descriptions, events)
+    if report is None:
+        return {"status": "unverified", "reason": "These criteria need evidence beyond the supported exact-text file readback check.", "report": None}
+    return {
+        "status": "verified" if report.passed else "failed",
+        "reason": report.refusal_reason(),
+        "report": report.to_dict(),
+    }
+
+
+async def _complete_verification_event_scan(event_store: Any, *, thread_id: str, run_id: str) -> list[dict[str, Any]] | None:
+    """Read bounded complete evidence events; refuse truncated or malformed scans."""
+    cursor = 0
+    rows: list[dict[str, Any]] = []
+    for _ in range(20):
+        page = await event_store.list_events(
+            thread_id,
+            run_id,
+            event_types=["llm.ai.response", "llm.tool.result"],
+            limit=500,
+            after_seq=cursor,
+        )
+        if not page:
+            return rows
+        previous = cursor
+        for event in page:
+            if not isinstance(event, dict):
+                return None
+            seq = event.get("seq")
+            if not isinstance(seq, int) or isinstance(seq, bool) or seq <= previous:
+                return None
+            previous = seq
+            rows.append(event)
+        cursor = previous
+        if len(page) < 500:
+            return rows
+    return None
+
+
 @router.post("/{thread_id}/runs/{run_id}/cancel")
 @require_permission("runs", "cancel", owner_check=True, require_existing=True)
 async def cancel_run(

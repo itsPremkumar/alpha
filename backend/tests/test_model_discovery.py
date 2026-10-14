@@ -10,10 +10,13 @@ bounds (timeout, TTL, negative cache, egress screening, result cap).
 
 from __future__ import annotations
 
+import asyncio
 import time
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from starlette.requests import Request
 
 from alpha.models import discovery
 from alpha.models.discovery import DiscoveredModel, DiscoveryState
@@ -265,3 +268,97 @@ def test_discovered_model_dict_exposes_derived_capabilities() -> None:
     data = DiscoveredModel(id="m", input_modalities=["image"], reasoning_efforts=["high"]).to_dict()
     assert data["supports_vision"] is True
     assert data["supports_thinking"] is True
+
+
+@pytest.mark.asyncio
+async def test_discovery_route_fetches_providers_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A cold catalog read must not serialize each provider's network timeout."""
+    import app.gateway.routers.models as models_router
+
+    providers = ["slow-a", "slow-b", "slow-c"]
+    monkeypatch.setattr(discovery, "known_providers", lambda: providers)
+
+    active = 0
+    peak = 0
+
+    async def fake_get_state(provider: str) -> DiscoveryState:
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return DiscoveryState(provider=provider, ok=True, fetched_at=time.time())
+
+    async def unexpected_admin_check(*_args, **_kwargs):
+        raise AssertionError("a cached catalog read must not require admin refresh")
+
+    async def no_user(_request):
+        return None
+
+    monkeypatch.setattr(discovery, "aget_state", fake_get_state)
+    monkeypatch.setattr(models_router, "get_optional_user_from_request", no_user)
+    monkeypatch.setattr(models_router, "require_admin_user", unexpected_admin_check)
+    request = Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/api/models/discovery",
+            "raw_path": b"/api/models/discovery",
+            "query_string": b"",
+            "headers": [],
+            "client": ("127.0.0.1", 1234),
+            "server": ("127.0.0.1", 8001),
+        }
+    )
+
+    result = await models_router.list_discovered_models(request, SimpleNamespace(models=[]))
+
+    assert peak == len(providers)
+    assert [item.provider for item in result.providers] == providers
+
+
+@pytest.mark.asyncio
+async def test_discovery_route_gates_explicit_outbound_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.gateway.routers.models as models_router
+
+    providers = ["openrouter"]
+    admin_checks = []
+    monkeypatch.setattr(discovery, "known_providers", lambda: providers)
+
+    async def require_admin(request, *, detail):
+        admin_checks.append((request, detail))
+
+    async def fetch(provider: str, base: str, key: str | None) -> DiscoveryState:
+        assert (provider, base, key) == ("openrouter", "https://example.invalid/v1", None)
+        return DiscoveryState(provider=provider, ok=True, fetched_at=time.time())
+
+    async def no_user(_request):
+        return None
+
+    monkeypatch.setattr(models_router, "require_admin_user", require_admin)
+    monkeypatch.setattr(models_router, "get_optional_user_from_request", no_user)
+    monkeypatch.setattr(discovery, "configured_endpoint", lambda _provider: ("https://example.invalid/v1", None))
+    monkeypatch.setattr(discovery, "afetch_models", fetch)
+    request = Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/api/models/discovery",
+            "raw_path": b"/api/models/discovery",
+            "query_string": b"refresh=true",
+            "headers": [],
+            "client": ("127.0.0.1", 1234),
+            "server": ("127.0.0.1", 8001),
+        }
+    )
+
+    await models_router.list_discovered_models(request, SimpleNamespace(models=[]), refresh=True)
+
+    assert len(admin_checks) == 1
+    assert admin_checks[0][1] == models_router._ADMIN_REQUIRED_DETAIL

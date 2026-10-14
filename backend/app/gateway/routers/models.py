@@ -253,25 +253,30 @@ async def list_discovered_models(
             detail=f"Provider '{provider}' is not discoverable. It must declare a `base_url` under `model_catalog:` in config.yaml. Discoverable: {', '.join(discovery.known_providers()) or 'none'}",
         )
 
-    views: list[DiscoveryProviderResponse] = []
-    for provider_id in targets:
+    # A forced refresh makes outbound requests to operator-configured provider
+    # endpoints (and may attach their configured API keys). Keep that explicit
+    # network action behind the same admin gate as the POST refresh route.
+    if refresh:
+        await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+
+    async def load(provider_id: str) -> DiscoveryProviderResponse:
         if refresh:
             try:
                 base, key = discovery.configured_endpoint(provider_id)
             except ValueError as exc:
-                views.append(
-                    DiscoveryProviderResponse(
-                        provider=provider_id,
-                        ok=False,
-                        error=str(exc),
-                        stale=True,
-                    )
-                )
-                continue
-            state = await discovery.afetch_models(provider_id, base, key)
+                state = discovery.DiscoveryState(provider=provider_id, ok=False, error=str(exc))
+            else:
+                state = await discovery.afetch_models(provider_id, base, key)
         else:
-            state = await asyncio.to_thread(discovery.get_state, provider_id)
-        views.append(_discovery_view(state, configured_names, limit))
+            state = await discovery.aget_state(provider_id)
+        return _discovery_view(state, configured_names, limit)
+
+    # Catalogs are independent. Serial refresh made this route wait up to
+    # 12 seconds per provider, so 17 configured providers exceeded the
+    # frontend's 10-second request deadline before returning any result.
+    # Fetch in parallel; each provider still has its own bounded timeout and
+    # failure state, so one unavailable gateway cannot hold the others back.
+    views = await asyncio.gather(*(load(provider_id) for provider_id in targets))
 
     return DiscoveryListResponse(providers=views, supported=discovery.known_providers())
 

@@ -126,18 +126,18 @@
 ## Plans & Roadmaps
 
 - [ADVANCED_GROUP_MESSAGING_PLAN.md](ADVANCED_GROUP_MESSAGING_PLAN.md) — Group profiles, links, goals, pinning, threading, receipts and notifications — design record plus a per-feature shipped/not-shipped map.
-- [ADVANCED_MULTI_AGENT_BUILD_PLAN.md](ADVANCED_MULTI_AGENT_BUILD_PLAN.md) — Gap analysis and build plan derived from the advanced multi-agent architecture plan: what Alpha already has with paths, the seven competing schedulers, a ranked gap register, and nine phases that wire and unify rather than rebuild.
+- [ADVANCED_MULTI_AGENT_BUILD_PLAN.md](ADVANCED_MULTI_AGENT_BUILD_PLAN.md) — Gap analysis for Alpha's multi-agent architecture: existing paths, competing schedulers, ranked gaps, and integration phases.
 - [AGENT_LANDSCAPE_AND_ROADMAP.md](AGENT_LANDSCAPE_AND_ROADMAP.md) — Research survey and feature roadmap for the open-source agent landscape.
 - [AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md](AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md) — Live agent activity ledger, work claims, and crash-honest status for group rooms.
 - [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.
 - [ALPHA_ADVANCED_MULTI_AGENT_ARCHITECTURE_PLAN.md](ALPHA_ADVANCED_MULTI_AGENT_ARCHITECTURE_PLAN.md) — Research-backed blueprint for a hybrid, graph-governed, event-driven multi-agent runtime: separating reasoning, orchestration, execution, evidence and governance across every existing Alpha mode.
 - [ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md](ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md) — Master design specification for APEX Autopilot: the autonomy contract, executive cycle, policy kernel, verification gate, and the 198 sections the implementation is checked against.
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.
-- [ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md](ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md) — Research-backed plan for advanced LangGraph engineering: graph structure, subgraphs, checkpointing and resilience.
+- [ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md](ALPHA_GRAPH_ENGINEERING_IMPLEMENTATION_PLAN.md) — Research-backed plan for advanced LangGraph execution: separate orchestration, task DAG, knowledge-graph and observability-graph disciplines without replacing working capabilities.
 - [ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md](ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md) — Plan for group-relative orchestration: a bounded group of meaningfully different candidate attempts, evidence-based evaluation and selection or careful combination of the strongest verified outcome.
 - [ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) — Design specification for Alpha's native event middleware kernel, capability model, safety enforcers, autonomy controllers, and staged production gates.
-- [ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md](ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md) — Research-backed plan for multi-agent graph orchestration across Alpha's bot, subagent and swarm modes.
-- [ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md](ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md) — Plan extending Alpha's Python agent runtime with ideas from Prime Agent: recursive language models, a continual harness, persistent subagents, bounded autonomous continuation and verification-driven task state machines; design only, with a scope rule requiring every item to be classified against the current implementation before coding.
+- [ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md](ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md) — Plan for cooperating Alpha agents through explicit, observable, bounded, recoverable graphs across bot, subagent and swarm modes; proposals are unimplemented research, not shipped features.
+- [ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md](ALPHA_PRIME_AGENT_INSPIRED_PYTHON_IMPLEMENTATION_PLAN.md) — Prime Agent-inspired Python runtime plan: recursive language models, continual harness, persistent subagents, bounded autonomy and verified task states; design only, subject to implementation gap checks.
 - [ALPHA_UNIFIED_INTEGRATION_PLAN.md](ALPHA_UNIFIED_INTEGRATION_PLAN.md) — Unified local-only integration plan and sequencing for Alpha.
 - [ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md](ALPHA_UNLAZY_COMPLETION_DISCIPLINE_IMPLEMENTATION_PLAN.md) — Plan selectively adapting unlazy's completion discipline to Alpha's agent, bot, subagent and swarm workflows; design only, implying no source changes by itself.
 - [FRONTEND_UX_PLAN.md](FRONTEND_UX_PLAN.md) — The UI/UX plan for all 36 workspace views: the measured finding that planes are wired but unstructured, the design contract, the ordered workstreams, and the verification gates.
@@ -145,7 +145,7 @@
 - [GROK_VS_ALPHA_GAP_ANALYSIS.md](GROK_VS_ALPHA_GAP_ANALYSIS.md) — Competitive survey: xAI Grok (council, Grok Bot, Build Arena) against Alpha, with a prioritized gap list.
 - [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md) — Living implementation status matrix for production work.
 - [MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md](MULTI_AGENT_PROJECT_COLLABORATION_PLAN.md) — Enhanced multi-agent project collaboration plan.
-- [PREDICTIVE_RSI_IMPLEMENTATION_PLAN.md](PREDICTIVE_RSI_IMPLEMENTATION_PLAN.md) — Predictive RSI: the Phase 0 audit of what Alpha's RSI plane already has, the one responsibility it provably lacked (estimating a candidate's outcome before choosing it), and the eleven invariants an advisory forecast layer must hold.
+- [PREDICTIVE_RSI_IMPLEMENTATION_PLAN.md](PREDICTIVE_RSI_IMPLEMENTATION_PLAN.md) — Predictive RSI audit: existing capabilities, the missing pre-choice forecast step, and invariants for an advisory forecast layer.
 - [PRIME_INSPIRED_CAPABILITY_AUDIT.md](PRIME_INSPIRED_CAPABILITY_AUDIT.md) — Capability-by-capability audit against the Prime Agent design note: verified, partial, documented-only and missing verdicts with test evidence.
 - [RESEARCH_AUTONOMOUS_AGENTS.md](RESEARCH_AUTONOMOUS_AGENTS.md) — Live research: computer-use and browser agents, with a benchmark-trust audit.
 - [RESEARCH_CODING_AGENTS.md](RESEARCH_CODING_AGENTS.md) — Live research: terminal- and IDE-first coding agents, mapped against Alpha.
@@ -161,8 +161,8 @@
 - [WIRING_AUDIT.md](WIRING_AUDIT.md) — Measured audit of implemented-but-uncalled capabilities: what was wired, what was not, and the remaining inert surface.
 - [WORKTREE_STRATEGIES.md](WORKTREE_STRATEGIES.md) — Which worktree isolation an agent gets: the mode vocabulary, the selection table, and how a degraded mode is disclosed.
 - [alpha prime.md](alpha%20prime.md) — Blueprint adapting Prime Agent's ideas — recursive language model programming, continual harness, persistent subagents, agent-to-agent messaging, verification-driven task state machines — while keeping the Python runtime.
-- [alpha-arena-advanced-implementation-plan.md](alpha-arena-advanced-implementation-plan.md) — Alpha Arena+ implementation specification: multi-agent candidate generation, attack/defend, synthesis and verification.
-- [alpha-arena-new-capability-mesh-features-plan.md](alpha-arena-new-capability-mesh-features-plan.md) — Additive capability-mesh expansion plan extending Alpha Arena+ with routing, mixture-of-agents and cost-aware features.
+- [alpha-arena-advanced-implementation-plan.md](alpha-arena-advanced-implementation-plan.md) — Arena+ specification for multi-agent candidate generation, attack/defend, candidate artifacts, bounded repair, task contracts, evidence ledger, safe synthesis and independent verification.
+- [alpha-arena-new-capability-mesh-features-plan.md](alpha-arena-new-capability-mesh-features-plan.md) — Additive capability-mesh expansion layered on Arena+: specialist strengths, routing and mixture-of-agents ideas, without restating the base tournament.
 - [asi/01_state_of_evidence.md](asi/01_state_of_evidence.md) — Roadmaps, plans, and implementation tracking.
 - [asi/02_learned_orchestration.md](asi/02_learned_orchestration.md) — Roadmaps, plans, and implementation tracking.
 - [asi/03_agentic_architecture.md](asi/03_agentic_architecture.md) — Roadmaps, plans, and implementation tracking.

@@ -582,7 +582,13 @@ function Invoke-HealthCheck {
     $n = $script:ConsecutiveFailures
 
     # ---- Tier 1: defer - a live launcher is already fixing it --------------
-    $working = $s.Status -in @("starting", "recovering", "restarting_gateway",
+    # A component that has crossed its explicit down/hung threshold is no
+    # longer "working" merely because the launcher still reports degraded.
+    # Let the component-level recovery below act as soon as the probe budget
+    # proves it unresponsive; the launcher may keep heartbeating indefinitely.
+    $componentUnresponsive = $s.GatewayState -in @("down", "hung") -or
+                             $s.FrontendState -in @("down", "hung")
+    $working = (-not $componentUnresponsive) -and $s.Status -in @("starting", "recovering", "restarting_gateway",
                                "restarting_frontend", "degraded", "starting_adopting")
     $launcherUptime = [double]::MaxValue
     if ($s.LauncherAlive) {
@@ -615,7 +621,7 @@ function Invoke-HealthCheck {
             }
             return
         }
-        if ($n -le $MaxDeferredRecoveries -and $s.Status -in @("healthy", "running", "degraded", "unknown")) {
+        if (-not $componentUnresponsive -and $n -le $MaxDeferredRecoveries -and $s.Status -in @("healthy", "running", "degraded", "unknown")) {
             # This branch DELIBERATELY lets $n grow: it is the launcher's
             # budget (n checks on a "healthy" claim before we act), and it is
             # only reachable with a small n now that the working defer above

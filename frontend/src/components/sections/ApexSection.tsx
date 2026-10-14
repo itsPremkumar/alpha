@@ -1143,6 +1143,58 @@ function sessionTimestamp(value: number | null): string {
     : date.toLocaleString();
 }
 
+/** Load a failed run's real RunManager diagnostic only when its history row is opened. */
+function SessionRunDiagnostic({
+  threadId,
+  runId,
+}: {
+  threadId: string;
+  runId: string;
+}) {
+  const [state, setState] = useState<{
+    loading: boolean;
+    detail: string | null;
+    error: string | null;
+  }>({ loading: true, detail: null, error: null });
+
+  useEffect(() => {
+    let current = true;
+    void fetchRun(threadId, runId).then(
+      (run) => {
+        if (!current) return;
+        const detail = [run.error, run.stop_reason]
+          .filter((value): value is string => Boolean(value?.trim()))
+          .join(" · ");
+        setState({ loading: false, detail: detail || null, error: null });
+      },
+      (exc: unknown) => {
+        if (!current) return;
+        setState({
+          loading: false,
+          detail: null,
+          error: exc instanceof Error ? exc.message : String(exc),
+        });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [threadId, runId]);
+
+  return (
+    <div className="sm:col-span-2">
+      <dt className="text-neutral-500">Run diagnostic</dt>
+      <dd className="break-words">
+        {state.loading
+          ? "Loading RunManager error and stop reason…"
+          : state.error
+            ? `Diagnostic unavailable: ${state.error}`
+            : state.detail || "RunManager recorded no error or stop reason."}
+      </dd>
+    </div>
+  );
+}
+
 /** Read-only history keeps terminal sessions discoverable without changing the
  * server's active-session selection or enabling controls on old runs. */
 function RecentApexSessions({ reloadKey }: { reloadKey: number }) {
@@ -1252,6 +1304,13 @@ function RecentApexSessions({ reloadKey }: { reloadKey: number }) {
                       <dt className="text-neutral-500">Run dispatch state</dt>
                       <dd>{session.dispatch_state ?? "Not reported"}</dd>
                     </div>
+                    {session.run_id &&
+                      ["error", "interrupted", "timeout", "cancelled"].includes(session.run_status ?? "") && (
+                        <SessionRunDiagnostic
+                          threadId={session.thread_id}
+                          runId={session.run_id}
+                        />
+                      )}
                     <div>
                       <dt className="text-neutral-500">Updated</dt>
                       <dd>{sessionTimestamp(session.updated_at)}</dd>

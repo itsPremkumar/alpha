@@ -84,12 +84,13 @@ export function SearchResultsBlock({
       }`}
       data-search-block={variant}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/60 transition-colors"
-      >
+      <div className="flex items-center gap-1 px-1.5 py-1">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-0.5 text-left hover:bg-muted/60 transition-colors"
+        >
         <Search
           className={`size-3.5 shrink-0 ${variant === "research" ? "text-orange-500" : "text-amber-500"}`}
           aria-hidden="true"
@@ -128,12 +129,13 @@ export function SearchResultsBlock({
             {duration}
           </span>
         )}
-        <CopyButton text={query} label="Copy search query" />
         <ChevronDown
           className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`}
           aria-hidden="true"
         />
-      </button>
+        </button>
+        <CopyButton text={query} label="Copy search query" />
+      </div>
 
       {open && (
         <div className="border-t border-border/50 p-1.5">

@@ -99,9 +99,9 @@ const PROBES = [
   {
     key: "company",
     label: "Autonomous company",
-    blurb: "KPIs, board, briefings",
-    ok: false,
-    detail: "No active organizations found. Bootstrap a company first.",
+    blurb: "Owner-scoped Company OS directory",
+    ok: true,
+    detail: "1 active · 1 total",
     ms: 11,
   },
 ];

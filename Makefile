@@ -1,6 +1,6 @@
 # Alpha - Unified Development Environment
 
-.PHONY: help config config-upgrade check check-agent-guidance install voice-setup voice-verify system-one-laya-setup system-one-laya-serve system-one-laya-status extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check verify-checkout engine-inventory support-bundle diagnostic-bundle logs-rotate update-status update-check update-apply update-recover update-skip detect-thread-boundaries detect-blocking-io dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
+.PHONY: help config config-upgrade check check-agent-guidance install voice-setup voice-verify system-one-laya-setup system-one-laya-serve system-one-laya-status extension-install extension-upgrade extension-list extension-enable extension-disable extension-remove setup doctor prod-check verify-checkout engine-inventory support-bundle diagnostic-bundle logs-rotate update-status update-check update-apply update-recover update-skip detect-thread-boundaries detect-blocking-io python-health dev dev-daemon start start-daemon nginx stop up down clean docker-init docker-start docker-stop docker-logs docker-logs-frontend docker-logs-gateway docker-logs-redis setup-sandbox verify checkpoint rollback guardrails context safe-exec
 
 BASH ?= bash
 BACKEND_UV_RUN = cd backend && uv run
@@ -87,6 +87,7 @@ help:
 	@echo "  make migrate-state-dir - Rename pre-rename .agent-workspace state dirs to .alpha (stop Alpha first)"
 	@echo "  make check           - Check if all required tools are installed"
 	@echo "  make check-agent-guidance - Validate scoped AGENTS.md file and chain budgets"
+	@echo "  make python-health   - Compile tracked Python + run Ruff; use --diagnostics-only for compile + test-collection diagnostics"
 	@echo "  make detect-thread-boundaries - Inventory backend executor/thread/event-loop boundaries"
 	@echo "  make detect-blocking-io        - Inventory blocking IO that may block the backend event loop"
 	@echo "  make install         - Install all dependencies (frontend + backend + pre-commit hooks)"
@@ -129,6 +130,12 @@ setup:
 
 doctor:
 	@$(BACKEND_UV_RUN) python ../scripts/doctor.py
+
+# Fast compiler + lint diagnostics by default. `--full` also runs type analysis
+# and both offline runtime test suites, saving per-stage logs and a JSON summary.
+PYTHON_HEALTH_ARGS ?=
+python-health:
+	@$(BACKEND_UV_RUN) python ../scripts/check_python_health.py $(PYTHON_HEALTH_ARGS)
 
 prod-check:
 	@$(PYTHON) ./scripts/prod_check.py

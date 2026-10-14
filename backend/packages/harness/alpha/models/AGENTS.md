@@ -149,11 +149,24 @@ reports.
 - **"Undeclared" stays distinguishable from "declared false"**: a minimal
   OpenAI-compatible `{"data":[{"id":...}]}` entry leaves every richer field
   `None` rather than guessing.
-- **Operational bounds**: 12s per-request timeout, 6h success TTL, 15m negative
-  TTL (a down provider is not re-probed on every request), results cached under
+- **Operational bounds**: 6s per-provider timeout, independent provider catalogs
+  fetched concurrently so the settings request is bounded by the slowest provider
+  rather than the sum of their timeouts, 6h success TTL, 15m negative TTL (a
+  down provider is not re-probed on every request), results cached under
   `runtime_home()/models/discovery/` so a restart does not re-fetch, 2000-model
   cap, `follow_redirects=False`, and a cache filename that cannot escape its
   directory.
+
+### Free-router chat bounds
+
+`free_router/catalog.py` owns the bounded failover budget. A configured model
+`request_timeout` is a ceiling, not a per-gateway multiplier: each sequential
+gateway attempt is capped at 30s and the whole auto-routed call at 120s. A lower
+caller timeout remains lower. The deadline is checked before every attempt and
+is included in the honest exhaustion error; do not make a 600s model timeout
+apply independently to every free gateway. Coverage:
+`tests/test_free_llm_router.py` (`test_chat_caps_each_provider_attempt_even_when_model_timeout_is_long`,
+`test_chat_stops_failover_at_the_bounded_total_deadline`).
 - **Egress-screened** by `assert_model_endpoint_url` before every request — the
   same policy that guards BYO model configuration — so discovery cannot become
   an SSRF probe against loopback, RFC1918, or cloud metadata.

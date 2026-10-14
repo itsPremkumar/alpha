@@ -365,3 +365,46 @@ def test_run_response_exposes_the_per_model_split_error_and_model():
     assert empty.token_usage_by_model is None
     assert empty.error is None
     assert empty.total_tokens == 0
+
+
+def test_run_verification_measures_exact_file_readback_from_complete_tool_events():
+    criterion = 'Read the file back and verify it contains exactly "expected marker".'
+    record = _record(metadata={"acceptance_criteria": [{"id": "readback", "description": criterion, "required_evidence_kinds": []}]})
+    store = _seed(
+        (
+            "llm.ai.response",
+            "message",
+            {"type": "ai", "tool_calls": [{"id": "write-1", "name": "write_file", "args": {"path": "/workspace/result.txt", "content": "expected marker"}}]},
+            {},
+        ),
+        ("llm.tool.result", "message", {"name": "write_file", "tool_call_id": "write-1", "status": "success"}, {}),
+        (
+            "llm.ai.response",
+            "message",
+            {"type": "ai", "tool_calls": [{"id": "read-1", "name": "read_file", "args": {"path": "/workspace/result.txt"}}]},
+            {},
+        ),
+        ("llm.tool.result", "message", {"name": "read_file", "tool_call_id": "read-1", "status": "success", "content": "expected marker"}, {}),
+    )
+    app = _make_app(record, store)
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/threads/{THREAD}/runs/{RUN}/verification")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "verified"
+    assert body["report"]["evaluator"] == "run_tool_readback"
+    assert body["report"]["criteria"][0]["verdict"] == "met"
+
+
+def test_run_verification_leaves_unsupported_criteria_unverified():
+    record = _record(metadata={"acceptance_criteria": [{"id": "quality", "description": "The implementation is production ready", "required_evidence_kinds": []}]})
+    app = _make_app(record, MemoryRunEventStore())
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/threads/{THREAD}/runs/{RUN}/verification")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "unverified"
+    assert response.json()["report"] is None

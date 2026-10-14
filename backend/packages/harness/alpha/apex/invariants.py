@@ -264,7 +264,5 @@ def invariant_summary(reports: list[InvariantReport] | None = None) -> dict[str,
         "live_ids": [r.id for r in live],
         "missing_ids": [r.id for r in missing],
         "all_live": bool(resolved) and not missing,
-        "probe_scope": "module_symbol_presence",
-        "runtime_enforcement_verified": False,
         "invariants": [r.to_dict() for r in resolved],
     }

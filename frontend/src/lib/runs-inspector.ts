@@ -105,6 +105,51 @@ export interface RunModelSplit {
   total: number | null;
 }
 
+export interface RunVerificationCriterion {
+  criterion: string | null;
+  verdict: string | null;
+  evidence: string | null;
+  evaluated: boolean | null;
+  holds: boolean | null;
+}
+
+export interface RunVerification {
+  /** Gateway result, preserved verbatim; missing values remain unknown. */
+  status: string | null;
+  reason: string | null;
+  evaluator: string | null;
+  criteria: RunVerificationCriterion[] | null;
+}
+
+export function toRunVerification(raw: unknown): RunVerification {
+  const body = rec(raw) ?? {};
+  const report = rec(body.report);
+  const criteria = report && Array.isArray(report.criteria)
+    ? report.criteria.map((item) => {
+        const criterion = rec(item) ?? {};
+        return {
+          criterion: str(criterion.criterion),
+          verdict: str(criterion.verdict),
+          evidence: text(criterion.evidence),
+          evaluated: flag(criterion.evaluated),
+          holds: flag(criterion.holds),
+        };
+      })
+    : null;
+  return {
+    status: str(body.status),
+    reason: text(body.reason),
+    evaluator: str(report?.evaluator),
+    criteria,
+  };
+}
+
+/** `GET /threads/{id}/runs/{rid}/verification` — measured acceptance only. */
+export async function fetchRunVerification(threadId: string, runId: string): Promise<RunVerification> {
+  const d = await get<unknown>(`/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/verification`);
+  return toRunVerification(d);
+}
+
 export interface RunRecord {
   run_id: string | null;
   thread_id: string | null;

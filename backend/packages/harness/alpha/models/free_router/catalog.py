@@ -59,6 +59,10 @@ WAIT_ROUND_SECONDS = 5.0
 MAX_WAIT_ROUNDS = 6
 CACHE_FILENAME = "free_llm_catalog.json"
 _MODELS_SHOWN_IN_API = 25
+# A keyless router can have many independent gateways. A long per-model timeout
+# must not be multiplied by the number of sequential failover candidates.
+CHAT_ATTEMPT_TIMEOUT_SECONDS = 30.0
+CHAT_TOTAL_TIMEOUT_SECONDS = 120.0
 
 
 class FreeLLMUnavailableError(ConnectionError):
@@ -450,12 +454,21 @@ class FreeLLMRouter:
         resolved a rung; leaving it ``None`` omits the key entirely so the
         gateway's own default applies rather than one Alpha invented.
         """
+        requested_timeout = provider_layer.DEFAULT_TIMEOUT if timeout is None else max(0.0, float(timeout))
+        total_budget = min(requested_timeout, CHAT_TOTAL_TIMEOUT_SECONDS)
+        attempt_budget = min(requested_timeout, CHAT_ATTEMPT_TIMEOUT_SECONDS)
+        deadline = time.monotonic() + total_budget
         pairs = self.candidates(model=model, target_provider=target_provider)
         request_extra = dict(extra) if extra else {}
         if reasoning_effort is not None:
             request_extra["reasoning_effort"] = reasoning_effort
         attempts: list[tuple[str, str]] = []
+        deadline_exhausted = False
         for spec, mid in pairs:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                deadline_exhausted = True
+                break
             start = time.perf_counter()
             try:
                 result = self._layer.chat_completion(
@@ -464,7 +477,7 @@ class FreeLLMRouter:
                     messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    timeout=timeout if timeout is not None else provider_layer.DEFAULT_TIMEOUT,
+                    timeout=min(attempt_budget, remaining),
                     extra_body=request_extra or None,
                 )
             except Exception as exc:  # noqa: BLE001 - classified below; BaseExceptions propagate
@@ -485,8 +498,10 @@ class FreeLLMRouter:
                 reasoning=result.reasoning,
             )
         cooling = [name for name, state in self._states.items() if state.cooldown_until > self._clock()]
+        deadline_exhausted = deadline_exhausted or time.monotonic() >= deadline
+        deadline_note = f" before the {total_budget:g}s router deadline" if deadline_exhausted else ""
         raise FreeLLMUnavailableError(
-            f"all {len(attempts)} free provider attempt(s) failed ({len(cooling)} now cooling down){self._no_failover_reason(model, target_provider, len(attempts))}",
+            f"all {len(attempts)} free provider attempt(s) failed{deadline_note} ({len(cooling)} now cooling down){self._no_failover_reason(model, target_provider, len(attempts))}",
             attempts=attempts,
         )
 

@@ -78,6 +78,10 @@ class GateSubject:
     available_tools: frozenset[str] | None = None
     #: Tool names observed running in this step.
     tool_calls: tuple[str, ...] = ()
+    #: Structured arguments for the single tool call being gated. Side-effect
+    #: classification may use these only for explicitly action-discriminated
+    #: tools; missing or malformed arguments remain unknown and fail closed.
+    tool_input: Mapping[str, Any] | None = None
     #: Named subagents, skills, plugins.
     available_subagents: frozenset[str] | None = None
     available_skills: frozenset[str] | None = None
@@ -274,6 +278,21 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
 }
 
 
+def _side_effect_class(subject: GateSubject, tool: str) -> SideEffectClass:
+    """Resolve a tool's effect without widening unknown actions.
+
+    ``execute_sandboxed_computer_action`` is a multi-action API. Its command
+    classifier and audit-log read are pure, while command validation can create
+    an approval/audit record. Keeping the tool absent from the global table
+    prevents the latter from inheriting the pure actions' classification.
+    """
+    if tool == "execute_sandboxed_computer_action":
+        action = (subject.tool_input or {}).get("action")
+        if isinstance(action, str) and action in {"classify_command", "get_audit_log"}:
+            return SideEffectClass.READ_ONLY
+    return DEFAULT_SIDE_EFFECTS.get(tool, SideEffectClass.UNKNOWN)
+
+
 def check_tool_exists(subject: GateSubject) -> GateResult:
     """Refuse a call to a tool that is not installed.
 
@@ -419,7 +438,7 @@ def check_side_effect(subject: GateSubject) -> GateResult:
     name = "side_effect"
     if not subject.tool_calls:
         return GateResult.pass_(name, GateLayer.DETERMINISTIC, skipped="no calls")
-    classes = {tool: DEFAULT_SIDE_EFFECTS.get(tool, SideEffectClass.UNKNOWN) for tool in subject.tool_calls}
+    classes = {tool: _side_effect_class(subject, tool) for tool in subject.tool_calls}
     irreversible = sorted(t for t, c in classes.items() if c is SideEffectClass.IRREVERSIBLE)
     unclassified = sorted(t for t, c in classes.items() if c is SideEffectClass.UNKNOWN)
     if not irreversible and not unclassified:
@@ -512,7 +531,7 @@ def check_reuse_probe(subject: GateSubject) -> GateResult:
     called = {t for t in subject.tool_calls if t}
     if called and called <= PROBE_SATISFYING_TOOLS:
         return GateResult.pass_(name, GateLayer.DETERMINISTIC, probed="this step is itself a consultation")
-    classes = {t: DEFAULT_SIDE_EFFECTS.get(t, SideEffectClass.UNKNOWN) for t in called}
+    classes = {t: _side_effect_class(subject, t) for t in called}
     if called and all(c is SideEffectClass.READ_ONLY for c in classes.values()):
         return GateResult.pass_(name, GateLayer.DETERMINISTIC, probed="read-only step cannot duplicate")
     return GateResult(

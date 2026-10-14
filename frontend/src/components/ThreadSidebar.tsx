@@ -456,7 +456,7 @@ export function ThreadSidebar({
         </button>
         <button
           type="button"
-          onClick={onNewChat}
+          onClick={() => onNewChat()}
           className="p-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
           title="New conversation"
           aria-label="New conversation"
@@ -585,7 +585,7 @@ export function ThreadSidebar({
               <div className="p-3 pb-2 space-y-2">
                 <button
                   type="button"
-                  onClick={onNewChat}
+                  onClick={() => onNewChat()}
                   className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-95 shadow-xs transition-opacity"
                   title={
                     scopeLabel
