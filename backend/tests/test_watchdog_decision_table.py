@@ -282,17 +282,16 @@ def test_working_launcher_defer_does_not_feed_the_escalation_counter(tmp_path: P
     assert out["RESULT_DEFER"] == "3"
 
 
-def test_a_healthy_claim_with_a_starting_gateway_is_always_deferred(tmp_path: Path, watchdog: str) -> None:
-    """The measured incident, replayed: it must defer forever, never restart.
+def test_a_healthy_claim_with_a_starting_gateway_is_restarted_after_hung_threshold(tmp_path: Path, watchdog: str) -> None:
+    """A healthy launcher claim cannot defer forever after the Gateway is proven hung.
 
     The launcher claims ``status=healthy`` while the gateway port is bound but
     ``/health/ready`` has not answered yet - exactly the state that produced
     "escalation after 28 failing checks" and the full-restart loop. The
-    healthy-claim budget (n <= $MaxDeferredRecoveries) defers first; when it
-    runs out, the Tier-3 gate must defer again (and release the supervisor
-    lock it took to decide) instead of killing the stack.
+    healthy-claim budget defers first; after the Gateway's independent probe
+    threshold proves it hung, Tier 2 restarts only that component.
     """
-    passes = _budget(watchdog, "MaxDeferredRecoveries") + 2
+    passes = _budget(watchdog, "GatewayHungThreshold") + 2
     out = _run(
         tmp_path,
         _state(
@@ -302,13 +301,10 @@ def test_a_healthy_claim_with_a_starting_gateway_is_always_deferred(tmp_path: Pa
             ALPHA_WD_PASSES=str(passes),
         ),
     )
-    assert _heartbeats(out) == ["deferring"] * passes, out
-    assert _actions(out) == [], "a live launcher mid-boot must never receive a full-stack restart"
-    assert int(out["RESULT_DEFER"]) == passes
-    # The gate path takes the supervisor lock to make its decision and must
-    # give it back, or a later pass that legitimately needs to act is blocked.
-    assert out["RESULT_LOCK_TAKEN"] == "1"
-    assert out["RESULT_LOCK_RELEASED"] == "1"
+    assert _actions(out) == ["component:gateway"], out
+    assert _heartbeats(out).count("recovering") == 1
+    assert "stack" not in _actions(out), "a healthy launcher should recover only the hung component"
+    assert out["RESULT_DEFER"] == "0", "the component restart ends the deferral streak"
 
 
 def test_a_persistently_unhealthy_gateway_gets_a_component_restart_not_a_stack_kill(tmp_path: Path, watchdog: str) -> None:
@@ -333,6 +329,28 @@ def test_a_persistently_unhealthy_gateway_gets_a_component_restart_not_a_stack_k
     assert _actions(out) == ["component:gateway"], out
     assert _heartbeats(out).count("recovering") == 1
     assert "stack" not in _actions(out), "the full stack must not be killed while the launcher can act"
+
+
+def test_a_hung_gateway_bypasses_degraded_launcher_deferral(tmp_path: Path, watchdog: str) -> None:
+    """A live launcher must not suppress recovery after the Gateway is proven hung.
+
+    The launcher heartbeat can remain fresh while its monitor reports degraded.
+    Once the Gateway's own failure threshold classifies it as hung, restart that
+    component immediately instead of waiting for the launcher's long grace cap.
+    """
+    passes = _budget(watchdog, "GatewayHungThreshold") + 2
+    out = _run(
+        tmp_path,
+        _state(
+            http_ok=str(FE_PORT),
+            status="degraded",
+            uptime=1200,  # below the launcher's 3x startup grace cap
+            ALPHA_WD_PASSES=str(passes),
+        ),
+    )
+    assert _actions(out) == ["component:gateway"], out
+    assert _heartbeats(out).count("recovering") == 1
+    assert "stack" not in _actions(out)
 
 
 def test_a_dead_gateway_is_restarted_as_a_component_first(tmp_path: Path, watchdog: str) -> None:
