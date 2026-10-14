@@ -53,6 +53,19 @@ and every capability count stay exactly as they were. The rules that keep it laz
   `_build_registries`, with the old module-level `BUILTIN_TOOLS = [...]` shape
   still accepted. The generator now raises rather than emitting an empty
   `tools` section, which would satisfy every drift check while describing nothing.
+* **A direct submodule import can shadow a facade export with its module.**
+  `from alpha.tools.builtins.cognitive_memory_tool import cognitive_memory_tool`
+  (the shape tests and a few callers use) binds the package attribute to the
+  *module*, so the facade's `__getattr__` never fires for that name and the
+  `from alpha.tools.builtins import …` inside `_build_registries` hands back the
+  module instead of the tool — registry consumers then crash on `t.name`. This is
+  order-dependent (it only bites when the submodule is imported before the
+  registry is first built). `_build_registries` therefore unwraps any
+  module-shaped entry back to its own same-named tool export
+  (`_resolve_module_export`) *after* the literal and `_deduplicate_tools`, so the
+  literal, its order and de-duplication are untouched and
+  `contracts/feature_manifest.json` and the capability counts cannot move.
+  Regression: `tests/test_builtins_module_shadow_regression.py`.
 
 Note what this does **not** buy: the builtins are still imported the first time a
 process assembles a tool list. The cost is deferred, not removed — only processes

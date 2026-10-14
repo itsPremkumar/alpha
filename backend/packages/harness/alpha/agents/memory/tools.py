@@ -71,6 +71,9 @@ def memory_search_tool(
     """
     agent_name, user_id = _resolve_scope(runtime)
     try:
+        fused = _active_memory_fusion(query, user_id=user_id, agent_name=agent_name, limit=limit)
+        if fused is not None:
+            return json.dumps(fused, ensure_ascii=False)
         results = get_memory_manager().search(
             query,
             top_k=limit,
@@ -82,6 +85,57 @@ def memory_search_tool(
     except Exception as exc:
         logger.exception("memory_search_tool failed")
         return json.dumps({"error": str(exc)})
+
+
+def _active_memory_fusion(
+    query: str,
+    *,
+    user_id: str,
+    agent_name: str | None,
+    limit: int,
+) -> dict[str, object] | None:
+    """Fused multi-source retrieval, or ``None`` when the operator has not enabled it.
+
+    ``memory.fusion.enabled`` is the single activation switch (see
+    ``alpha.memory.active_controller.active_memory_enabled``). With it off this
+    returns ``None`` and the tool keeps its original single-backend behaviour
+    byte for byte, so an existing deployment changes nothing.
+
+    When on, the result carries the honest per-source posture beside the
+    records: a source that could not be read is reported as such and is never
+    rendered as "no memories matched". The controller abstains rather than
+    padding the answer, so an empty ``results`` list means "nothing cleared the
+    relevance floor", not "the search failed".
+    """
+    from alpha.memory.active_controller import active_memory_enabled, get_active_memory_controller
+
+    if not active_memory_enabled():
+        return None
+
+    controller = get_active_memory_controller(user_id=user_id, agent_name=agent_name)
+    working_set = controller.retrieve(query)
+    return {
+        "mode": working_set.mode,
+        "results": [
+            {
+                "id": item.memory_id,
+                "content": item.content,
+                "memory_type": item.memory_type,
+                # Ranking only. Deliberately not named "confidence": a good
+                # lexical match is not a probability that the text is correct.
+                "relevance": item.relevance,
+                "evidence_state": item.evidence_state,
+                "source": item.source,
+                "source_refs": list(item.source_refs),
+            }
+            for item in working_set.selected[:limit]
+        ],
+        "count": len(working_set.selected[:limit]),
+        "abstained": working_set.abstained,
+        "abstain_reason": working_set.abstain_reason,
+        "degraded_sources": list(working_set.degraded_sources),
+        "token_estimate": working_set.token_estimate,
+    }
 
 
 @tool("memory_add", parse_docstring=True)

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 from alpha.config import get_app_config
@@ -66,6 +67,29 @@ def _deduplicate_tools(tools: list[BaseTool]) -> list[BaseTool]:
         seen.add(key)
         unique.append(item)
     return unique
+
+
+def _resolve_module_export(entry: BaseTool) -> BaseTool:
+    """Return the tool an entry names, unwrapping a shadowed submodule.
+
+    ``alpha.tools.builtins`` is a PEP-562 lazy facade whose ``__getattr__``
+    resolves a tool name to the *tool* on first access. But a direct submodule
+    import (``from alpha.tools.builtins.cognitive_memory_tool import
+    cognitive_memory_tool``) binds the package attribute to the *module*, so the
+    facade's ``__getattr__`` never fires for that name and the ``from
+    alpha.tools.builtins import <name>`` inside ``_build_registries`` hands back
+    the module instead of the tool. Registry consumers then crash on ``t.name``.
+
+    This normalises that one failure mode without touching the registry literal,
+    its order, or ``_deduplicate_tools`` — so ``contracts/feature_manifest.json``
+    and the capability counts are unaffected. A real tool is returned unchanged;
+    a self-named submodule is replaced by its own same-named tool export.
+    """
+    if isinstance(entry, ModuleType):
+        resolved = getattr(entry, entry.__name__.rsplit(".", 1)[-1], None)
+        if resolved is not None and not isinstance(resolved, ModuleType):
+            return resolved
+    return entry
 
 
 def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
@@ -458,6 +482,10 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
         swarm_tool,
         company_tool,
     ]
+    # A direct submodule import can shadow a facade export with its module (see
+    # ``_resolve_module_export``); unwrap those so the registry always holds tools.
+    builtin_tools = [_resolve_module_export(tool) for tool in builtin_tools]
+    subagent_tools = [_resolve_module_export(tool) for tool in subagent_tools]
     return builtin_tools, subagent_tools
 
 

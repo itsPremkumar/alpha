@@ -130,6 +130,7 @@
 - [AGENT_LANDSCAPE_AND_ROADMAP.md](AGENT_LANDSCAPE_AND_ROADMAP.md) — Research survey and feature roadmap for the open-source agent landscape.
 - [AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md](AGENT_LIVE_STATUS_AND_WORK_COORDINATION.md) — Live agent activity ledger, work claims, and crash-honest status for group rooms.
 - [ALPHA-WORKFLOW-CURRENT-STATE.md](ALPHA-WORKFLOW-CURRENT-STATE.md) — Gap-driven state of the dynamic workflow engine: what shipped, what was audited as already present, and what is still missing.
+- [ALPHA_ACTIVE_MEMORY_IMPLEMENTATION_GUIDE.md](ALPHA_ACTIVE_MEMORY_IMPLEMENTATION_GUIDE.md) — Implementation guide for the active-memory feature: host activation over the existing fusion package, the single memory.fusion.enabled gate, runtime-home path pinning, relevance-vs-truth separation, and the memory_search wiring.
 - [ALPHA_ADVANCED_MULTI_AGENT_ARCHITECTURE_PLAN.md](ALPHA_ADVANCED_MULTI_AGENT_ARCHITECTURE_PLAN.md) — Research-backed blueprint for a hybrid, graph-governed, event-driven multi-agent runtime: separating reasoning, orchestration, execution, evidence and governance across every existing Alpha mode.
 - [ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md](ALPHA_APEX_AUTOPILOT_MASTER_SPEC.md) — Master design specification for APEX Autopilot: the autonomy contract, executive cycle, policy kernel, verification gate, and the 198 sections the implementation is checked against.
 - [ALPHA_COLLABORATION_AUDIT.md](ALPHA_COLLABORATION_AUDIT.md) — Audited collaboration surface: groups, projects, peer network, A2A, and what an operator can reach.

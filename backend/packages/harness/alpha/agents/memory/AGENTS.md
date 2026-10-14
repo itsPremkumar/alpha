@@ -56,6 +56,47 @@ DeerMem maps a missing agent name to `__default__`.
 That name is reserved and cannot identify a custom agent.
 Public agent names use lowercase canonical form.
 
+#### Active memory (fused retrieval)
+
+`alpha.memory.active_controller` is the host-level composition seam the
+`alpha.memory.fusion` package's own docstring reserves ("the host owns
+activation, provider adapters, and prompt wiring"). It adds **no storage and no
+ranking** — it adapts the stores Alpha already has (DreamStore's curated
+`MEMORY.md` rules, the configured `MemoryManager` backend, an optional
+`SessionSearchEngine`) into fusion `Candidate`/`StageResult` records and runs
+them through the existing fusion pipeline (weighted/RRF fusion, MMR diversity,
+per-type budgets).
+
+- **Single activation gate: `memory.fusion.enabled`** (read through
+  `active_memory_enabled()`). There is deliberately no second
+  `active_controller.enabled` knob — two switches that can disagree is how a
+  deployment ends up half-on with no operator able to say which won. With the
+  gate off, `memory_search` keeps its original single-backend behaviour byte
+  for byte.
+- **`memory_search` is the only model-facing surface.** When the gate is on,
+  `_active_memory_fusion()` in `agents/memory/tools.py` routes the tool through
+  the controller first and returns the fused working set plus the honest
+  per-source posture (`abstained`, `abstain_reason`, `degraded_sources`,
+  `token_estimate`). No new tool name, so `BUILTIN_TOOLS`,
+  `contracts/feature_manifest.json` and the capability counts are untouched.
+- **`unavailable` is not `empty`.** A source that could not be read is reported
+  with its reason in `degraded_sources`; it is never rendered as "no memories
+  matched". The controller abstains rather than padding, so empty `results`
+  means "nothing cleared the relevance floor".
+- **Relevance is not truth.** Results carry `relevance` (ranking only,
+  deliberately not named `confidence`) beside a separate `evidence_state`
+  (`unverified`/`contested`/…); nothing in this path ever reports `verified`.
+- **Durable paths are pinned to `runtime_home()`, never `Path.cwd()`.**
+  `runtime_rooted_dream_store()` wraps the DreamStore (whose own default is
+  cwd) so a Gateway started from a different directory reads the same rules
+  file; `DreamStore` itself is unchanged.
+
+In-loop synchronous callers get the same controller synchronously; the async
+entry point `async_retrieve()` offloads to a thread. Tests:
+`backend/tests/test_active_controller.py` (fusion wiring, abstention honesty,
+evidence-state separation, runtime-home pinning) plus the router suite
+`backend/tests/test_active_memory.py`.
+
 #### Operating modes
 
 `memory.mode: middleware` is the default passive mode.
