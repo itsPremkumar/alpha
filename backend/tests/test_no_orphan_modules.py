@@ -100,6 +100,25 @@ ALLOWED_ORPHANS: dict[str, str] = {
     "alpha.workflow._probe_replay_fold": "standalone replay probe: does replay_run fold a connectivity_wait_parked park?; run by hand or tests/test_diagnostic_scripts.py, never imported by production code",
     "alpha.workflow._proof_external_wait": "standalone replay proof: external_wait_parked folds to WAITING_EVENT (exit 0/1); run by hand or tests/test_diagnostic_scripts.py, never imported by production code",
     "app.gateway.routers.route_audit_builder": "standalone AST route inventory (JSON) over app/gateway/routers — never imports the Gateway; run by hand or tests/test_diagnostic_scripts.py, never imported by production code",
+    # Security-audit probes under the "live probes" method recorded in
+    # docs/audit/security.md: each one is *executed* against a running Gateway
+    # and deliberately never imported, because importing it would fire its
+    # own HTTP cases at import time (mutating probes included). Execution is
+    # their wiring, so no import may be added to satisfy this guard — that
+    # would turn a hand-run audit into a side effect of collection.
+    "app.gateway.routers.probe_keys": "hand-run security-audit probe (docs/audit/security.md live-probe method); executed against a Gateway, never imported",
+    "app.gateway.routers.probe_mutating": "hand-run security-audit probe hitting unauthenticated mutating routes; executed against a Gateway, never imported",
+    "app.gateway.routers.probe_openapi": "hand-run security-audit probe comparing live routes against the published OpenAPI schema; executed, never imported",
+    "app.gateway.routers.probe_trust": "hand-run security-audit probe for trust-boundary responses; executed, never imported",
+    "app.gateway.probes.noauth_probe": "hand-run security-audit probe recording status codes for unauthenticated calls; executed, never imported",
+    "app.gateway.probes.authstate_probe": "hand-run security-audit probe recording auth-state responses; executed, never imported",
+    # Two byte-identical ad-hoc route dumpers (`python -m` a walk over
+    # `app.routes`). Each hard-codes one machine's PYTHONPATH, so neither is a
+    # product entry point and importing either from production would bake a
+    # developer's absolute path into the Gateway. `route_audit_builder` above
+    # is the maintained version of the same question.
+    "app.gateway._audit_routes": "ad-hoc route-dump helper run by hand during audits; hardcodes one machine's PYTHONPATH, so nothing may import it (route_audit_builder is the maintained equivalent)",
+    "app.gateway.audit_now": "ad-hoc route-dump helper, duplicate of app.gateway._audit_routes, run by hand during audits; hardcodes one machine's PYTHONPATH",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by
@@ -256,6 +275,7 @@ def _referenced_modules() -> set[str]:
                 tree = None
             if tree is not None:
                 referenced.update(_walk_tree(tree))
+                referenced.update(_lazy_export_modules(path, tree))
         # Dotted-path strings cover config-driven dynamic loading. A target may
         # carry a ``:Class`` suffix (``use: alpha.x.y:Klass``) or a ``.py``
         # suffix (langgraph.json file paths); normalise both back to a module.
@@ -288,6 +308,59 @@ def _normalize_target(raw: str) -> str:
 def _target_modules(raw: str) -> set[str]:
     """Normalise one dotted loader target into the module path(s) it names."""
     return {raw, _normalize_target(raw)}
+
+
+def _dotted_package(path: Path) -> str | None:
+    """The dotted package name of a package ``__init__`` file, or None.
+
+    The relative path is taken from the tree root, which already carries the
+    top-level package name: ``packages/harness/alpha/tools/builtins`` is
+    ``alpha.tools.builtins`` and ``app/gateway/probes`` is ``app.gateway.probes``
+    — the same spelling ``_module_name(path, HARNESS)`` produces for the sweep.
+    """
+    if path.name != "__init__.py":
+        return None
+    for root in (HARNESS, BACKEND):
+        try:
+            rel = path.parent.relative_to(root)
+        except ValueError:
+            continue
+        return ".".join(rel.parts) or None
+    return None
+
+
+def _lazy_export_modules(path: Path, tree: ast.AST) -> set[str]:
+    """Modules a package's lazy-export facade resolves at runtime.
+
+    A package can defer its public symbols with PEP 562 ``__getattr__`` plus a
+    ``symbol -> module stem`` map, importing the submodule on first access.
+    ``alpha/tools/builtins/__init__.py`` is the repo's instance, and it is the
+    *only* static trace that loader leaves: the stems are bare sibling names, so
+    neither an import statement nor a dotted loader string ever names those
+    modules. Reading the file for symbols alone therefore reported every one of
+    them as an orphan — 85 modules of the tool registry, all of them live.
+
+    A stem counts as a reference only when it names a module **inside that same
+    package**. That is the rule that keeps this from being a blanket waiver: a
+    stem that resolves to nothing references nothing, so a typo in the map still
+    fails the sweep, and no other package's modules can be pulled in by accident.
+    """
+    package = _dotted_package(path)
+    if package is None:
+        return set()
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Dict):
+            continue
+        for value in node.value.values:
+            if not (isinstance(value, ast.Constant) and isinstance(value.value, str)):
+                continue
+            stem = value.value.strip()
+            if not stem.isidentifier() or stem.startswith("_"):
+                continue
+            if (path.parent / f"{stem}.py").is_file() or (path.parent / stem).is_dir():
+                found.add(f"{package}.{stem}")
+    return found
 
 
 def _walk_tree(tree: ast.AST) -> set[str]:
@@ -486,6 +559,32 @@ def test_dotted_string_references_are_indexed() -> None:
     ]
     for module, target in expected:
         assert _normalize_target(target) in referenced, f"dotted loader target {target!r} was not indexed — the scan regexes are broken again, so {module} would be reported as an orphan"
+
+
+def test_lazy_export_facades_are_references() -> None:
+    """A PEP 562 ``__getattr__`` facade's module map counts as a reference.
+
+    ``alpha/tools/builtins/__init__.py`` resolves every public symbol on first
+    access from a ``symbol -> module stem`` map, so no import statement and no
+    dotted loader string ever names those submodules. Reading the map — and
+    resolving each stem against the files of its own package — is the only way
+    the sweep can see them. Without this, 85 live tool modules of the registry
+    are reported as orphans and the guard's verdict is noise.
+    """
+    referenced = _referenced_modules()
+
+    for module in (
+        "alpha.tools.builtins.action_transaction_tool",
+        "alpha.tools.builtins.alpha_capability_tool",
+    ):
+        assert module in referenced, f"{module} is lazily exported; its facade's map is its only static reference and it was not indexed"
+
+    # The rule is deliberately narrow: a stem that resolves to nothing inside
+    # that package references nothing, so a typo in the map cannot quietly mark
+    # a module wired and cannot pull in an unrelated one.
+    tree = ast.parse('_M = {"no_such_symbol": "no_such_tool_module"}\n')
+    probe = BACKEND / "app" / "gateway" / "probes" / "__init__.py"
+    assert _lazy_export_modules(probe, tree) == set(), "an unresolvable stem must reference nothing"
 
 
 def test_gitignored_paths_are_excluded_from_the_guard() -> None:
