@@ -3,12 +3,16 @@
 
 The default run is fast and read-only: it compiles every tracked Python
 source without importing or executing it, then runs Ruff lint and format
-checks. ``--full`` adds mypy and both runtime test suites. Each stage gets a
-separate UTF-8 log and machine-readable summary under ``.alpha/reports/`` so a
-large failure is easy to locate and share.
+checks. ``--runtime-smoke`` additionally asks pytest to collect tests, which
+loads test modules and exposes import/collection-time failures without running
+the test bodies. ``--full`` adds that smoke stage, mypy, and both runtime test
+suites. Each stage gets a separate UTF-8 log and machine-readable summary under
+``.alpha/reports/`` so a large failure is easy to locate and share.
 
-Compilation catches syntax/compiler errors only. Runtime behavior is checked by
-pytest; mypy and Ruff are static checks and cannot prove runtime correctness.
+Compilation catches syntax/compiler errors only. Collection catches import and
+test-discovery failures on the paths exercised by pytest, not every possible
+module import. Runtime behavior is checked by pytest; mypy and Ruff are static
+checks and cannot prove runtime correctness.
 """
 
 from __future__ import annotations
@@ -158,6 +162,11 @@ def _args() -> argparse.Namespace:
     )
     parser.add_argument("--compile-only", action="store_true", help="only compile-check Python source; suitable for CI")
     parser.add_argument("--typecheck", action="store_true", help="also run mypy (known debt may fail)")
+    parser.add_argument(
+        "--runtime-smoke",
+        action="store_true",
+        help="collect backend tests to detect test-module import and collection errors without running tests",
+    )
     parser.add_argument("--tests", action="store_true", help="also execute the offline backend pytest suite")
     parser.add_argument("--blocking-io", action="store_true", help="also execute backend blocking-I/O tests")
     parser.add_argument(
@@ -211,9 +220,22 @@ def main() -> int:
                 )
             )
 
+    run_runtime_smoke = not args.compile_only and (args.full or args.runtime_smoke)
     run_typecheck = not args.compile_only and (args.full or args.typecheck)
     run_tests = not args.compile_only and (args.full or args.tests)
     run_blocking_io = not args.compile_only and (args.full or args.blocking_io)
+    if run_runtime_smoke:
+        environment = os.environ.copy()
+        environment.update({"PYTHONPATH": ".", "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"})
+        stages.append(
+            _run_process_stage(
+                "pytest-collect",
+                [python, "-m", "pytest", "--collect-only", "-q", "tests/"],
+                cwd=REPO_ROOT / "backend",
+                reports_dir=reports_dir,
+                environment=environment,
+            )
+        )
     if run_typecheck:
         stages.append(
             _run_process_stage(

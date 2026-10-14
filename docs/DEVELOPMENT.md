@@ -154,14 +154,23 @@ lint and formatting checks. For mypy and executable backend checks, run:
 make python-health PYTHON_HEALTH_ARGS=--full
 ```
 
-The full run executes mypy, the offline backend tests, and the blocking-I/O test
-suite. Reports are written to `.alpha/reports/python-health-latest.json` and
-one log per stage; pytest also writes JUnit XML reports there. A compiler pass
-only proves source syntax is compilable. Ruff and mypy are static checks, and
-runtime correctness is evidenced only by tests that actually execute the
-relevant behavior. The current mypy CI step is informational because the
-repository still has a large existing type-error backlog, so a mypy failure is
-reported honestly rather than hidden.
+The full run first collects the backend tests to catch their import and
+collection-time failures, then executes mypy, the offline backend tests, and
+the blocking-I/O test suite. To run just the import/collection smoke check:
+
+```bash
+make python-health PYTHON_HEALTH_ARGS=--runtime-smoke
+```
+
+Reports are written to `.alpha/reports/python-health-latest.json` and one log
+per stage; pytest also writes JUnit XML reports for executed suites. A compiler
+pass only proves source syntax is compilable. Collection catches imports only
+along pytest's discovery paths; it does not import every module, because doing
+so can trigger optional-service requirements or module side effects. Ruff and
+mypy are static checks, and runtime correctness is evidenced only by tests
+that actually execute the relevant behavior. The current mypy CI step is
+informational because the repository still has a large existing type-error
+backlog, so a mypy failure is reported honestly rather than hidden.
 
 #### Type Hints
 - Required for all public functions

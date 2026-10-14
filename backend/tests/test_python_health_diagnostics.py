@@ -6,6 +6,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "check_python_health.py"
 
@@ -47,3 +49,12 @@ def test_compile_stage_does_not_execute_source(tmp_path: Path, monkeypatch):
     assert exit_code == 0
     assert "Compiled 1" in output
     assert not marker.exists()
+
+
+def test_runtime_smoke_flag_is_available(monkeypatch: pytest.MonkeyPatch):
+    module = _load_diagnostics_module()
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--runtime-smoke"])
+
+    args = module._args()
+
+    assert args.runtime_smoke is True
