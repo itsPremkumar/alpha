@@ -19,6 +19,12 @@ Keep the trigger, once-per-turn, and post-edit regressions in
 `tests/test_autonomous_commands.py` and
 `tests/test_autonomous_command_middleware_sync_path.py` aligned.
 
+`ApexContractToolMiddleware` stamps policy refusals as non-recoverable and
+removes tools from the next model request for that turn. The model may explain
+the refusal, but cannot repeat a call the persisted APEX contract will deny;
+keep sync/async seam coverage and refusal metadata assertions in
+`tests/test_apex_tool_middleware.py` aligned.
+
 After latest-user rescue, if the inherited trimmer empties an AI/Tool-only
 window, format it and use `_build_summary_input_text(strategy="last")`.
 Keep normal human-anchored trimming and the final-message fallback for mixed

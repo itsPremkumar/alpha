@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, override
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphBubbleUp
 from langgraph.prebuilt.tool_node import ToolCallRequest
@@ -42,6 +43,8 @@ _MISSING_TOOL_CALL_ID = "missing_tool_call_id"
 _TASK_TOOL_NAME = "task"
 _RECOVERY_HINT = "Continue with available context, or choose an alternative tool."
 _AUTONOMY_RECOVERY_KEY = "alpha_autonomy_recovery"
+_APEX_POLICY_META_KEY = "alpha_tool_meta"
+_APEX_POLICY_REFUSALS_CONTEXT_KEY = "__alpha_apex_policy_refusal_tool_call_ids"
 
 
 class ApexContractToolMiddleware(AgentMiddleware[AgentState]):
@@ -121,12 +124,80 @@ class ApexContractToolMiddleware(AgentMiddleware[AgentState]):
     @staticmethod
     def _denied(request: ToolCallRequest, message: str) -> ToolMessage:
         tool_name = str(request.tool_call.get("name") or "unknown_tool")
+        context = ApexContractToolMiddleware._context(request)
+        refusal_ids = context.get(_APEX_POLICY_REFUSALS_CONTEXT_KEY)
+        if not isinstance(refusal_ids, list):
+            refusal_ids = []
+            context[_APEX_POLICY_REFUSALS_CONTEXT_KEY] = refusal_ids
+        tool_call_id = str(request.tool_call.get("id") or "missing_id")
+        if tool_call_id not in refusal_ids:
+            refusal_ids.append(tool_call_id)
         return ToolMessage(
             content=message,
-            tool_call_id=str(request.tool_call.get("id") or "missing_id"),
+            tool_call_id=tool_call_id,
             name=tool_name,
             status="error",
+            additional_kwargs={
+                # APEX refusals are policy outcomes, not recoverable tool
+                # failures. A server-owned runtime-context call-id ledger lets
+                # the model seam stop retries without trusting tool-controlled
+                # ToolMessage metadata as policy authority.
+                _APEX_POLICY_META_KEY: {
+                    "status": "error",
+                    "error_type": "policy",
+                    "recoverable_by_model": False,
+                    "recommended_next_action": "stop",
+                    "source": "tool_return",
+                },
+            },
         )
+
+    @staticmethod
+    def _finish_after_policy_refusal(request: ModelRequest) -> ModelRequest:
+        """Keep the model able to explain a refusal, but remove retryable tools.
+
+        APEX budget refusals do not consume another tool-call reservation. If
+        the model keeps emitting the refused call, an active session can
+        otherwise generate an unbounded stream of identical error messages.
+        Only a call id placed in the server-owned runtime context by
+        ``_denied`` activates this boundary; tool-controlled message metadata
+        cannot suppress tools.
+        """
+        if not request.messages:
+            return request
+        runtime = getattr(request, "runtime", None)
+        context = getattr(runtime, "context", None) if runtime is not None else None
+        if not isinstance(context, dict):
+            return request
+        refusal_ids = context.get(_APEX_POLICY_REFUSALS_CONTEXT_KEY)
+        if not isinstance(refusal_ids, list):
+            return request
+        # ToolNode can return several results for one parallel tool-call
+        # batch. A refusal anywhere in that trailing batch must close the
+        # tool boundary, even when a successful result follows it.
+        for message in reversed(request.messages):
+            if not isinstance(message, ToolMessage):
+                break
+            if message.tool_call_id in refusal_ids:
+                return request.override(tools=[], tool_choice=None)
+
+        return request
+
+    @override
+    def wrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], Any],
+    ) -> ModelResponse:
+        return handler(self._finish_after_policy_refusal(request))
+
+    @override
+    async def awrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], Awaitable[Any]],
+    ) -> ModelResponse:
+        return await handler(self._finish_after_policy_refusal(request))
 
     def _authorize_and_reserve(self, request: ToolCallRequest) -> ToolMessage | None:
         from alpha.apex.contract import APEX_RUNTIME_SESSION_KEY, contract_from_snapshot
