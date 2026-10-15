@@ -16,18 +16,19 @@ const ast = ts.createSourceFile(
   true,
   ts.ScriptKind.TSX,
 );
-let handlerSource;
+const handlerSources = new Map();
 function visit(node) {
   if (
     ts.isVariableDeclaration(node) &&
-    node.name.getText(ast) === "handleSaveGoal"
+    ["handleSaveGoal", "handleClearGoal"].includes(node.name.getText(ast))
   ) {
-    handlerSource = node.initializer.getText(ast);
+    handlerSources.set(node.name.getText(ast), node.initializer.getText(ast));
   }
   ts.forEachChild(node, visit);
 }
 visit(ast);
-assert.ok(handlerSource, "ChatView must define its conversation-goal handler");
+assert.ok(handlerSources.has("handleSaveGoal"), "ChatView must define its conversation-goal save handler");
+assert.ok(handlerSources.has("handleClearGoal"), "ChatView must define its conversation-goal clear handler");
 
 const compile = (text) =>
   ts.transpileModule(text, {
@@ -41,6 +42,7 @@ test("goal save discloses the Gateway reason when a run is in flight", async () 
   const state = { goalText: null, editing: true, messages: [] };
   const dependencies = {
     activeThreadId: "thread-1",
+    activeThreadIdRef: { current: "thread-1" },
     goalDraft: "Finish the verified production-readiness task",
     setGoal: async (threadId, objective) => {
       assert.equal(threadId, "thread-1");
@@ -64,7 +66,7 @@ test("goal save discloses the Gateway reason when a run is in flight", async () 
   };
   const handleSaveGoal = new Function(
     ...Object.keys(dependencies),
-    `${compile(`const handleSaveGoal = ${handlerSource};`)}; return handleSaveGoal;`,
+    `${compile(`const handleSaveGoal = ${handlerSources.get("handleSaveGoal")};`)}; return handleSaveGoal;`,
   )(...Object.values(dependencies));
 
   await handleSaveGoal();
@@ -98,6 +100,7 @@ test("goal save does not promote a successful empty Gateway response into an act
   const state = { goalText: null, goalDetails: null, editing: true, messages: [] };
   const dependencies = {
     activeThreadId: "thread-1",
+    activeThreadIdRef: { current: "thread-1" },
     goalDraft: "Finish the verified production-readiness task",
     setGoal: async () => ({
       goal: null,
@@ -121,7 +124,7 @@ test("goal save does not promote a successful empty Gateway response into an act
   };
   const handleSaveGoal = new Function(
     ...Object.keys(dependencies),
-    `${compile(`const handleSaveGoal = ${handlerSource};`)}; return handleSaveGoal;`,
+    `${compile(`const handleSaveGoal = ${handlerSources.get("handleSaveGoal")};`)}; return handleSaveGoal;`,
   )(...Object.values(dependencies));
 
   await handleSaveGoal();
@@ -131,4 +134,77 @@ test("goal save does not promote a successful empty Gateway response into an act
   assert.equal(state.editing, false);
   assert.match(state.messages.at(-1), /reported no active goal/);
   assert.equal(dependencies.localThreadMetaRef.current["thread-1"].goal, null);
+});
+
+test("a deferred goal save archives its owner without repainting the newly active thread", async () => {
+  let resolveSave;
+  const writes = [];
+  const visibleUpdates = [];
+  const dependencies = {
+    activeThreadId: "thread-1",
+    activeThreadIdRef: { current: "thread-1" },
+    goalDraft: "Goal for thread one",
+    setGoal: (threadId, objective) => {
+      assert.equal(threadId, "thread-1");
+      assert.equal(objective, "Goal for thread one");
+      return new Promise((resolve) => { resolveSave = resolve; });
+    },
+    setGoalText: (value) => visibleUpdates.push(["text", value]),
+    setGoalDetails: (value) => visibleUpdates.push(["details", value]),
+    setGoalReadError: (value) => visibleUpdates.push(["readError", value]),
+    setGoalEditing: (value) => visibleUpdates.push(["editing", value]),
+    localThreadMetaRef: { current: { "thread-1": { botName: null, goal: null } } },
+    persistLocalHistory: async (operation) => operation(),
+    setThreadMeta: (threadId, meta) => writes.push([threadId, meta]),
+    flash: () => {},
+    errMsg,
+  };
+  const handleSaveGoal = new Function(
+    ...Object.keys(dependencies),
+    `${compile(`const handleSaveGoal = ${handlerSources.get("handleSaveGoal")};`)}; return handleSaveGoal;`,
+  )(...Object.values(dependencies));
+
+  const pending = handleSaveGoal();
+  dependencies.activeThreadIdRef.current = "thread-2";
+  resolveSave({ goal: "Goal for thread one", status: "active" });
+  await pending;
+
+  assert.equal(dependencies.localThreadMetaRef.current["thread-1"].goal, "Goal for thread one");
+  assert.deepEqual(writes, [["thread-1", { goal: "Goal for thread one" }]]);
+  assert.deepEqual(visibleUpdates, [], "thread one’s late response must not change thread two’s visible controls");
+});
+
+test("a deferred goal clear archives its owner without clearing the newly active thread", async () => {
+  let resolveClear;
+  const writes = [];
+  const visibleUpdates = [];
+  const dependencies = {
+    activeThreadId: "thread-1",
+    activeThreadIdRef: { current: "thread-1" },
+    clearGoal: (threadId) => {
+      assert.equal(threadId, "thread-1");
+      return new Promise((resolve) => { resolveClear = resolve; });
+    },
+    setGoalText: (value) => visibleUpdates.push(["text", value]),
+    setGoalDetails: (value) => visibleUpdates.push(["details", value]),
+    setGoalReadError: (value) => visibleUpdates.push(["readError", value]),
+    setGoalEditing: (value) => visibleUpdates.push(["editing", value]),
+    localThreadMetaRef: { current: { "thread-1": { botName: null, goal: "Old goal" } } },
+    persistLocalHistory: async (operation) => operation(),
+    setThreadMeta: (threadId, meta) => writes.push([threadId, meta]),
+    errMsg,
+  };
+  const handleClearGoal = new Function(
+    ...Object.keys(dependencies),
+    `${compile(`const handleClearGoal = ${handlerSources.get("handleClearGoal")};`)}; return handleClearGoal;`,
+  )(...Object.values(dependencies));
+
+  const pending = handleClearGoal();
+  dependencies.activeThreadIdRef.current = "thread-2";
+  resolveClear();
+  await pending;
+
+  assert.equal(dependencies.localThreadMetaRef.current["thread-1"].goal, null);
+  assert.deepEqual(writes, [["thread-1", { goal: null }]]);
+  assert.deepEqual(visibleUpdates, [], "thread one’s late response must not clear thread two’s visible controls");
 });

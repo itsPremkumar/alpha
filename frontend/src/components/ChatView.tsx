@@ -613,6 +613,12 @@ export default function ChatView({
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  // Async mutations may settle after the operator switches conversations.
+  // Keep the committed render's selection available to those callbacks so they
+  // can archive their result under the owning thread without repainting the
+  // newly active conversation.
+  const activeThreadIdRef = useRef(activeThreadId);
+  activeThreadIdRef.current = activeThreadId;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [models, setModels] = useState<AIModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("default");
@@ -3032,24 +3038,30 @@ export default function ChatView({
   };
 
   const handleSaveGoal = async () => {
-    if (!activeThreadId || !goalDraft.trim()) return;
+    const threadId = activeThreadId;
+    if (!threadId || !goalDraft.trim()) return;
     try {
-      const savedGoal = await setGoal(activeThreadId, goalDraft.trim());
-      setGoalDetails(savedGoal.goal ? savedGoal : null);
-      setGoalReadError(null);
-      setGoalText(savedGoal.goal);
-      setGoalEditing(false);
-      localThreadMetaRef.current[activeThreadId] = {
-        ...(localThreadMetaRef.current[activeThreadId] || {
+      const savedGoal = await setGoal(threadId, goalDraft.trim());
+      localThreadMetaRef.current[threadId] = {
+        ...(localThreadMetaRef.current[threadId] || {
           botName: null,
           goal: null,
         }),
         goal: savedGoal.goal,
       };
       await persistLocalHistory(
-        () => setThreadMeta(activeThreadId, { goal: savedGoal.goal }),
+        () => setThreadMeta(threadId, { goal: savedGoal.goal }),
         "The goal is saved on the server, but its local copy could not be updated.",
       );
+      // These values describe the visible conversation. The save still belongs
+      // in the archived thread above, but must not overwrite another thread's
+      // goal controls if navigation happened while the request was in flight.
+      if (activeThreadIdRef.current === threadId) {
+        setGoalDetails(savedGoal.goal ? savedGoal : null);
+        setGoalReadError(null);
+        setGoalText(savedGoal.goal);
+        setGoalEditing(false);
+      }
       flash(savedGoal.goal
         ? "Goal set — the agent works toward it until done."
         : "The Gateway accepted the request but reported no active goal; no goal is shown.");
@@ -3059,24 +3071,27 @@ export default function ChatView({
   };
 
   const handleClearGoal = async () => {
-    if (!activeThreadId) return;
+    const threadId = activeThreadId;
+    if (!threadId) return;
     try {
-      await clearGoal(activeThreadId);
-      setGoalText(null);
-      setGoalDetails(null);
-      setGoalReadError(null);
-      setGoalEditing(false);
-      localThreadMetaRef.current[activeThreadId] = {
-        ...(localThreadMetaRef.current[activeThreadId] || {
+      await clearGoal(threadId);
+      localThreadMetaRef.current[threadId] = {
+        ...(localThreadMetaRef.current[threadId] || {
           botName: null,
           goal: null,
         }),
         goal: null,
       };
       await persistLocalHistory(
-        () => setThreadMeta(activeThreadId, { goal: null }),
+        () => setThreadMeta(threadId, { goal: null }),
         "The goal was cleared on the server, but its local copy could not be updated.",
       );
+      if (activeThreadIdRef.current === threadId) {
+        setGoalText(null);
+        setGoalDetails(null);
+        setGoalReadError(null);
+        setGoalEditing(false);
+      }
     } catch (error) {
       flash(`Couldn't clear the goal: ${errMsg(error)}`);
     }
