@@ -714,6 +714,26 @@ def _runs(name: str, job: str) -> str:
     return "\n".join(str(step.get("run", "")) for step in _steps(name, job))
 
 
+def test_windows_release_assets_require_build_and_version_verification() -> None:
+    workflow = _workflow("windows-installer.yml")
+    jobs = workflow["jobs"]
+    verify = jobs["verify-versions"]
+    publish = jobs["publish-installer"]
+
+    assert verify["if"] == "startsWith(github.ref, 'refs/tags/v')"
+    assert verify["uses"] == "./.github/workflows/verify-versions.yml"
+    assert publish["if"] == "startsWith(github.ref, 'refs/tags/v')"
+    assert publish["needs"] == ["build-installer", "verify-versions"]
+    assert publish["permissions"] == {"contents": "write"}
+
+    downloaded = [step["with"]["name"] for step in publish["steps"] if step.get("uses") == "actions/download-artifact@v4"]
+    uploaded = [step["with"]["name"] for step in jobs["build-installer"]["steps"] if step.get("uses") == "actions/upload-artifact@v4"]
+    assert downloaded == ["Alpha-Windows-Installer", "Alpha-Windows-Update-Feed"]
+    assert all(name in uploaded for name in downloaded)
+    release = next(step for step in publish["steps"] if step.get("uses") == "softprops/action-gh-release@v2")
+    assert release["with"]["fail_on_unmatched_files"] is True
+
+
 def test_frontend_workflow_runs_the_branding_suite() -> None:
     """`pnpm test` only globs src/lib, so the branding pin needs its own step."""
     runs = _runs("frontend-unit-tests.yml", "frontend-unit-tests")

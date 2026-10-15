@@ -8,6 +8,8 @@ duplicated across four files that **must** stay identical.
 > **The one rule that blocks publishing:** a `v*` git tag triggers CI, which runs
 > [`scripts/verify_versions.sh`](scripts/verify_versions.sh). If any version source
 > has drifted, **all publishing is blocked.** Verify before you tag, not after.
+> The Windows installer assets are attached by a separate tag-only job that needs
+> both the successful installer build and this reusable version-verification job.
 
 ---
 
@@ -95,6 +97,8 @@ and [`.github/workflows/chart.yaml`](.github/workflows/chart.yaml) for the Helm
 chart, plus
 [`.github/workflows/windows-installer.yml`](.github/workflows/windows-installer.yml)
 for the Electron installer.
+The installer workflow attaches `.exe` and `latest*.yml` assets only after its
+version gate and build both pass.
 
 ### 7. Publish the GitHub Release
 

@@ -257,6 +257,7 @@ These apply repo-wide; module guides own the module-specific detail.
   (`version` + `appVersion`). Pushing a `v*` git tag triggers CI that runs
   `scripts/verify_versions.sh` and **blocks all publishing** if any source drifts. Before
   bumping, run `scripts/bump_version.sh <ver>` (aligns all four at once) and
-  `scripts/verify_versions.sh <ver>`. See [RELEASING.md](RELEASING.md).
+  `scripts/verify_versions.sh <ver>`. The Windows release-asset job depends on the
+  installer build and this reusable gate. See [RELEASING.md](RELEASING.md).
 - **Don't edit `CLAUDE.md`** — it only contains `@AGENTS.md`. All agent guidance changes
   belong here in `AGENTS.md`; `CLAUDE.md` is a thin import shim.
