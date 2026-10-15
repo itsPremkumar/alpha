@@ -19,6 +19,7 @@ import asyncio
 
 import pytest
 
+import app.gateway.sse as sse
 from app.gateway.sse import with_heartbeats
 
 pytestmark = pytest.mark.anyio
@@ -119,6 +120,37 @@ async def test_closing_the_outer_generator_stops_the_pump():
     assert released.is_set(), "the pump task must be cancelled when the stream closes"
 
 
+async def test_stalled_consumer_backpressures_fast_source_with_bounded_buffer():
+    produced = 0
+    source_closed = asyncio.Event()
+
+    async def fast_source():
+        nonlocal produced
+        try:
+            while True:
+                produced += 1
+                yield f"item-{produced}".encode()
+        finally:
+            source_closed.set()
+
+    gen = with_heartbeats(fast_source(), interval=0.05, heartbeat_frame=HB)
+    assert await gen.__anext__() == b"item-1"
+
+    # Leave the HTTP-facing iterator stalled while the pump runs. It may have
+    # one item in hand while waiting for queue capacity, but cannot drain an
+    # unbounded number of frames from the source.
+    await asyncio.sleep(0.05)
+    stalled_count = produced
+    await asyncio.sleep(0.05)
+    assert produced == stalled_count
+    assert stalled_count <= sse._HEARTBEAT_QUEUE_MAXSIZE + 2
+
+    # Cancellation while queue.put() is blocked must not wait to enqueue EOF
+    # into the full queue, and must close the paused source generator.
+    await asyncio.wait_for(gen.aclose(), timeout=1.0)
+    assert source_closed.is_set()
+
+
 async def test_bridge_comment_heartbeats_pass_through_but_do_not_suppress_the_named_one():
     """The stream bridge already emits ``: heartbeat`` comments: proxies see
     liveness, browser JS cannot. Those must flow through untouched yet never
@@ -160,6 +192,17 @@ async def test_source_completion_ends_the_stream_without_trailing_heartbeats():
 
     got = await asyncio.wait_for(drain(), timeout=3.0)
     assert got == [b"last"]
+
+
+async def test_source_error_still_ends_the_client_stream():
+    async def broken():
+        yield b"before-error"
+        raise RuntimeError("source failed")
+
+    async def drain() -> list[bytes]:
+        return [item async for item in with_heartbeats(broken(), interval=0.05, heartbeat_frame=HB)]
+
+    assert await asyncio.wait_for(drain(), timeout=1.0) == [b"before-error"]
 
 
 class TestRouteWiring:

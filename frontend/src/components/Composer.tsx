@@ -38,6 +38,10 @@ import { InsertMenu } from "@/components/InsertMenu";
 import { ModelMenu } from "@/components/ModelMenu";
 import { QUICK_KEY_PROVIDERS } from "@/lib/model-menu";
 import { listSubagentCatalog, type SubagentDef } from "@/lib/subagents";
+import {
+  concurrencyForTotal,
+  concurrencyOptionsForTotal,
+} from "@/lib/subagent-capacity";
 import type { FreeProviderHealth } from "@/lib/freeModels";
 import {
   applyMention,
@@ -1242,11 +1246,15 @@ export function Composer({
             {delegationMode !== "off" && onSubagentConcurrencyChange && onSubagentTotalChange && (
               <div className="flex items-center gap-1" aria-label="Subagent capacity controls">
                 <label className="sr-only" htmlFor="composer-subagent-concurrency">Concurrent subagents</label>
-                <select id="composer-subagent-concurrency" aria-label="Concurrent subagents" title="Maximum task workers at once; the Gateway may apply a lower process limit" value={subagentConcurrency} disabled={isLoading} onChange={(event) => onSubagentConcurrencyChange(Number(event.target.value))} className="max-w-24 rounded-lg border border-border/70 bg-muted/60 px-2 py-1.5 text-[10px] text-foreground disabled:opacity-50">
-                  {[1, 2, 3, 4, 6, 8].map((count) => <option key={count} value={count}>{count} at once</option>)}
+                <select id="composer-subagent-concurrency" aria-label="Concurrent subagents" title="Maximum task workers at once; cannot exceed the total delegation cap, and the Gateway may apply a lower process limit" value={subagentConcurrency} disabled={isLoading} onChange={(event) => onSubagentConcurrencyChange(Number(event.target.value))} className="max-w-24 rounded-lg border border-border/70 bg-muted/60 px-2 py-1.5 text-[10px] text-foreground disabled:opacity-50">
+                  {concurrencyOptionsForTotal(subagentTotal).map((count) => <option key={count} value={count}>{count} at once</option>)}
                 </select>
                 <label className="sr-only" htmlFor="composer-subagent-total">Total subagents</label>
-                <select id="composer-subagent-total" aria-label="Total subagents" title="Maximum task delegations for this run; capped by the server policy" value={subagentTotal} disabled={isLoading} onChange={(event) => onSubagentTotalChange(Number(event.target.value))} className="max-w-24 rounded-lg border border-border/70 bg-muted/60 px-2 py-1.5 text-[10px] text-foreground disabled:opacity-50">
+                <select id="composer-subagent-total" aria-label="Total subagents" title="Maximum task delegations for this run; lowering this also lowers concurrency when needed, and the Gateway may apply a lower process limit" value={subagentTotal} disabled={isLoading} onChange={(event) => {
+                  const total = Number(event.target.value);
+                  onSubagentConcurrencyChange(concurrencyForTotal(subagentConcurrency, total));
+                  onSubagentTotalChange(total);
+                }} className="max-w-24 rounded-lg border border-border/70 bg-muted/60 px-2 py-1.5 text-[10px] text-foreground disabled:opacity-50">
                   {[3, 6, 10, 15, 20, 30, 50].map((count) => <option key={count} value={count}>{count} total</option>)}
                 </select>
               </div>
