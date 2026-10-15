@@ -81,7 +81,7 @@ source for exact route mappings and honest display states.
 | --- | --- | --- |
 | Reasoning picker / model catalog | `ChatView`, `lib/models.ts`, `components/ReasoningEffortPicker.tsx` | `frontend/tests/reasoning-effort.test.mjs`, `lib/freeModels.test.mjs` |
 | Free provider health menu | `components/FreeCatalogMenu.tsx`, `lib/freeCatalogView.ts` | `lib/free-catalog-view.test.mjs` |
-| Live activity / tool receipts / swarm rows | `components/ActivityStatus.tsx`, `ToolGroup.tsx`, `SubagentList.tsx`, `lib/activity.ts` | `lib/activity.test.mjs`, `lib/subagent-events.test.mjs`, `lib/tool-status-honesty.test.mjs` |
+| Live activity / tool receipts / swarm rows | `components/ActivityStatus.tsx`, `ToolGroup.tsx`, `SubagentList.tsx`, `components/sections/DelegatedWorkPanel.tsx`, `lib/activity.ts` | `lib/activity.test.mjs`, `lib/subagent-events.test.mjs`, `lib/delegated-work-panel.test.mjs`, `lib/tool-status-honesty.test.mjs` |
 | Bot roster, liveness and work | `components/bots/`, `lib/bots.ts`, `lib/bot-working-status.ts` | `lib/bots-activity-client.test.mjs`, `lib/bot-working-status.test.mjs`, `lib/bot-working-status-view.test.mjs` |
 | Network status and reconnect | workspace strip and chat network bubble | `lib/network*.test.mjs`, `lib/chat-stream.test.mjs` |
 | APEX panel and composer control | `components/sections/ApexSection.tsx`, `ApexModePicker.tsx`, `lib/apex.ts` | `lib/apex.test.mjs` |
@@ -95,6 +95,7 @@ source for exact route mappings and honest display states.
 | Alpha peer network | peer client and network panel | `lib/peer-network*.test.mjs`, `lib/qr-decode.test.mjs` |
 | Message projections and tags | `lib/messages-view.ts`, tag palette | `lib/messages-view.test.mjs`; tag editing is covered by the composer/UI suite. |
 | Autonomous command receipts | `components/MessageItem.tsx` renders the Gateway's command status/output; `types/chat.ts` owns the response contract | `lib/autonomous-command-display.test.mjs` |
+| Conversation goal strip and details | `components/ConversationGoalPanel.tsx` renders the saved objective and Gateway-reported status; `ChatView` owns goal reads and writes | `lib/conversation-goal.test.mjs`, `lib/threads-ext.test.mjs` |
 
 Where a focused test filename changes, update this index in the same edit; do
 not replace an absent suite name with a broad `pnpm test` claim.

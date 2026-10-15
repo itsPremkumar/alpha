@@ -839,6 +839,12 @@ class ApexGoalStore:
             goal = self._rows.get(goal_id)
             if goal is None:
                 return None
+            # Callers that replay a durable upstream report may submit the same
+            # evidence again after a crash. Evidence ids are the idempotency
+            # boundary; preserve the append-only ledger without duplicating an
+            # already committed measurement.
+            if any(item.evidence_id == evidence.evidence_id for item in goal.evidence):
+                return goal
             goal.evidence.append(evidence)
             goal.updated_at = time.time()
             self._journal(

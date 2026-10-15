@@ -16,6 +16,7 @@ import React, {
 import dynamic from "next/dynamic";
 import { ThreadSidebar } from "@/components/ThreadSidebar";
 import { MessageItem } from "@/components/MessageItem";
+import { ConversationGoalPanel } from "@/components/ConversationGoalPanel";
 import { ActivityStatus } from "@/components/ActivityStatus";
 import { NetworkWaitBubbles } from "@/components/NetworkWaitBubbles";
 import { SubagentList } from "@/components/SubagentList";
@@ -137,7 +138,6 @@ import { ErrorBox, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import {
   Shrink,
-  Target,
   ClipboardList,
   Settings,
   Search,
@@ -912,7 +912,9 @@ export default function ChatView({
   const [goal, setGoalText] = useState<string | null>(null);
   const [goalDetails, setGoalDetails] = useState<ThreadGoal | null>(null);
   const [goalReadError, setGoalReadError] = useState<string | null>(null);
+  const [goalSaveError, setGoalSaveError] = useState<string | null>(null);
   const [goalEditing, setGoalEditing] = useState(false);
+  const [goalDetailsOpen, setGoalDetailsOpen] = useState(false);
   const [goalDraft, setGoalDraft] = useState("");
   const [usage, setUsage] = useState<TokenUsage | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -1648,6 +1650,9 @@ export default function ChatView({
       setGoalText(null);
       setGoalDetails(null);
       setGoalReadError(null);
+      setGoalSaveError(null);
+      setGoalEditing(false);
+      setGoalDetailsOpen(false);
       setUsage(null);
       setSuggestions([]);
       return;
@@ -1661,6 +1666,9 @@ export default function ChatView({
       // this thread while its history and server goal are still loading.
       setGoalText(null);
       setGoalDetails(null);
+      setGoalSaveError(null);
+      setGoalEditing(false);
+      setGoalDetailsOpen(false);
 
       // Goal state is small and independent from the potentially paginated
       // history/archive reads. Start it immediately so a slow history request
@@ -3059,13 +3067,16 @@ export default function ChatView({
       if (activeThreadIdRef.current === threadId) {
         setGoalDetails(savedGoal.goal ? savedGoal : null);
         setGoalReadError(null);
+        setGoalSaveError(null);
         setGoalText(savedGoal.goal);
         setGoalEditing(false);
+        setGoalDetailsOpen(false);
       }
       flash(savedGoal.goal
-        ? "Goal set — the agent works toward it until done."
+        ? "Goal saved — automatic continuation follows the configured turn budget and runtime availability."
         : "The Gateway accepted the request but reported no active goal; no goal is shown.");
     } catch (error) {
+      if (activeThreadIdRef.current === threadId) setGoalSaveError(errMsg(error));
       flash(`Couldn't save the goal: ${errMsg(error)}`);
     }
   };
@@ -3090,7 +3101,9 @@ export default function ChatView({
         setGoalText(null);
         setGoalDetails(null);
         setGoalReadError(null);
+        setGoalSaveError(null);
         setGoalEditing(false);
+        setGoalDetailsOpen(false);
       }
     } catch (error) {
       flash(`Couldn't clear the goal: ${errMsg(error)}`);
@@ -3889,112 +3902,22 @@ export default function ChatView({
                       </div>
                     )}
 
-                    {/* Goal bar */}
-                    <div className="shrink-0 px-4 pt-2">
-                      <div className="max-w-4xl mx-auto">
-                        {goalEditing ? (
-                          <div className="flex gap-2 rounded-xl border border-primary/30 bg-card p-2">
-                            <input
-                              value={goalDraft}
-                              onChange={(e) => setGoalDraft(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") handleSaveGoal();
-                                if (e.key === "Escape") setGoalEditing(false);
-                              }}
-                              placeholder="What is the goal of this conversation? e.g. Ship the landing page"
-                              autoFocus
-                              aria-label="Conversation goal"
-                              className="flex-1 bg-transparent px-2 py-1.5 text-xs focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={handleSaveGoal}
-                              disabled={!goalDraft.trim()}
-                              className="px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-[11px] font-semibold disabled:opacity-40"
-                            >
-                              Set
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setGoalEditing(false)}
-                              className="px-2.5 py-1 rounded-lg border border-border text-[11px] hover:bg-muted"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : goal ? (
-                          <div className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
-                            <div className="flex items-center gap-2">
-                              <Target className="size-3.5 text-primary shrink-0" />
-                              <span className="flex-1 truncate">
-                                <strong>{goalDetails?.status === "completed" ? "Completed goal:" : "Goal:"}</strong> {goal}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setGoalDraft(goal);
-                                  setGoalEditing(true);
-                                }}
-                                className="text-[11px] text-muted-foreground hover:text-foreground"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleClearGoal}
-                                className="text-[11px] text-muted-foreground hover:text-destructive"
-                              >
-                                Clear
-                              </button>
-                            </div>
-                            {goalDetails && (
-                              <div aria-live="polite" aria-atomic="true" className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 border-t border-primary/15 pt-1.5 text-[11px] text-muted-foreground">
-                                <span>Status: {goalDetails.status ?? "not reported"}</span>
-                                <span>
-                                  Automatic turns: {Number.isFinite(goalDetails.continuation_count) && Number.isFinite(goalDetails.max_continuations)
-                                    ? `${goalDetails.continuation_count}/${goalDetails.max_continuations}`
-                                    : "budget not reported"}
-                                </span>
-                                {Number.isFinite(goalDetails.no_progress_count) && Number.isFinite(goalDetails.max_no_progress_continuations) && (
-                                  <span>No-progress turns: {goalDetails.no_progress_count}/{goalDetails.max_no_progress_continuations}</span>
-                                )}
-                                {goalDetails.last_evaluation ? (
-                                  <span className="basis-full">
-                                    Last completion check: {goalDetails.last_evaluation.satisfied === true
-                                      ? "satisfied"
-                                      : goalDetails.last_evaluation.satisfied === false
-                                        ? `not satisfied${goalDetails.last_evaluation.blocker ? ` (${goalDetails.last_evaluation.blocker})` : ""}`
-                                        : "outcome not reported"}
-                                    {goalDetails.last_evaluation.reason ? ` — ${goalDetails.last_evaluation.reason}` : ""}
-                                    {goalDetails.last_evaluation.evidence_summary ? ` Evidence: ${goalDetails.last_evaluation.evidence_summary}` : ""}
-                                    {goalDetails.last_evaluation.stand_down_reason ? ` · Stopped: ${goalDetails.last_evaluation.stand_down_reason}` : ""}
-                                  </span>
-                                ) : (
-                                  <span className="basis-full">Last completion check: not reported yet</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ) : activeThreadId ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setGoalDraft("");
-                              setGoalEditing(true);
-                            }}
-                            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground px-1 py-0.5"
-                          >
-                            <Target className="size-3.5" /> Set a goal for this
-                            conversation
-                          </button>
-                        ) : null}
-                        {goalReadError && (
-                          <p role="status" className="mt-1 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-[11px] text-destructive">
-                            Live goal status is unavailable: {goalReadError}. Any displayed goal text is a saved local copy; Gateway status is unknown.
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                    <ConversationGoalPanel
+                      threadId={activeThreadId}
+                      goal={goal}
+                      details={goalDetails}
+                      readError={goalReadError}
+                      saveError={goalSaveError}
+                      editing={goalEditing}
+                      detailsOpen={goalDetailsOpen}
+                      draft={goalDraft}
+                      onDraftChange={(value) => { setGoalDraft(value); setGoalSaveError(null); }}
+                      onEditingChange={setGoalEditing}
+                      onDetailsOpenChange={setGoalDetailsOpen}
+                      onSaveErrorClear={() => setGoalSaveError(null)}
+                      onSave={handleSaveGoal}
+                      onClear={handleClearGoal}
+                    />
 
                     {/* Messages Viewport.
 

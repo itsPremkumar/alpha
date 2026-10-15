@@ -193,8 +193,9 @@ _KNOWN_SUBAGENT_NAMES: frozenset[str] | None = None
 
 
 @router.get("/{subagent_id}")
-async def get_subagent_details(subagent_id: str):
+async def get_subagent_details(subagent_id: str, request: Request):
     """Retrieves full metadata, lease validity, and heartbeat status for a subagent."""
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     lifecycle = get_subagent_lifecycle_manager()
     rec = await asyncio.to_thread(lifecycle.get_subagent, subagent_id)
     if not rec:
@@ -203,8 +204,9 @@ async def get_subagent_details(subagent_id: str):
 
 
 @router.get("/{subagent_id}/result")
-async def get_subagent_result(subagent_id: str):
+async def get_subagent_result(subagent_id: str, request: Request):
     """Retrieves the deliverable findings and artifacts of a completed subagent."""
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     lifecycle = get_subagent_lifecycle_manager()
     rec = await asyncio.to_thread(lifecycle.get_subagent, subagent_id)
     if not rec:
@@ -311,11 +313,13 @@ async def promote_subagent_role(payload: SubagentPromoteRequest, request: Reques
 
 @router.get("")
 async def list_subagents(
+    request: Request,
     parent_id: str | None = None,
     status: str | None = None,
     limit: int = 50,
 ):
     """Lists subagents with optional filtering by parent or status."""
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     lifecycle = get_subagent_lifecycle_manager()
     status_filter = SubagentStatusEnum(status.lower().strip()) if status else None
     recs = await asyncio.to_thread(

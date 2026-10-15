@@ -762,6 +762,44 @@ class TestGoalRoutes:
         for state in states:
             store.transition(goal_id, GoalState(state))
 
+    def test_owner_acceptance_projects_measured_evidence_to_linked_goal(self, client: TestClient, store: ApexStore, goal_store: Any) -> None:
+        session = store.create(
+            owner="admin-1",
+            objective="verify the linked goal",
+            profile="autonomous",
+            contract_digest=profile_for("autonomous").digest(),
+            thread_id="thread-linked-goal",
+            acceptance_criteria=["service is ready"],
+        )
+        store.update(
+            session.session_id,
+            state=ApexSessionState.ACTIVE,
+            dispatch_state="awaiting_verification",
+            run_status="completed",
+            run_id="run-linked-goal",
+        )
+        goals, _events = goal_store
+        goal = goals.create(
+            objective="verify the service",
+            owner="admin-1",
+            session_id=session.session_id,
+            success_criteria=["service is ready"],
+        )
+
+        response = client.post(
+            f"/api/apex/sessions/{session.session_id}/acceptance",
+            json={"results": [{"criterion": "service is ready", "met": True, "evidence": "health check returned ready"}]},
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["goal_evidence_projection"] == {"available": True, "added": 1}
+        stored_goal = goals.get(goal.goal_id)
+        assert stored_goal is not None
+        assert len(stored_goal.evidence) == 1
+        assert stored_goal.evidence[0].criterion == "service is ready"
+        assert stored_goal.evidence[0].holds is True
+        assert stored_goal.evidence[0].source == "apex_session:owner_submitted_measured_evidence"
+
     def test_create_returns_the_goal_with_the_caller_as_owner(self, client: TestClient) -> None:
         response = client.post(
             "/api/apex/goals",

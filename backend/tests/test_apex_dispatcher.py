@@ -97,6 +97,95 @@ async def test_apex_execution_tick_dispatches_once_and_projects_terminal_usage(t
     assert store.get(session.session_id).usage.total_tokens == 600
 
 
+def test_session_acceptance_projects_only_exact_linked_goal_criteria_idempotently(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import alpha.apex.goals as goals_module
+    from alpha.apex.goals import ApexGoalStore
+    from app.gateway.autonomy.loops import _project_apex_session_acceptance_to_goals
+
+    goals = ApexGoalStore(tmp_path / "goals.json")
+    goal = goals.create(
+        objective="implement the readiness check",
+        owner="operator",
+        session_id="session-linked",
+        success_criteria=["backend readiness is green", "frontend check passes"],
+    )
+    foreign_goal = goals.create(
+        objective="foreign linked goal",
+        owner="another-user",
+        session_id="session-linked",
+        success_criteria=["backend readiness is green"],
+    )
+    monkeypatch.setattr(goals_module, "get_goal_store", lambda: goals)
+    session = SimpleNamespace(
+        session_id="session-linked",
+        owner="operator",
+        acceptance_criteria=["backend readiness is green", "frontend check passes", "unrelated criterion"],
+    )
+    report = {
+        "report_id": "acc-stable-report",
+        "evaluator": "acceptance_registry",
+        "generated_at": 123.0,
+        "criteria": [
+            {"criterion": "backend readiness is green", "evaluated": True, "holds": True, "evidence": "health endpoint returned ready", "evaluated_at": 122.0},
+            {"criterion": "unrelated criterion", "evaluated": True, "holds": False, "evidence": "must not leak", "evaluated_at": 122.0},
+            {"criterion": "frontend check passes", "evaluated": False, "holds": False, "evidence": "not measured", "evaluated_at": 122.0},
+        ],
+    }
+
+    assert _project_apex_session_acceptance_to_goals(session, report) == 1
+    assert _project_apex_session_acceptance_to_goals(session, report) == 0
+    stored = goals.get(goal.goal_id)
+    assert stored is not None
+    assert len(stored.evidence) == 1
+    assert stored.evidence[0].criterion == "backend readiness is green"
+    assert stored.evidence[0].holds is True
+    assert stored.evidence[0].source == "apex_session:acceptance_registry"
+    assert stored.criteria_without_evidence() == ["frontend check passes"]
+    foreign = goals.get(foreign_goal.goal_id)
+    assert foreign is not None and foreign.evidence == []
+
+
+@pytest.mark.parametrize("invalid_report", ["incomplete", "duplicate", "malformed_timestamp"])
+def test_invalid_session_report_projects_no_partial_goal_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_report: str,
+) -> None:
+    import alpha.apex.goals as goals_module
+    from alpha.apex.goals import ApexGoalStore
+    from app.gateway.autonomy.loops import _project_apex_session_acceptance_to_goals
+
+    goals = ApexGoalStore(tmp_path / "goals.json")
+    goal = goals.create(
+        objective="verify both criteria",
+        owner="operator",
+        session_id="session-invalid-report",
+        success_criteria=["first criterion", "second criterion"],
+    )
+    monkeypatch.setattr(goals_module, "get_goal_store", lambda: goals)
+    session = SimpleNamespace(
+        session_id="session-invalid-report",
+        owner="operator",
+        acceptance_criteria=["first criterion", "second criterion"],
+    )
+    rows = [
+        {"criterion": "first criterion", "evaluated": True, "holds": True, "evidence": "first measured", "evaluated_at": 122.0},
+        {"criterion": "second criterion", "evaluated": True, "holds": True, "evidence": "second measured", "evaluated_at": 122.0},
+    ]
+    if invalid_report == "incomplete":
+        rows = rows[:1]
+    elif invalid_report == "duplicate":
+        rows.append(dict(rows[0]))
+    else:
+        rows[1]["evaluated_at"] = "not-a-timestamp"
+    report = {"report_id": "acc-invalid", "evaluator": "test", "generated_at": 123.0, "criteria": rows}
+
+    with pytest.raises(ValueError):
+        _project_apex_session_acceptance_to_goals(session, report)
+    stored = goals.get(goal.goal_id)
+    assert stored is not None and stored.evidence == []
+
+
 @pytest.mark.asyncio
 async def test_late_tool_approval_requeues_a_finished_run_for_a_fresh_dispatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import alpha.apex.mode as mode_module

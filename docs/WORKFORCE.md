@@ -435,6 +435,33 @@ is still a policy/tool capability rather than a standalone UI runner. The run
 request carries the chosen native worker/category as a preference, and the
 `task` tool revalidates it against the effective allowlist before execution.
 
+### Choosing a method and its size in the UI
+
+Choose the lightest method that fits the shape of the work. The labels below are
+available in the current Chat composer or Team Ops UI; they select different
+execution policies, not interchangeable kinds of worker.
+
+| UI choice | Choose it when | What its count setting means |
+| --- | --- | --- |
+| **Subagents → Off** | The lead should handle a routine request without native `task` delegation. | No subagent capacity is enabled for this run. |
+| **Subagents → Auto / category / named worker** | A task needs an isolated helper, or several independent bounded subtasks. Use `quick` for small jobs, `research` for evidence gathering, and `deep-research` for a longer multi-pass investigation; choose a named worker when its declared tools and role fit. | The concurrent and total values are ceilings (safe defaults 3 and 6), not a promise that Alpha will spawn that many agents. The Gateway also applies its capacity and allowlist. |
+| **Team Ops → Swarms → Auto** | Let the router choose a coordination shape after measuring the decomposed task graph. | `Max concurrency` is an upper bound on tasks running at once, not a fixed worker count; the server may lower it to its configured capacity. |
+| **Swarm → Parallel** | Tasks are independent and can proceed at the same time. | Same concurrency ceiling; dependencies can still prevent tasks from overlapping. |
+| **Swarm → Map–Reduce** | Split a collection or input into independent pieces, then combine their results. | Same concurrency ceiling across map work; reduction follows the map stage. |
+| **Swarm → Scatter–Gather** | Explore a question or workload broadly, then collect results in a later phase. | Same concurrency ceiling; it does not set the number of candidate tasks. |
+| **Swarm → Hierarchical** | Work naturally separates into levels that need coordination between parent and child tasks. | Same concurrency ceiling across ready tasks at all levels. |
+| **Swarm → Debate** | Independent positions should challenge assumptions or expose disagreements. | Same concurrency ceiling; the task plan determines how many positions exist. |
+| **Swarm → Ensemble** | Generate independent candidate solutions and synthesize their useful parts. | Same concurrency ceiling; it is not a fixed number of candidates. |
+| **Swarm → Coding Worktree** | Parallel coding tasks need separate worktree isolation. | Same concurrency ceiling; it does not remove integration or merge-conflict work. |
+| **Team Ops → Arena** | Compare multiple independent solutions through the attack/defend/judge bracket. | The competitor count is a real count. Start with `quick` (3) or `standard` (5); `deep` uses 8. Custom counts are bounded by operator configuration, and the estimate/confirmation gate applies before execution. See [Arena's call-cost table](ARENA.md#1-what-a-run-costs-and-why-it-asks-first). |
+
+The key distinction is that **Arena's count means competitors**, while a
+**swarm's concurrency means the maximum number of ready tasks that may overlap**.
+Subagent limits similarly bound delegated calls; they do not force Alpha to use
+every slot. If a method's setup surface or executor is unavailable, check the
+reported server reason rather than treating a selected label as proof that work
+ran. A completed run is not, by itself, verified delivery.
+
 ## Workforce Frontend (WorkforceSection)
 
 ### Tabs

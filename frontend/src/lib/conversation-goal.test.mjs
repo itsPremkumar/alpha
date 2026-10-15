@@ -9,6 +9,10 @@ const source = readFileSync(
   new URL("../components/ChatView.tsx", import.meta.url),
   "utf8",
 );
+const panelSource = readFileSync(
+  new URL("../components/ConversationGoalPanel.tsx", import.meta.url),
+  "utf8",
+);
 const ast = ts.createSourceFile(
   "ChatView.tsx",
   source,
@@ -39,7 +43,7 @@ const compile = (text) =>
   }).outputText;
 
 test("goal save discloses the Gateway reason when a run is in flight", async () => {
-  const state = { goalText: null, editing: true, messages: [] };
+  const state = { goalText: null, editing: true, saveError: null, messages: [] };
   const dependencies = {
     activeThreadId: "thread-1",
     activeThreadIdRef: { current: "thread-1" },
@@ -55,6 +59,7 @@ test("goal save discloses the Gateway reason when a run is in flight", async () 
     setGoalText: (value) => {
       state.goalText = value;
     },
+    setGoalSaveError: (value) => { state.saveError = value; },
     setGoalEditing: (value) => {
       state.editing = value;
     },
@@ -76,6 +81,8 @@ test("goal save discloses the Gateway reason when a run is in flight", async () 
   ]);
   assert.equal(state.goalText, null);
   assert.equal(state.editing, true);
+  assert.equal(state.saveError, "Thread has a run in flight. Set the goal after the run finishes.");
+  assert.equal(dependencies.goalDraft, "Finish the verified production-readiness task");
 });
 
 test("thread goal hydration starts before potentially slow history and archive reads", () => {
@@ -94,6 +101,28 @@ test("thread goal hydration starts before potentially slow history and archive r
   assert.notEqual(goalStart, -1, "the goal read must be started independently");
   assert.notEqual(historyStart, -1, "the history read must remain part of thread hydration");
   assert.ok(goalStart < historyStart, "a slow history read must not delay goal receipt hydration");
+});
+
+test("the persistent goal strip opens full details and labels evaluator output honestly", () => {
+  assert.match(source, /<ConversationGoalPanel/);
+  assert.match(source, /detailsOpen=\{goalDetailsOpen\}/);
+  assert.match(panelSource, /aria-haspopup="dialog"/);
+  assert.match(panelSource, /role="dialog"/);
+  assert.match(panelSource, /aria-modal="true"/);
+  assert.match(panelSource, /Open goal details:/);
+  assert.match(panelSource, /Edit conversation goal/);
+  assert.match(panelSource, /Your draft is still here\. Retry after the current run finishes\./);
+  assert.match(panelSource, /whitespace-normal break-words/);
+  assert.match(panelSource, /Latest evaluator report/);
+  assert.match(panelSource, /elapsedLabel\(details\?\.created_at, now\)/);
+  assert.match(panelSource, /Updated \$\{new Intl\.DateTimeFormat/);
+  assert.match(panelSource, /Reports satisfied/);
+  assert.match(panelSource, /Reports not satisfied/);
+  assert.match(panelSource, /This evaluator report is not measured acceptance verification/);
+  assert.match(panelSource, /Goal satisfaction has not been measured/);
+  assert.match(panelSource, /last_evaluation\.evaluated_at/);
+  assert.match(panelSource, /last_evaluation\.run_id/);
+  assert.match(panelSource, /does not mean Alpha is continuously working or guaranteed to run for years/);
 });
 
 test("goal save does not promote a successful empty Gateway response into an active goal", async () => {
@@ -115,7 +144,9 @@ test("goal save does not promote a successful empty Gateway response into an act
     setGoalText: (value) => { state.goalText = value; },
     setGoalDetails: (value) => { state.goalDetails = value; },
     setGoalReadError: () => {},
+    setGoalSaveError: () => {},
     setGoalEditing: (value) => { state.editing = value; },
+    setGoalDetailsOpen: () => {},
     localThreadMetaRef: { current: {} },
     persistLocalHistory: async (operation) => operation(),
     setThreadMeta: () => {},
@@ -152,7 +183,9 @@ test("a deferred goal save archives its owner without repainting the newly activ
     setGoalText: (value) => visibleUpdates.push(["text", value]),
     setGoalDetails: (value) => visibleUpdates.push(["details", value]),
     setGoalReadError: (value) => visibleUpdates.push(["readError", value]),
+    setGoalSaveError: (value) => visibleUpdates.push(["saveError", value]),
     setGoalEditing: (value) => visibleUpdates.push(["editing", value]),
+    setGoalDetailsOpen: (value) => visibleUpdates.push(["detailsOpen", value]),
     localThreadMetaRef: { current: { "thread-1": { botName: null, goal: null } } },
     persistLocalHistory: async (operation) => operation(),
     setThreadMeta: (threadId, meta) => writes.push([threadId, meta]),
@@ -189,6 +222,7 @@ test("a deferred goal clear archives its owner without clearing the newly active
     setGoalDetails: (value) => visibleUpdates.push(["details", value]),
     setGoalReadError: (value) => visibleUpdates.push(["readError", value]),
     setGoalEditing: (value) => visibleUpdates.push(["editing", value]),
+    setGoalDetailsOpen: (value) => visibleUpdates.push(["detailsOpen", value]),
     localThreadMetaRef: { current: { "thread-1": { botName: null, goal: "Old goal" } } },
     persistLocalHistory: async (operation) => operation(),
     setThreadMeta: (threadId, meta) => writes.push([threadId, meta]),

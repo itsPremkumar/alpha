@@ -320,9 +320,13 @@ async def test_gateway_subagent_control_router():
     assert spawn_resp["status"] == "ready"
 
     # 2. Get details
-    detail_resp = await ctrl_router.get_subagent_details(sid)
+    detail_resp = await ctrl_router.get_subagent_details(sid, admin_req)
     assert detail_resp["subagent_id"] == sid
     assert detail_resp["parent_agent_id"] == "ceo-bot"
+    result_resp = await ctrl_router.get_subagent_result(sid, admin_req)
+    assert result_resp == {"status": "ready", "result": None}
+    listed = await ctrl_router.list_subagents(admin_req)
+    assert any(item["subagent_id"] == sid for item in listed)
 
     # 3. Heartbeat endpoint
     hb_resp = await ctrl_router.record_subagent_heartbeat(
@@ -355,6 +359,31 @@ async def test_gateway_subagent_control_router():
     )
     assert prom_resp["name"] == "bot-sec-audit"
     assert prom_resp["origin"] == "promoted_subagent"
+
+
+@pytest.mark.asyncio
+async def test_subagent_control_reads_require_admin():
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    from app.gateway.routers import subagent_control as ctrl_router
+
+    member_req = SimpleNamespace(state=SimpleNamespace(user=SimpleNamespace(system_role="member")))
+    unauthenticated_req = Request({"type": "http", "headers": []})
+    endpoints = (
+        lambda request: ctrl_router.list_subagents(request),
+        lambda request: ctrl_router.get_subagent_details("sub-missing", request),
+        lambda request: ctrl_router.get_subagent_result("sub-missing", request),
+    )
+
+    for endpoint in endpoints:
+        with pytest.raises(HTTPException) as member_error:
+            await endpoint(member_req)
+        assert member_error.value.status_code == 403
+
+        with pytest.raises(HTTPException) as unauthenticated_error:
+            await endpoint(unauthenticated_req)
+        assert unauthenticated_error.value.status_code == 401
 
 
 # 10. Strict Harness Boundary Invariant

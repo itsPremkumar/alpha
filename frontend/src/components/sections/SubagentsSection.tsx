@@ -52,6 +52,7 @@ import {
 } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { Play, Ban, RefreshCw, Eye, Pause, RotateCcw } from "lucide-react";
+import { DelegatedWorkPanel } from "@/components/sections/DelegatedWorkPanel";
 
 export function SubagentsSection(props: { threadId: string | null }) {
   const [catalog, setCatalog] = useState<SubagentDef[]>([]);
@@ -202,6 +203,8 @@ export function SubagentsSection(props: { threadId: string | null }) {
     >
       {error && <ErrorBox message={error} onRetry={load} />}
       {notice && <Notice message={notice} />}
+
+      <DelegatedWorkPanel threadId={props.threadId} />
 
       <div className="rounded-2xl border border-border/60 bg-card p-4">
         <Field

@@ -56,6 +56,7 @@ test("fetchGoal preserves the server's evaluation and continuation measurements"
   assert.deepEqual(await threads.fetchGoal("thread-1"), {
     goal: "Ship the feature",
     status: "active",
+    created_at: null,
     updated_at: "2026-10-15T10:00:00Z",
     continuation_count: 2,
     max_continuations: 8,
@@ -92,6 +93,7 @@ test("fetchGoal preserves a terminal completion receipt for the UI", async () =>
   assert.deepEqual(await threads.fetchGoal("thread-complete"), {
     goal: "Ship the feature",
     status: "completed",
+    created_at: null,
     updated_at: null,
     continuation_count: 3,
     max_continuations: 8,
@@ -114,6 +116,7 @@ test("fetchGoal keeps an explicit server-side absence distinct from a read failu
   assert.deepEqual(await threads.fetchGoal("thread-2"), {
     goal: null,
     status: null,
+    created_at: null,
     updated_at: null,
     continuation_count: null,
     max_continuations: null,
@@ -145,4 +148,16 @@ test("setGoal uses the exact Gateway request and returns the accepted state", as
   assert.equal(result.status, "active");
   assert.equal(result.continuation_count, 0);
   assert.equal(result.max_continuations, 8);
+});
+
+test("goal state preserves Gateway-reported creation and update times", async () => {
+  setHttpHandler(() => ({ goal: {
+    objective: "Keep working on the durable goal",
+    status: "active",
+    created_at: "2026-10-14T10:00:00Z",
+    updated_at: "2026-10-15T10:00:00Z",
+  } }));
+  const result = await threads.fetchGoal("thread-time");
+  assert.equal(result.created_at, "2026-10-14T10:00:00Z");
+  assert.equal(result.updated_at, "2026-10-15T10:00:00Z");
 });

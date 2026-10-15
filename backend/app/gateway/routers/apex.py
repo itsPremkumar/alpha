@@ -1092,10 +1092,19 @@ async def submit_session_acceptance(
     )
     store.update(session_id, acceptance=report.to_dict())
     store.emit(session_id, "acceptance.report_submitted", report=report.to_dict(), run_id=session.run_id)
+    goal_evidence_projection: dict[str, Any] = {"available": True, "added": 0}
+    try:
+        from app.gateway.autonomy.loops import _project_apex_session_acceptance_to_goals
+
+        goal_evidence_projection["added"] = _project_apex_session_acceptance_to_goals(session, report.to_dict())
+    except Exception as exc:  # noqa: BLE001 - a goal-ledger failure must not rewrite the measured session report
+        goal_evidence_projection = {"available": False, "reason": f"{type(exc).__name__}: {exc}"}
+        logger.warning("APEX linked-goal evidence projection failed for %s: %s", session_id, exc)
     cycle_result = run_cycle(store, session_id, _session_contract(session))
     updated = store.get(session_id)
     return {
         "report": report.to_dict(),
+        "goal_evidence_projection": goal_evidence_projection,
         "cycle": cycle_result.to_dict(),
         "session": updated.to_dict() if updated is not None else None,
     }

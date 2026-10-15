@@ -9,8 +9,10 @@ still runs a complete, healthy system.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import logging
+import math
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -20,6 +22,90 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 SyncTick = Callable[[], dict[str, Any]]
+
+
+def _project_apex_session_acceptance_to_goals(session: Any, report: dict[str, Any]) -> int:
+    """Copy exact, measured session criteria into goals explicitly linked to it.
+
+    The goal ledger remains the source of goal completion state. This bridge
+    only carries evidence whose criterion is an exact declared goal criterion;
+    it never infers a match from prose or treats an unmeasured result as a
+    failure/pass. Stable evidence ids make the projection safe to replay after
+    a process restart.
+    """
+    session_id = str(getattr(session, "session_id", "") or "")
+    owner = str(getattr(session, "owner", "") or "")
+    if not session_id or not owner or not isinstance(report, dict):
+        return 0
+
+    session_criteria = getattr(session, "acceptance_criteria", None)
+    if not isinstance(session_criteria, list) or not session_criteria or any(not isinstance(item, str) or not item for item in session_criteria):
+        raise ValueError("linked APEX session has no valid acceptance criteria")
+    if len(set(session_criteria)) != len(session_criteria):
+        raise ValueError("linked APEX session declares duplicate acceptance criteria")
+    report_id = str(report.get("report_id", "") or "")
+    raw_report_time = report.get("generated_at")
+    evaluator = str(report.get("evaluator", "unknown") or "unknown")
+    results = report.get("criteria")
+    if not report_id or not evaluator or not isinstance(results, list):
+        raise ValueError("acceptance report is missing its identity, evaluator, or criterion rows")
+    if isinstance(raw_report_time, bool) or not isinstance(raw_report_time, (int, float)) or not math.isfinite(raw_report_time):
+        raise ValueError("acceptance report has an invalid generated_at timestamp")
+
+    report_time = str(raw_report_time)
+    rows_by_criterion: dict[str, dict[str, Any]] = {}
+    for result in results:
+        if not isinstance(result, dict):
+            raise ValueError("acceptance report contains a malformed criterion row")
+        criterion = result.get("criterion")
+        if not isinstance(criterion, str) or not criterion:
+            raise ValueError("acceptance report contains an empty or malformed criterion")
+        if criterion in rows_by_criterion:
+            raise ValueError(f"acceptance report duplicates criterion {criterion!r}")
+        evaluated = result.get("evaluated")
+        holds = result.get("holds")
+        if not isinstance(evaluated, bool) or (evaluated and not isinstance(holds, bool)):
+            raise ValueError(f"acceptance report has a malformed verdict for {criterion!r}")
+        if "evaluated_at" in result and result["evaluated_at"] is not None:
+            evaluated_at = result["evaluated_at"]
+            if isinstance(evaluated_at, bool) or not isinstance(evaluated_at, (int, float)) or not math.isfinite(evaluated_at):
+                raise ValueError(f"acceptance report has an invalid evaluated_at timestamp for {criterion!r}")
+        if "evidence" in result and not isinstance(result["evidence"], str):
+            raise ValueError(f"acceptance report has malformed evidence for {criterion!r}")
+        rows_by_criterion[criterion] = result
+
+    missing = sorted(set(session_criteria) - set(rows_by_criterion))
+    unexpected = sorted(set(rows_by_criterion) - set(session_criteria))
+    if missing or unexpected:
+        raise ValueError(f"acceptance report coverage mismatch; missing={missing}, unexpected={unexpected}")
+
+    from alpha.apex.goals import GoalEvidence, get_goal_store
+
+    goals = get_goal_store()
+    if goals.is_degraded:
+        raise RuntimeError(f"APEX goal store unreadable: {goals.load_error}")
+
+    added = 0
+    for goal in goals.list(owner=owner, session_id=session_id, limit=500):
+        declared = set(goal.success_criteria)
+        for criterion, result in rows_by_criterion.items():
+            if criterion not in declared or result.get("evaluated") is not True:
+                continue
+            evidence_id = "ev-" + hashlib.sha256(f"{session_id}\0{report_id}\0{report_time}\0{criterion}".encode()).hexdigest()[:16]
+            existing_ids = {item.evidence_id for item in goal.evidence}
+            if evidence_id in existing_ids:
+                continue
+            evidence = GoalEvidence(
+                evidence_id=evidence_id,
+                criterion=criterion,
+                source=f"apex_session:{evaluator}",
+                detail=str(result.get("evidence", "") or ""),
+                holds=result["holds"],
+                recorded_at=float(result["evaluated_at"] if result.get("evaluated_at") is not None else raw_report_time),
+            )
+            if goals.add_evidence(goal.goal_id, evidence) is not None:
+                added += 1
+    return added
 
 
 def _resolve_project_root() -> Path:
@@ -837,6 +923,17 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                     # process stopped. Re-run the deterministic executive gate
                     # so a crash after report storage cannot strand the goal.
                     if latest is not None and latest.state is ApexSessionState.ACTIVE and latest.acceptance is not None:
+                        try:
+                            _project_apex_session_acceptance_to_goals(latest, latest.acceptance)
+                        except Exception as exc:  # noqa: BLE001 - goal evidence projection must not falsify session outcome
+                            summary["errors"].append(
+                                {
+                                    "session_id": latest.session_id,
+                                    "run_id": latest.run_id,
+                                    "error": f"linked_goal_evidence_projection_failed: {type(exc).__name__}: {exc}",
+                                }
+                            )
+                            logger.warning("APEX linked-goal evidence projection failed for %s: %s", latest.session_id, exc)
                         contract = contract_from_snapshot(latest.contract_snapshot, expected_digest=latest.contract_digest) if latest.contract_snapshot is not None else profile_for(latest.profile, mission_id=latest.mission_id)
                         run_cycle(store, latest.session_id, contract)
                         updated = store.get(latest.session_id)

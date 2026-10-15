@@ -3,6 +3,7 @@ import { get, send, asList, pick } from "./http";
 export interface ThreadGoal {
   goal: string | null;
   status: string | null;
+  created_at: string | null;
   updated_at: string | null;
   continuation_count: number | null;
   max_continuations: number | null;
@@ -117,6 +118,7 @@ function threadGoalFromResponse(value: unknown): ThreadGoal {
     return {
       goal: null,
       status: null,
+      created_at: null,
       updated_at: null,
       continuation_count: null,
       max_continuations: null,
@@ -130,6 +132,7 @@ function threadGoalFromResponse(value: unknown): ThreadGoal {
     return {
       goal: raw || null,
       status: null,
+      created_at: null,
       updated_at: null,
       continuation_count: null,
       max_continuations: null,
@@ -153,6 +156,7 @@ function threadGoalFromResponse(value: unknown): ThreadGoal {
   return {
     goal: typeof objective === "string" && objective ? objective : null,
     status: text(record.status),
+    created_at: text(record.created_at),
     updated_at: text(record.updated_at),
     continuation_count: finiteNumber(record.continuation_count),
     max_continuations: finiteNumber(record.max_continuations),
