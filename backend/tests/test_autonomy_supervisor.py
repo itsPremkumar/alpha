@@ -434,3 +434,191 @@ def test_register_default_loops_includes_expected_loops() -> None:
     assert "skill_curator" in loops
     assert "enterprise_heartbeat" in loops
     assert "self_update" in loops
+
+
+# --------------------------------------------------------- truthful wiring report
+#
+# `status()` reports counters plus one `enabled` flag copied from the per-loop
+# config block. That flag is `true` for every loop an operator merely *named* in
+# `config.yaml -> autonomy.loops`, even when the master switch is off and no task
+# was ever created — so an operator reading `enabled: true` beside `runs: 0` had
+# to guess which of the two facts explained it. `wiring()` separates the axes.
+
+
+class TestWiringProjection:
+    def test_an_absent_loop_id_is_disabled_and_says_so(self) -> None:
+        """`autonomy.loops` is opt-in per id; absent means DISABLED.
+
+        This is the exact case the brief calls out — and it is the default for
+        every loop on a fresh install, so it is the case an operator hits first.
+        """
+        supervisor = AutonomySupervisor(AutonomyConfig(enabled=True))
+        supervisor.register_default_loops()
+
+        wiring = supervisor.wiring()
+
+        assert wiring["master_enabled"] is True
+        for loop_id, row in wiring["loops"].items():
+            assert row["configured_enabled"] is False, f"{loop_id} is absent from autonomy.loops, so it must not read as configured"
+            assert row["can_run"] is False
+            assert "absent" in row["disabled_reason"], f"{loop_id} must name the absent config id as the reason"
+        assert wiring["counts"] == {"registered": len(wiring["loops"]), "configured": 0, "running": 0, "can_run": 0}
+
+    def test_a_configured_loop_is_still_not_running_before_start(self) -> None:
+        """`configured_enabled` and `running` are different facts.
+
+        Naming a loop in the config is what an operator does to *enable* it; it
+        is not proof that a task exists. Collapsing them is what produced
+        "enabled: true, runs: 0".
+        """
+        config = AutonomyConfig(enabled=True, loops={"apex": AutonomyLoopConfig(enabled=True, interval_seconds=0.01)})
+        supervisor = AutonomySupervisor(config)
+        supervisor.register_default_loops()
+
+        row = supervisor.wiring()["loops"]["apex"]
+
+        assert row["configured_enabled"] is True
+        assert row["running"] is False
+        assert row["can_run"] is False
+        assert "start()" in row["disabled_reason"]
+
+    def test_the_master_switch_overrides_every_configured_loop(self) -> None:
+        """`autonomy.enabled: false` is fleet-wide, and must say so first.
+
+        A per-loop `enabled: true` under a disabled master looks healthy to any
+        consumer reading only that flag.
+        """
+        config = AutonomyConfig(enabled=False, loops={"apex": AutonomyLoopConfig(enabled=True)})
+        supervisor = AutonomySupervisor(config)
+        supervisor.register_default_loops()
+
+        wiring = supervisor.wiring()
+
+        assert wiring["master_enabled"] is False
+        assert wiring["loops"]["apex"]["configured_enabled"] is True
+        assert wiring["loops"]["apex"]["can_run"] is False
+        assert "autonomy.enabled is false" in wiring["loops"]["apex"]["disabled_reason"]
+        assert wiring["counts"]["can_run"] == 0
+
+    def test_a_loop_that_cannot_run_never_reports_a_reason_when_it_can(self) -> None:
+        """``disabled_reason`` empty must mean ``can_run`` — nothing else.
+
+        A reason printed beside a healthy row trains the reader to ignore it,
+        which is the same failure as never printing one.
+        """
+        config = AutonomyConfig(enabled=True, loops={"apex": AutonomyLoopConfig(enabled=True)})
+        supervisor = AutonomySupervisor(config)
+        supervisor.register_default_loops()
+
+        for row in supervisor.wiring()["loops"].values():
+            assert bool(row["disabled_reason"]) is not row["can_run"], f"{row} states a reason and a verdict that disagree"
+
+    @pytest.mark.asyncio
+    async def test_a_running_loop_reports_can_run(self, _release_worker_threads: None) -> None:
+        """The positive case, so the negative ones are not vacuous."""
+        config = AutonomyConfig(enabled=True, loops={"probe": AutonomyLoopConfig(enabled=True, interval_seconds=0.01, jitter_seconds=0.0)})
+        supervisor = AutonomySupervisor(config)
+        supervisor.register(LoopSpec(loop_id="probe", description="probe", tick=lambda: {"ok": True}))
+        await supervisor.start()
+        try:
+            row = supervisor.wiring()["loops"]["probe"]
+            assert row["can_run"] is True
+            assert row["running"] is True
+            assert row["disabled_reason"] == ""
+            assert supervisor.wiring()["counts"]["can_run"] == 1
+        finally:
+            await supervisor.stop()
+
+    @pytest.mark.asyncio
+    async def test_a_stopped_loop_stops_claiming_it_can_run(self, _release_worker_threads: None) -> None:
+        """After shutdown the task is gone, so `running` must go false.
+
+        A task that outlives `stop()` is visible in `in_flight` instead; the
+        point here is that a *completed* supervisor never keeps reporting a live
+        loop.
+        """
+        config = AutonomyConfig(enabled=True, loops={"probe": AutonomyLoopConfig(enabled=True, interval_seconds=0.01, jitter_seconds=0.0)})
+        supervisor = AutonomySupervisor(config)
+        supervisor.register(LoopSpec(loop_id="probe", description="probe", tick=lambda: {"ok": True}))
+        await supervisor.start()
+        await supervisor.stop()
+
+        row = supervisor.wiring()["loops"]["probe"]
+        assert row["configured_enabled"] is True
+        assert row["running"] is False
+        assert row["can_run"] is False
+        assert row["disabled_reason"]
+
+    def test_every_registered_loop_has_a_row(self) -> None:
+        """A loop absent from the projection is a loop nobody can diagnose."""
+        supervisor = AutonomySupervisor()
+        supervisor.register_default_loops()
+
+        wiring = supervisor.wiring()["loops"]
+        assert set(wiring) == set(supervisor.status()["loops"])
+
+
+class TestIntegrationHealthReportsLoopsTruthfully:
+    """`GET /api/ops/integration-health` is where an operator looks.
+
+    It carries the supervisor's raw `status()`, whose `enabled` flag is the
+    config block — so the endpoint said `enabled: true` for loops that had never
+    run. The projection below is the truthful half.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_endpoint_names_the_loops_that_cannot_run(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.gateway.routers import ops_integration
+
+        supervisor = AutonomySupervisor(AutonomyConfig(enabled=True))
+        supervisor.register_default_loops()
+        monkeypatch.setattr("app.gateway.autonomy.supervisor._supervisor", supervisor, raising=False)
+
+        payload = await ops_integration.integration_health()
+
+        assert payload.autonomy_loops.counts["registered"] == len(supervisor.status()["loops"])
+        assert payload.autonomy_loops.counts["can_run"] == 0
+        assert set(payload.unrunnable_loops) == set(supervisor.status()["loops"]), "every registered loop is unrunnable on a fresh config, and each must be named"
+        for loop_id in payload.unrunnable_loops:
+            assert payload.autonomy_loops.loops[loop_id].disabled_reason, f"{loop_id} is listed as unrunnable with no reason"
+
+    @pytest.mark.asyncio
+    async def test_a_read_that_fails_is_reported_not_silently_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ "No loops" and "could not read the loops" drive opposite decisions.
+
+        An operator debugging a loop that never ticks needs to tell them apart,
+        so the response carries an explicit `reported` count rather than an empty
+        map that reads as "this deployment registers nothing".
+        """
+        from app.gateway.routers import ops_integration
+
+        def explode(*args, **kwargs):
+            raise RuntimeError("supervisor unavailable")
+
+        monkeypatch.setattr("app.gateway.autonomy.supervisor.get_autonomy_supervisor", explode)
+
+        payload = await ops_integration.integration_health()
+
+        assert payload.autonomy_loops.loops == {}
+        assert payload.autonomy_loops.counts["reported"] == 0
+        assert payload.unrunnable_loops == [], "nothing was read, so nothing may be listed as unrunnable"
+
+    @pytest.mark.asyncio
+    async def test_the_response_model_accepts_the_projection(self) -> None:
+        """The projection is a typed model, so a shape change fails loudly here.
+
+        Without a declared model the dict would be passed through unvalidated and
+        the `counts.reported` sentinel above would be the only evidence.
+        """
+        from app.gateway.routers.ops_integration import AutonomyLoopWiring, LoopWiring, integration_health
+
+        wiring = AutonomyLoopWiring(
+            master_enabled=True,
+            loops={
+                "apex": LoopWiring(description="x", configured_enabled=True, master_enabled=True, running=False, can_run=False, disabled_reason="not started"),
+            },
+            counts={"registered": 1, "configured": 1, "running": 0, "can_run": 0, "reported": 1},
+        )
+        dumped = wiring.model_dump(mode="json")
+        assert dumped["loops"]["apex"]["can_run"] is False
+        assert callable(integration_health)

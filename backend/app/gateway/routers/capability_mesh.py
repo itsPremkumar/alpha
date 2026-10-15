@@ -16,6 +16,12 @@ Three properties are load-bearing here:
 * **Every planning route is a preview.** ``/route``, ``/team`` and
   ``/compose`` return ``preview: true`` and ``dispatched: false``; the package
   has no executor, so a plan is a proposal, never work that ran.
+  ``GET /capability`` states the same absence as one machine-readable row —
+  ``capability: capability_mesh_executor``, ``state: absent``,
+  ``dispatches: false`` — with the modules a reader would expect to find the
+  dispatch behind named in ``missing_wiring``. It answers even while the mesh is
+  disabled, because a client asking whether it *could* dispatch is exactly the
+  client that should be told before it plans around the capability.
 * **Store I/O never runs on the event loop.** Every handler resolves the config
   and does its filesystem work through ``asyncio.to_thread``, because a
   blocking read on the request loop stalls every other run in the process.
@@ -305,6 +311,36 @@ async def post_compose(
         profile_version=body.profile_version,
         required_capabilities=tuple(body.required_capabilities),
     )
+
+
+@router.get("/capability")
+async def get_capability(_user: Any = Depends(get_current_user_from_request)) -> dict[str, Any]:
+    """Whether this plane can dispatch, as one machine-readable answer.
+
+    Every other route already carries ``dispatched: false`` on a payload, which
+    answers "did *this call* dispatch?". This one answers the question a caller
+    actually has to decide on: *can this plane dispatch at all?* It is reachable
+    while the mesh is **disabled** too, because a client asking whether the mesh
+    could do the thing it wants is precisely the client that should be told no
+    before it plans around a capability that is not there.
+
+    Nothing here is computed from the store, so it answers even when a store is
+    corrupt or missing — the executor-wiring claim is a property of the package,
+    not of the documents.
+    """
+    app_config = await asyncio.to_thread(get_app_config)
+    config = capability_mesh_config(app_config)
+    declaration = CapabilityMeshService(config).capability()
+    return {
+        **declaration,
+        "enabled": config.enabled,
+        "enabled_note": (
+            "capability_mesh.enabled is true: the read/preview surfaces below are reachable. Enabling does not add an executor."
+            if config.enabled
+            else "capability_mesh.enabled is false: every other route on this router answers 503 naming this setting."
+        ),
+        "real_dispatch_owner": "alpha.subagents.executor (SubagentExecutor) behind alpha.runtime.runs (RunManager); neither reads a capability-mesh record or plan",
+    }
 
 
 @router.post("/records")

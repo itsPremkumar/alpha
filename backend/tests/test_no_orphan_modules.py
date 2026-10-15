@@ -119,6 +119,13 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # is the maintained version of the same question.
     "app.gateway._audit_routes": "ad-hoc route-dump helper run by hand during audits; hardcodes one machine's PYTHONPATH, so nothing may import it (route_audit_builder is the maintained equivalent)",
     "app.gateway.audit_now": "ad-hoc route-dump helper, duplicate of app.gateway._audit_routes, run by hand during audits; hardcodes one machine's PYTHONPATH",
+    # Anchored-regex audit scanner committed with the workflow event-id guard
+    # (2c7d4bf). A one-off repository scan, not a runtime subsystem: it prints
+    # its findings at import, so nothing may import it without turning a module
+    # load into console output. Its sibling from the same commit lives at
+    # `scripts/count_audit.py` for the same reason. Kept under alpha/ rather
+    # than deleted because the finding it produced is a real, re-runnable audit.
+    "alpha.scripts.scan_anchored": "standalone anchored-regex audit scanner from commit 2c7d4bf; prints at import, so no production import may be added — run it by hand from the repo root",
 }
 
 # Standalone ``python -m <module>`` entry points. Nothing imports these by

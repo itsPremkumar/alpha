@@ -55,6 +55,46 @@ EVIDENCE_NOTE = "Every count below is reported with the evidence level behind it
 #: the package rather than a setting an operator can turn off.
 NO_DISPATCH_NOTE = "This package has no executor wiring: a routing plan, team plan, composition or explanation is a proposal, never a dispatch."
 
+#: The same fact as a *machine-readable* capability declaration, on every payload
+#: this service returns.
+#:
+#: ``dispatched: false`` says one reply did not dispatch. This says the surface
+#: as a whole cannot dispatch, which is the claim an operator or a caller
+#: actually has to evaluate when deciding whether to use the mesh. Both were
+#: previously only prose — ``PREVIEW_NOTE`` and ``NO_DISPATCH_NOTE`` — so a
+#: client that skipped the prose saw a payload with ``dispatched: false`` and
+#: no way to tell a preview-only mesh from one that simply chose not to act on
+#: this call. Stating it as a capability with a named owner and named missing
+#: modules makes the absence checkable from the payload alone.
+MESH_CAPABILITY = "capability_mesh_executor"
+MESH_CAPABILITY_STATE = "absent"
+MESH_CAPABILITY_NOTE = (
+    "No executor is wired to the capability mesh. route()/select_team()/compose_deliverable()/explain_plan() are pure "
+    "functions read locally; no module in alpha.capability_mesh dispatches an agent run through SubagentExecutor or "
+    "RunManager. Treat every plan this package returns as a proposal."
+)
+#: The modules a reader would expect to find dispatch behind. Named so the
+#: claim can be checked by reading them rather than taken on trust.
+MESH_MISSING_EXECUTOR_MODULES = (
+    "alpha.subagents.executor:SubagentExecutor",
+    "alpha.runtime.runs:RunManager",
+    "alpha.capability_mesh:dispatch",
+)
+
+
+#: Stamped on every payload: the honest capability row, ready to merge.
+def mesh_capability_declaration() -> dict[str, Any]:
+    """The mesh's own capability row, on every payload it returns."""
+    return {
+        "capability": MESH_CAPABILITY,
+        "state": MESH_CAPABILITY_STATE,
+        "dispatches": False,
+        "note": MESH_CAPABILITY_NOTE,
+        "missing_wiring": list(MESH_MISSING_EXECUTOR_MODULES),
+        "owner_of_real_dispatch": "alpha.subagents.executor / alpha.runtime.runs (RunManager); neither reads the mesh",
+    }
+
+
 #: The caller-declared agent budget every ``resolve_policy`` is bounded by.
 #: ``min(policy preference, default_agents)`` is the mesh's own stated rule, and
 #: this surface declares no team-size field of its own, so the ceiling is the
@@ -90,6 +130,16 @@ class CapabilityMeshService:
     @property
     def config(self) -> CapabilityMeshConfig:
         return self._config
+
+    def capability(self) -> dict[str, Any]:
+        """The mesh's own executor-wiring declaration.
+
+        Read-only and constant: it describes the package, not the store. Both
+        surfaces call this so the tool and the HTTP router cannot disagree about
+        whether the mesh can dispatch — the one drift this module exists to
+        prevent.
+        """
+        return mesh_capability_declaration()
 
     @property
     def directory(self) -> Path:
@@ -172,7 +222,8 @@ class CapabilityMeshService:
             "store_error": state.error,
             "evidence": _evidence_summary(levels),
             "passports": [passport.summary() for passport in rows],
-            "notes": [EVIDENCE_NOTE, NO_DISPATCH_NOTE],
+            "mesh_capability": mesh_capability_declaration(),
+            "notes": [EVIDENCE_NOTE, NO_DISPATCH_NOTE, MESH_CAPABILITY_NOTE],
         }
 
     def memory_report(self, *, entity_id: str = "", capability: str = "", task_category: str = "", limit: int = 50) -> dict[str, Any]:
@@ -195,10 +246,12 @@ class CapabilityMeshService:
             "bound": limit,
             "records": [record.to_dict() for record in bounded],
             "credit": {entity: memory.credit_for(entity).to_dict() for entity in entities},
+            "mesh_capability": mesh_capability_declaration(),
             "notes": [
                 "credit is a declared starting policy ((selected + 0.5*repaired + 0.25*materially_edited) / attempts), not a measurement of worth: an unmeasured attempt is still an attempt",
                 EVIDENCE_NOTE,
                 NO_DISPATCH_NOTE,
+                MESH_CAPABILITY_NOTE,
             ],
         }
 
@@ -215,7 +268,8 @@ class CapabilityMeshService:
             None: "unresolved: too few comparable pairs to answer — never 'well calibrated'",
         }[verdict]
         payload["kind"] = "read"
-        payload["notes"] = [EVIDENCE_NOTE, NO_DISPATCH_NOTE]
+        payload["mesh_capability"] = mesh_capability_declaration()
+        payload["notes"] = [EVIDENCE_NOTE, NO_DISPATCH_NOTE, MESH_CAPABILITY_NOTE]
         return payload
 
     def drift_report(self, *, profile_version: str = "") -> dict[str, Any]:
@@ -225,10 +279,12 @@ class CapabilityMeshService:
         report = detect_drift(memory.records(), profile_version=version).to_dict()
         report["kind"] = "read"
         report["acts"] = False
+        report["mesh_capability"] = mesh_capability_declaration()
         report["notes"] = [
             "detect_drift is a pure reader: it marks entities and preserves audit evidence, and mutates no record, passport, config or routing decision",
             EVIDENCE_NOTE,
             NO_DISPATCH_NOTE,
+            MESH_CAPABILITY_NOTE,
         ]
         return report
 
@@ -248,10 +304,12 @@ class CapabilityMeshService:
             "policies": rows,
             "exploration_budget_fraction": self._config.exploration_budget_fraction,
             "exploration_note": "declared, not spent: nothing in this package executes a probe, so this number is reported rather than consumed",
+            "mesh_capability": mesh_capability_declaration(),
             "notes": [
                 "resolve_policy reads one explicit row per policy; an unknown name is refused listing the valid ones, and bounds are refused, never clamped",
                 DecisionPolicy.LOCAL.value + " declares an intent the mesh cannot enforce: it has no runtime locality constraint to check today",
                 NO_DISPATCH_NOTE,
+                MESH_CAPABILITY_NOTE,
             ],
         }
 
@@ -377,9 +435,11 @@ class CapabilityMeshService:
         )
         payload = score.to_dict()
         payload["kind"] = "read"
+        payload["mesh_capability"] = mesh_capability_declaration()
         payload["notes"] = [
             "known=False means nothing was measured, never 'safe': only model_family and model_provider may be marked shared by a documented weak prior",
             NO_DISPATCH_NOTE,
+            MESH_CAPABILITY_NOTE,
         ]
         return payload
 
@@ -389,9 +449,11 @@ class CapabilityMeshService:
         report = self.shadow().report(version).to_dict()
         report["kind"] = "read"
         report["spends_budget"] = False
+        report["mesh_capability"] = mesh_capability_declaration()
         report["notes"] = [
             "the shadow runner stores comparisons and never calls a model, never spends budget and never changes a live assignment; the candidate router is a caller-injected callable",
             NO_DISPATCH_NOTE,
+            MESH_CAPABILITY_NOTE,
         ]
         return report
 
@@ -457,10 +519,12 @@ class CapabilityMeshService:
             "recorded": record.to_dict(),
             "estimate_after": estimate.to_dict(),
             "evidence": estimate.evidence_level.value,
+            "mesh_capability": mesh_capability_declaration(),
             "notes": [
                 "appended through the mesh's own validation: a quality without a profile_version is refused here, never stored",
                 "a stated confidence is a calibration signal, not evidence — only a measured quality is",
                 "this write records an observation; it does not dispatch, schedule or assign anything",
+                MESH_CAPABILITY_NOTE,
             ],
         }
 
@@ -478,8 +542,9 @@ def _preview_payload(body: dict[str, Any], *, extra_notes: list[str] | None = No
         "preview": True,
         "dispatched": False,
         "preview_note": PREVIEW_NOTE,
+        "mesh_capability": mesh_capability_declaration(),
         **body,
-        "notes": [*(extra_notes or []), EVIDENCE_NOTE, NO_DISPATCH_NOTE],
+        "notes": [*(extra_notes or []), EVIDENCE_NOTE, NO_DISPATCH_NOTE, MESH_CAPABILITY_NOTE],
     }
 
 
@@ -491,7 +556,12 @@ def _now_iso() -> str:
 
 __all__ = [
     "EVIDENCE_NOTE",
+    "MESH_CAPABILITY",
+    "MESH_CAPABILITY_NOTE",
+    "MESH_CAPABILITY_STATE",
+    "MESH_MISSING_EXECUTOR_MODULES",
     "NO_DISPATCH_NOTE",
     "PREVIEW_NOTE",
     "CapabilityMeshService",
+    "mesh_capability_declaration",
 ]

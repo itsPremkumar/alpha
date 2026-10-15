@@ -41,6 +41,24 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
 
 `scripts/generate_feature_manifest.py`) to a module that imports it: 139  tools, 74 routers, 46 middlewares, and 13 supervisor loops. A module added to a
   registry without a wiring point fails the build.
+- **A supervisor loop's `wired: true` is measured, not asserted.**
+  `collect_loops()` reads the tick straight out of the `defaults` tuple in
+  `register_default_loops()` (`loop_adapters.<name>`) and cross-checks that name
+  against the functions `app/gateway/autonomy/loops.py` actually declares; it
+  used to fabricate the module path as `f"{loop_id}_tick"` — a name it never
+  looked up — and stamp `wired: True` without reading either file, so a renamed
+  adapter still produced a manifest claiming every loop was wired.
+  `test_declared_modules_exist` resolves the `module:function` adapter path too
+  (it previously discarded the symbol half and imported only the module), and
+  `test_declared_loop_adapters_are_resolvable` asserts the supervisor's
+  registered tick *is* the manifest's adapter, so neither can drift from the
+  other. An unwired entry carries a `reason`, and the test fails on one without
+  it — an unexplained unwired row is indistinguishable from a generator bug.
+- A builtin tool resolved through `alpha.tools.builtins.resolve_builtin_tool("<name>")`
+  is real wiring and counts as imported by `tools.py`. The wiring tests read that
+  second spelling too; without it the PEP-562 facade's name-collision repair
+  (needed because a direct submodule import shadows the facade export) was
+  reported as 26 unregistered builtins.
 - `tests/test_no_orphan_modules.py` fails the build if a module exists with no
   import, dotted-string loader path, config `use:` entry, or allowlist reason.
   Fix the list, not the test. See `alpha.capabilities.catalog` for how optional
@@ -67,6 +85,19 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
   rest of the stack drains. A worker that outlives the grace period is logged and
   stays visible in `status()` rather than being reported as idle.
   `tests/test_autonomy_supervisor.py` pins the invariants.
+- **`GET /api/ops/integration-health` reports per-loop `can_run`, not just
+  `enabled`.** The supervisor's `status()` carries one `enabled` flag copied
+  from the per-loop config block, so a loop an operator merely *named* in
+  `autonomy.loops` read as enabled while the master switch was off and no task
+  existed — the same row an operator reads when asking why `runs: 0`.
+  `AutonomySupervisor.wiring()` splits the three axes (`configured_enabled`,
+  `master_enabled`, `running`) and names `disabled_reason` for any loop that
+  cannot run, so "registered but inert" never renders as healthy. An absent id
+  in `autonomy.loops` resolves to `configured_enabled: false` with the absent-id
+  reason — which is the default for every loop on a fresh install. The endpoint
+  returns that projection as `autonomy_loops` plus `unrunnable_loops`; a
+  supervisor that cannot be read answers with `counts.reported: 0` and an empty
+  row set rather than "no loops are registered".
 - **Alpha Mod Kernel** — ordered event middleware is wired into the lead agent's
   tool/model lifecycle and run admission. A mod's `required_capabilities` is a
   declaration, never an operator grant; external mods need an explicit grant at
@@ -416,12 +447,21 @@ deterministic position swapping, per-task hard gates that force
 concede/rebut dispositions — and `decide()` still recomputes the winner from
 the rubric, overriding a judge whose stated pick contradicts its own scores.
 Two honesty notes worth knowing before you use it: `compare`/`synthesize` are
-declared modes that are **refused by name** (not implemented), and the
-task-contract / candidate-coverage / evidence-ledger / synthesis modules are
-engine primitives with tests but **no executor wiring**, so no live run cites
-them. Operating guide: [docs/ARENA.md](../docs/ARENA.md); engine contract:
-[packages/harness/alpha/arena/AGENTS.md](packages/harness/alpha/arena/AGENTS.md).
-Tests: `tests/test_arena_*.py` (145 tests, zero model calls — they run on the
+declared modes that are **refused by name** (not implemented), and the mode
+vocabulary the `profiles` action renders carries an `implemented` flag and a
+`refusal_reason` per row so it cannot present a mode that raises as available.
+The task-contract / candidate-coverage / evidence-ledger / synthesis modules
+**are wired into the executor**: once the bracket is terminal,
+`ArenaExecutor._finish` builds one `tournament` block off the event loop, and
+`status()`, `winner()`, `POST /runs/{id}/start|resume` and the `arena` tool all
+carry it. Coverage is measured from each competitor's own solution file (never
+declared by the judge), every claim is `UNVERIFIED` because the bracket runs no
+retrieval, and the merge is emitted as a plan (`synthesis.executed: false`). A
+bracket that did not finish, or a report that could not be assembled, says so
+rather than reporting nothing. Operating guide:
+[docs/ARENA.md](../docs/ARENA.md); engine
+contract: [packages/harness/alpha/arena/AGENTS.md](packages/harness/alpha/arena/AGENTS.md).
+Tests: `tests/test_arena_*.py` (160 tests, zero model calls — they run on the
 scripted runner seam).
 
 ### Alpha-to-Alpha peer network
@@ -439,11 +479,20 @@ planning action is a locally computed preview that says so, and **no executor
 wiring exists, so nothing dispatches a real agent run through the mesh**. It is
 `enabled: false` by default, and even enabled it is read/preview-only. Every
 count travels with its evidence level and an unreadable store reports the
-store's own reason rather than an empty answer. Contract and the honesty
+store's own reason rather than an empty answer. **The absence is machine-readable,
+not only prose**: every payload carries a `mesh_capability` row
+(`capability_mesh_executor` / `state: absent` / `dispatches: false`) naming the
+modules a dispatch would have to live in, and
+`GET /api/capability-mesh/capability` serves that row on its own — reachable
+even while the mesh is **disabled**, because a client checking whether it could
+route is exactly the client that should be told first.
+`tests/test_capability_mesh_executor_wiring.py` pins it, including the two
+checks that are not about wording: no mesh module imports `SubagentExecutor` or
+`RunManager`, and neither of those reads the mesh. Contract and the honesty
 invariants at the boundary:
 [packages/harness/alpha/capability_mesh/AGENTS.md](packages/harness/alpha/capability_mesh/AGENTS.md).
-Tests: `tests/test_capability_mesh_tool.py`, `tests/test_capability_mesh_router.py`
-(offline, no model calls).
+Tests: `tests/test_capability_mesh_tool.py`, `tests/test_capability_mesh_router.py`,
+`tests/test_capability_mesh_executor_wiring.py` (offline, no model calls).
 
 ### Alpha-to-Alpha peer network
 

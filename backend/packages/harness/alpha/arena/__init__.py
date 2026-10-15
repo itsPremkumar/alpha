@@ -60,7 +60,9 @@ from alpha.arena.models import (
     VerdictScores,
 )
 from alpha.arena.modes import (
+    IMPLEMENTED_MODES,
     PROFILES,
+    REFUSED_MODES,
     Profile,
     ProfileSpec,
     RouteInputs,
@@ -108,6 +110,7 @@ from alpha.arena.task_rubrics import (
     weighted_total_for,
     weights_for,
 )
+from alpha.arena.tournament import assemble_tournament_report
 
 __all__ = [
     "ArenaBudget",
@@ -131,11 +134,13 @@ __all__ = [
     "DEFAULT_DECK_PATH",
     "DEFAULT_ESTIMATE_TOKENS_PER_CALL",
     "DEFAULT_JUDGE_ATTEMPTS",
+    "IMPLEMENTED_MODES",
     "DefenseRecord",
     "DefenseVerdict",
     "NO_OUTPUT",
     "PROFILES",
     "REASONING_SCOPE",
+    "REFUSED_MODES",
     "RUBRIC_TEXT",
     "RouteInputs",
     "RunMode",
@@ -173,6 +178,7 @@ __all__ = [
     "any_gate_tripped",
     "apply_gates",
     "arena_config",
+    "assemble_tournament_report",
     "best_contributions",
     "bracket_sizes",
     "card_values",

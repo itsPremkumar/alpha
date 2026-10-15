@@ -300,6 +300,31 @@ def _format_estimate(estimate: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _format_tournament(report: dict[str, Any] | None) -> list[str]:
+    """The post-bracket report, in the three lines a model needs to not over-read it.
+
+    A champion is a winner, not a verification, so the report travels beside it:
+    which requirements were actually addressed, whether any claim was
+    contradicted, and that the merge is a plan. An unassembled report is stated
+    as such rather than omitted — an absent section reads as "nothing to report",
+    which is the one reading this must never produce.
+    """
+    if not report:
+        return ["  Tournament report: absent (this run predates the report, or its state document was written by an older build)"]
+    if not report.get("assembled"):
+        return [f"  Tournament report: NOT ASSEMBLED — {report.get('reason', 'reason not recorded')}"]
+    evidence = report.get("evidence") or {}
+    synthesis = report.get("synthesis") or {}
+    counts = evidence.get("counts") or {}
+    lines = [
+        f"  Tournament report: {report.get('candidate_count', 0)} candidate(s) scored against {len(report.get('task_contract', {}).get('requirements') or [])} requirement(s)",
+        f"    Evidence: {counts.get('supported', 0)} supported, {counts.get('contradicted', 0)} contradicted, {counts.get('unverified', 0)} unverified of {counts.get('total', 0)} claim(s); gate {'TRIPPED' if evidence.get('gate_tripped') else 'not tripped'}",  # noqa: E501 - one evidence line reads better unbroken
+        f"    Uncovered requirements: {', '.join(report.get('gaps') or []) or 'none'}",
+        f"    Merge: a PLAN only, not executed ({len(synthesis.get('sections') or [])} section(s)) — the champion is a winner, not a verified answer.",
+    ]
+    return lines
+
+
 def _format_status(summary: dict[str, Any]) -> str:
     lines = [
         f"Run {summary['run_id']} — {summary['status']} ({summary['phase']})",
@@ -316,6 +341,7 @@ def _format_status(summary: dict[str, Any]) -> str:
         lines.append(f"  Failed agents: {', '.join(summary['failed'].keys())}")
     if summary.get("recalled"):
         lines.append(f"  Recalled strategies: {', '.join(summary['recalled'][:2])}{'…' if len(summary['recalled']) > 2 else ''}")
+    lines.extend(_format_tournament(summary.get("tournament")))
     return "\n".join(lines)
 
 
@@ -352,6 +378,7 @@ def _format_winner(data: dict[str, Any]) -> str:
     ]
     if data["final"] and data["final"].get("reason"):
         lines.append(f"  Reason: {data['final']['reason']}")
+    lines.extend(_format_tournament(data.get("tournament")))
     return "\n".join(lines)
 
 

@@ -179,18 +179,42 @@ def _projected_calls(spec: ProfileSpec) -> int:
 
 
 def describe_modes() -> list[dict[str, Any]]:
-    return [{"mode": m.value, "description": _MODE_DESCRIPTIONS[m]} for m in RunMode]
+    """The honest mode vocabulary: implemented modes, and refusals with reasons.
+
+    Each row carries ``implemented`` so a caller that renders the table cannot
+    present ``compare`` or ``synthesize`` as something it can start — the two are
+    declared by the plan and refused by name at ``create``/``estimate``, so a
+    table that listed them as available would advertise a run that raises.
+    """
+    return [{"mode": m.value, "implemented": m in IMPLEMENTED_MODES, "description": _MODE_DESCRIPTIONS[m], "refusal_reason": REFUSED_MODES.get(m, "")} for m in RunMode]
 
 
 _MODE_DESCRIPTIONS: dict[RunMode, str] = {
-    RunMode.DECIDE: "Single-elimination bracket until one solution survives.",
-    RunMode.COMPARE: "Every candidate judged on the rubric; no eliminations.",
-    RunMode.SYNTHESIZE: "Bracket plus merge of each requirement's best contribution.",
-    RunMode.PLAN: "Project cost only; no sub-agent call is made.",
+    RunMode.DECIDE: "Single-elimination bracket until one solution survives. On completion the run also cites a post-bracket tournament report (requirement coverage, claim ledger, merge plan).",
+    RunMode.COMPARE: "DECLARED BUT NOT IMPLEMENTED — refused by name at create/estimate. Every candidate would be judged on the rubric with no eliminations; the engine runs a bracket only.",
+    RunMode.SYNTHESIZE: (
+        "DECLARED BUT NOT IMPLEMENTED as a run mode — refused by name at create/estimate. A `decide` run DOES produce a contribution merge PLAN in its "
+        "tournament report; that plan is a proposal, not an executed merge, so it is not this mode."
+    ),
+    RunMode.PLAN: "Project cost only; no sub-agent call is made. Refuses start.",
+}
+
+#: Modes this engine actually runs, read by ``describe_modes`` callers that must
+#: not present a declared-but-refused mode as available. The refusals themselves
+#: live in ``service._check_mode`` — this is the *reporting* half, and the two
+#: are pinned against each other by ``test_arena_profiles.py``.
+IMPLEMENTED_MODES: frozenset[RunMode] = frozenset({RunMode.DECIDE, RunMode.PLAN})
+#: Declared, refused by name, and why. Published on ``profiles`` so the model
+#: reads the refusal from the vocabulary instead of discovering it by failure.
+REFUSED_MODES: dict[RunMode, str] = {
+    RunMode.COMPARE: "declared by the plan; the executor runs a single-elimination bracket only, so compare is refused rather than degraded into decide",
+    RunMode.SYNTHESIZE: "declared by the plan; a decide run emits a merge PLAN in its tournament report, but no mode executes a merge, so synthesize is refused rather than faked",
 }
 
 
 __all__ = [
+    "IMPLEMENTED_MODES",
+    "REFUSED_MODES",
     "RunMode",
     "Profile",
     "ProfileSpec",

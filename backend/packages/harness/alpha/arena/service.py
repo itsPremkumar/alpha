@@ -430,6 +430,11 @@ class ArenaService:
         summary["route_reason"] = state.get("route_reason", "")
         summary["mode"] = state.get("mode", RunMode.DECIDE.value)
         summary["log"] = [entry.get("line", "") for entry in self._store.read_log(run_id, tail=10)]
+        # The post-bracket report, so a reader of `status` sees the coverage /
+        # evidence / synthesis a real run produced instead of having to know that
+        # `tournament` is a separate key. `assembled` travels with it: a run whose
+        # report is missing must not render as one with no gaps.
+        summary["tournament"] = state.get("tournament") or {"assembled": False, "reason": "the run has not reached a terminal bracket state, so no coverage/evidence/synthesis report exists yet"}
         return summary
 
     def pairings(self, run_id: str, owner_id: str) -> dict[str, Any]:
@@ -484,6 +489,11 @@ class ArenaService:
             "final": state.get("final"),
             "budget": state.get("budget"),
             "solution": state.get("solutions", {}).get(state["champion"]),
+            # The champion is a winner, not a verification: the report says what
+            # the run measured about coverage and claims, and the synthesis is a
+            # plan. Both travel beside the winner so nobody reads "champion" as
+            # "every requirement covered".
+            "tournament": state.get("tournament"),
         }
 
     def list_runs(self, owner_id: str | None = None) -> list[dict[str, Any]]:

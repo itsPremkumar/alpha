@@ -38,7 +38,7 @@ from alpha.capability_mesh.complementarity import PairMemoryStoreError
 from alpha.capability_mesh.config import CapabilityMeshConfig, capability_mesh_config
 from alpha.capability_mesh.independence import IndependenceStoreError
 from alpha.capability_mesh.memory import MemoryStoreError
-from alpha.capability_mesh.service import CapabilityMeshService
+from alpha.capability_mesh.service import MESH_CAPABILITY, MESH_CAPABILITY_STATE, CapabilityMeshService
 from alpha.capability_mesh.shadow import ShadowStoreError
 from alpha.capability_mesh.store import PassportStoreError
 from alpha.capability_mesh.synthesis import ArtifactStoreError
@@ -114,9 +114,12 @@ async def capability_mesh_tool(  # noqa: PLR0912 - one dispatch, one honest answ
 
     **Every planning action returns a PREVIEW computed locally. Nothing is
     dispatched**: no agent run is created, no budget is spent, and no live
-    assignment changes. There is no executor wiring behind this tool, so a
+    assignment changes. There is no executor wiring behind this tool — the
+    package declares `capability_mesh_executor` with state ``absent`` — so a
     routing plan is a proposal for a human or a caller to act on, never work
-    that happened. Treat it accordingly.
+    that happened. To *route* work, use the real dispatch surfaces (the `task`
+    tool / `RunManager`); they do not read a capability record from this mesh.
+    Treat every answer below accordingly.
 
     How to read the answers:
 
@@ -169,7 +172,7 @@ async def capability_mesh_tool(  # noqa: PLR0912 - one dispatch, one honest answ
     """
     config = await _resolve_config(runtime)
     if not config.enabled:
-        return "Capability mesh is disabled in config.yaml (capability_mesh.enabled: false). It is a read/preview plane: even enabled it dispatches nothing."
+        return f"Capability mesh is disabled in config.yaml (capability_mesh.enabled: false). It is a read/preview plane: even enabled it dispatches nothing. Executor wiring: {MESH_CAPABILITY} = {MESH_CAPABILITY_STATE}."
 
     service = CapabilityMeshService(config)
     arguments = _arguments(locals())
@@ -332,6 +335,10 @@ def _render(action: str, payload: dict[str, Any]) -> str:
         header.append(f"PREVIEW — {payload['preview_note']}")
     if action in ("route", "team", "compose", "explain"):
         header.append("Nothing was dispatched; this is a locally computed plan over stored evidence.")
+    # Stated on every action, not only the planning ones: a read reply that
+    # omitted it would leave the model believing the mesh is a routing surface
+    # it simply had not exercised yet.
+    header.append(f"Executor wiring: {MESH_CAPABILITY} = {MESH_CAPABILITY_STATE} ({payload.get('mesh_capability', {}).get('dispatches', False)} dispatches).")
     body = _body(action, payload)
     notes = [f"- {note}" for note in payload.get("notes", [])]
     sections = ["\n".join(header), "", body]
