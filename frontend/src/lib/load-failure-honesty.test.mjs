@@ -434,9 +434,41 @@ test("KanbanSection surfaces project and server-board fetch failures", () => {
   assert.doesNotMatch(src, /\.catch\(\(\) => setProjects\(\[\]\)\)/);
   assert.match(src, /projectsError/);
   assert.match(src, /serverBoardError/);
-  assert.match(src, /e instanceof Error \? e\.message : errMsg\(e\)/);
+  // `errMsg` rewrites a 404 to "Not found — it may have been deleted.", so the
+  // Gateway's own "No active organizations found." setup instruction was lost.
+  // `serverReason` keeps it, and the no-company 404 renders as its own state.
+  assert.match(src, /serverReason\(e\)/);
+  assert.match(src, /isNoCompanyConfigured\(e\)/);
   assert.match(src, /\$\{serverBoardError\}/);
   assert.match(src, /showing local cards only/i);
+});
+
+// The failure banner above must stay a *failure* banner. `GET /api/company/*`
+// answers 404 "No active organizations found. Bootstrap a company first."
+// whenever this owner has no company — the normal state of a fresh install —
+// and folding that into `serverBoardError` painted a healthy Gateway red with
+// "Server board unavailable" while telling the operator to debug a connection
+// that was working. It is a setup answer, and it now has its own state.
+test("KanbanSection renders the no-organization 404 as not-configured, not as a failed read", () => {
+  const src = read("../components/sections/KanbanSection.tsx");
+  // Classified by the server's own sentence, in its own branch.
+  assert.match(src, /isNoCompanyConfigured\(e\)/);
+  assert.match(src, /setServerBoardNotConfigured\(message\)/);
+  assert.match(src, /else \{\s*setServerBoardError\(message\);\s*\}/);
+  // Both renderings exist, and they are different components: a notice for the
+  // setup answer, the error box for a real failure.
+  assert.match(src, /Server board not configured —/);
+  assert.match(src, /<Notice\s+message=\{`Server board not configured/);
+  assert.match(src, /Server board unavailable — showing local cards only/);
+  // The empty board says what is missing instead of "Board is empty".
+  assert.match(src, /No company bootstrapped yet/);
+  assert.match(src, /The Gateway answered: /);
+  // The state is re-derived on every load, so bootstrapping a company and
+  // pressing Refresh must clear it.
+  const loadAt = src.indexOf("const load = async");
+  const loadBody = src.slice(loadAt, src.indexOf("useEffect", loadAt));
+  assert.match(loadBody, /setServerBoardNotConfigured\(null\)/);
+  assert.match(loadBody, /setServerBoardError\(null\)/);
 });
 
 test("MessagesSection tracks every list fetch failure with a flag", () => {

@@ -66,6 +66,16 @@ const companyStubUrl = toUrl(`
   export async function listCompanies() { return []; }
   export async function getCompanyWork() { return []; }
 `);
+// AgentsSection reads only through this client. Stubbing it lets a render
+// drive the component's own state machine without a Gateway.
+const agentsStubUrl = toUrl(`
+  export async function listAgents() { throw new Error("stub not configured"); }
+  export async function fetchUserProfile() { return null; }
+  export async function createAgent() {}
+  export async function updateAgent() {}
+  export async function deleteAgent() {}
+  export async function saveUserProfile() {}
+`);
 
 const compileTs = (name, deps = {}) => {
   let src = read(`./${name}.ts`);
@@ -80,6 +90,10 @@ const kanban = await load(compileTs("kanban", { http: httpStubUrl }));
 const board = await load(compileTs("kanban-board", { kanban: kanbanUrl }));
 const teamops = await load(compileTs("teamops", { http: httpStubUrl }));
 const subagents = await load(compileTs("subagents", { http: httpStubUrl }));
+// The real classifier, not a stub: the sections below branch on what it
+// returns, so a stub would test the stub. Only its `./http` dependency is
+// redirected, which is the same shim every other client here gets.
+const serverReasonsUrl = toUrl(compileTs("server-reasons", { http: httpStubUrl }));
 
 /** localStorage stand-in, so kanban-board's board round-trips. */
 globalThis.localStorage = {
@@ -777,6 +791,7 @@ const loadSection = async (file) => {
     .replace(/from\s+"lucide-react"/, `from "${LUCIDE}"`)
     .replace(/from\s+"@\/components\/ui"/, `from "${uiUrl}"`)
     .replace(/from\s+"@\/lib\/http"/, `from "${httpStubUrl}"`)
+    .replace(/from\s+"@\/lib\/server-reasons"/, `from "${serverReasonsUrl}"`)
     .replace(/from\s+"@\/lib\/time"/, `from "${timeUrl}"`)
     .replace(
       /from\s+"@\/lib\/teamops-progress"/,
@@ -801,6 +816,28 @@ const loadSection = async (file) => {
 const { createElement: h } = await import(resolveUrl("react"));
 const { renderToStaticMarkup } = await import(resolveUrl("react-dom/server"));
 const TeamOps = await loadSection("TeamOpsSection.tsx");
+
+/**
+ * `AgentsSection`, loaded against the same stubs.
+ *
+ * Rendering it is the only way to prove what an operator actually sees when
+ * the Gateway reports `agents_api.enabled=false` — a source pin can be
+ * satisfied by dead code, a rendered string cannot.
+ */
+const loadAgentsSection = async () => {
+  const code = transpile(read("../components/sections/AgentsSection.tsx"), {
+    jsx: ts.JsxEmit.ReactJSX,
+  })
+    .replace(/from\s+"react"/, `from "${resolveUrl("react")}"`)
+    .replace(/from\s+"react\/jsx-runtime"/, `from "${resolveUrl("react/jsx-runtime")}"`)
+    .replace(/from\s+"lucide-react"/, `from "${LUCIDE}"`)
+    .replace(/from\s+"@\/components\/ui"/, `from "${uiUrl}"`)
+    .replace(/from\s+"@\/lib\/http"/, `from "${httpStubUrl}"`)
+    .replace(/from\s+"@\/lib\/server-reasons"/, `from "${serverReasonsUrl}"`)
+    .replace(/from\s+"@\/lib\/agents"/, `from "${agentsStubUrl}"`);
+  return load(code);
+};
+const AgentsSection = await loadAgentsSection();
 const visibleText = (markup) =>
   markup
     .replace(/<span class="sr-only">[\s\S]*?<\/span>/g, " ")
@@ -1328,4 +1365,53 @@ test("the group/message send guard in MessagesSection was already correct", () =
   const code = codeOnly(read("../components/sections/MessagesSection.tsx"));
   assert.match(code, /if \(!draft\.trim\(\) \|\| sending\) return;/);
   assert.match(code, /disabled=\{!draft\.trim\(\) \|\| sending\}/);
+});
+
+/* ── Rendered configuration states ─────────────────────────────────────────
+ *
+ * Source pins can be satisfied by dead code. These render the component and
+ * read the string that reaches the operator, so a claim about what the UI says
+ * is backed by the markup rather than by a regex over the file.
+ */
+
+test("rendered: `enabled=false` says the Agents API is off by configuration, not 'switched off'", () => {
+  const markup = renderToStaticMarkup(h(AgentsSection.AgentsSection, { enabled: false }));
+  const text = visibleText(markup);
+  assert.match(
+    text,
+    /Agents API is disabled by configuration/,
+    "the disabled state must name the configuration, in the Gateway's own terms",
+  );
+  assert.match(text, /agents_api\.enabled=true/, "the render must carry the config key the Gateway named");
+  assert.doesNotMatch(
+    text,
+    /Agent management is switched off/,
+    "the old vague copy must be gone",
+  );
+});
+
+test("rendered: `enabled=null` is 'not reported' — a failed /features read is not a config toggle", () => {
+  const text = visibleText(renderToStaticMarkup(h(AgentsSection.AgentsSection, { enabled: null })));
+  assert.match(text, /status was not reported/);
+  assert.doesNotMatch(
+    text,
+    /disabled by configuration/,
+    "an unanswered question must not be rendered as a configuration fact",
+  );
+});
+
+test("source: every configuration-state copy lives in server-reasons.ts, not inline in a section", () => {
+  // One authority for the wording, so the same Gateway answer cannot be
+  // described two different ways in two different views.
+  const src = read("./server-reasons.ts");
+  assert.match(src, /AGENTS_API_DISABLED_VIEW/);
+  assert.match(src, /NO_COMPANY_CONFIGURED_VIEW/);
+  for (const file of ["AgentsSection.tsx", "KanbanSection.tsx", "TeamOpsSection.tsx"]) {
+    const section = read(`../components/sections/${file}`);
+    assert.doesNotMatch(
+      section,
+      /Agents API is disabled by configuration/,
+      `${file} must import the copy from server-reasons.ts rather than restate it`,
+    );
+  }
 });

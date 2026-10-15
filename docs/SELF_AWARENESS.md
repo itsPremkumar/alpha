@@ -26,7 +26,7 @@ alpha_capability(action="inventory")
   "unreadable_sections": [],
   "sections": [
     { "name": "identity", "status": "ok", "count": 4,    "available_count": 4,   "entries": [...] },
-    { "name": "tools",    "status": "ok", "count": 132,  "available_count": 132, "entries": [...] },
+    { "name": "tools",    "status": "ok", "count": 136,  "available_count": 136, "entries": [...] },
     { "name": "skills",   "status": "ok", "count": 24,   "available_count": 24,  "entries": [...] },
     { "name": "mcp",      "status": "ok", "count": 6,    "available_count": 0,   "entries": [...] },
     // … models, bots, commands, capabilities, engines, wiring, memory
@@ -35,9 +35,9 @@ alpha_capability(action="inventory")
 }
 ```
 
-Every section is bounded, so one call cannot flood a context window. 475 commands
-and 131 tools is roughly 40k characters that nobody should pay for to answer one
-yes/no question.
+Every section is bounded, so one call cannot flood a context window. 477 command
+rows and 136 registered tools is roughly 40k characters that nobody should pay
+for to answer one yes/no question.
 
 ## Actions
 
@@ -155,10 +155,11 @@ exception text. One misconfigured MCP server must not make the whole inventory
 useless.
 
 **A count is never a claim.** `count` is measured from descriptors that call
-actually read. `available_count` is a *separate* field, because "128 tools exist"
-and "128 tools are usable" are different statements and only the first is ever true
-from a static read. Nothing reports `health` as anything but `unverified` — no
-registry executes what it lists.
+actually read. `available_count` is a *separate* field, because "139 tools are
+declared" and "136 tool names are actually registered" (three are aliases the
+tool list deduplicates) and "139 tools are usable" are different statements, and
+only the first is ever true from a static read. Nothing reports `health` as
+anything but `unverified` — no registry executes what it lists.
 
 **"Could not look" ≠ "looked and found nothing."** An unreadable section reports
 `count: null`, never `0`. Those lead to opposite decisions.
@@ -224,11 +225,15 @@ app/gateway/routers/workflows.py         GET /system/registries (discloses trunc
 
 **One source of truth per fact, never a re-derivation.** `engines` and `wiring`
 read the generated `contracts/feature_manifest.json`; `models` reads the live
-`AppConfig`. Every capability count in this repo is generated and drift-gated by
+`AppConfig`. Every capability count in that *generated* artifact is drift-gated by
 `scripts/check_generated_drift.py`, so a registry that formed its own opinion would
 be an unreviewed second answer to a question the build already settles — the exact
-drift class that has bitten this repo five times (89 → 97 → 99 engines, 127 → 130 →
-134 tools, 55 → 57 → 60 → 61 routers, 8 → 9 loops).
+drift class that has bitten this repo repeatedly (89 → 97 → 99 engines, 127 → 130 →
+134 tools, 55 → 57 → 60 → 61 routers, 8 → 9 loops; today **127 engines, 139
+declared tools, 74 routers, 13 loops**). The gate byte-compares the artifact
+against its generator's output and never reads prose, so a count written in
+Markdown — including in this file — is verified by hand against the manifest,
+not by CI.
 
 **Availability is what the source says; health is what we probed.** A *declared*
 model is `available` with `health: "unverified"`. An *enabled* MCP server is
@@ -253,7 +258,7 @@ string occurs in the file.
 
 **The registries endpoint silently truncated.** `GET /api/workflows/system/registries`
 had a bare `[:100]` descriptor slice. That was fine for five small registries and
-wrong the moment `commands` (475 rows) and `engines` (115) joined: the slice dropped
+wrong the moment `commands` (477 rows) and `engines` (127) joined: the slice dropped
 rows with nothing in the response saying so. Every kind now reports `returned`
 beside its measured `count` and sets `truncated`.
 

@@ -1,4 +1,14 @@
-"""Data models for Continuous Autonomous Goals and Milestones."""
+"""Data models for Continuous Autonomous Goals and Milestones.
+
+The legacy continuous-goal surface is **retired** (see
+``LEGACY_RETIREMENT_REASON``). Nothing in production dispatches these records:
+``RunManager`` is the sole run-lifecycle owner, and a run only becomes real work
+when it is admitted through it. A record here therefore proves that an objective
+was *written down* — never that a step ran, a milestone passed, or any work was
+verified. The read surfaces project every record through
+``describe_goal`` so that a stale row carrying ``status="executing"`` cannot be
+read as live execution.
+"""
 
 from __future__ import annotations
 
@@ -14,9 +24,24 @@ GoalStatus = Literal[
     "achieved",
     "blocked",
     "paused",
+    "retired",
 ]
 
 MilestoneStatus = Literal["pending", "in_progress", "verified", "failed"]
+
+#: The one reason every legacy record is retired. Kept here, in the leaf module
+#: both the model tool and the ``/loop:*`` commands import, so the three
+#: user-facing surfaces cannot drift into three different excuses.
+LEGACY_RETIREMENT_REASON = "The legacy continuous-goal surface is retired: no Gateway worker dispatches these records, and this record is not evidence that any step ran or that any work was verified."
+
+#: What to do instead. Naming the real path is the whole point of refusing —
+#: a bare "unsupported" leaves the caller with nowhere to go.
+LEGACY_MIGRATION_GUIDANCE = (
+    "Send the objective as a normal message in a thread: the Gateway run path (RunManager) is what "
+    "actually executes it. Declare acceptance_criteria on that run to get a measured verdict at "
+    "GET /api/threads/{thread_id}/runs/{run_id}/verification — a completed run is still not a "
+    "verified one."
+)
 
 
 def _now() -> str:
@@ -84,6 +109,13 @@ class Goal:
     heartbeat_at: str = field(default_factory=_now)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
+    # Additive retirement stamp. It records that an operator explicitly marked
+    # this row retired on disk; it is *not* what makes a row read as retired —
+    # `describe_goal` retires every legacy record unconditionally, so a fresh
+    # install and a store written before this field existed both read honestly.
+    retired: bool = False
+    retired_at: str | None = None
+    retired_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

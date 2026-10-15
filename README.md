@@ -281,11 +281,11 @@ none of it is hypothetical.
 | Area | Status | Evidence |
 | :--- | :--- | :--- |
 | **Autonomous code → PR → merge** | ❌ Not operational. `sandbox/worktrees.py` is 338 lines of correct, hardened code with **no tool, route, or caller**. The one production use drops the model's diff text into a `.patch` and never applies it. Nothing commits, reviews, or merges; the prompts tell the LLM to call `gh pr create` itself. | `swarm/worker.py:397-447`; no `git commit` in the codebase |
-| **Emergency stop (ESTOP)** | ❌ Advertised to the model as pausing "all background tasks and subagents"; in fact it gates **only** the RSI cycle. Nothing in the run worker, run manager, admission controller, or the 8 autonomy loops reads it. The tool returns *"Fleet execution paused."* | `rsi/switchboard.py:51` is the sole consumer; the repo's own test is named `test_estop_engagement_refuses_cycle` |
+| **Emergency stop (ESTOP)** | ❌ Advertised to the model as pausing "all background tasks and subagents"; in fact it gates **only** the RSI cycle. Nothing in the run worker, run manager, admission controller, or the 13 supervisor loops reads it. The tool returns *"Fleet execution paused."* | `rsi/switchboard.py:51` is the sole consumer; the repo's own test is named `test_estop_engagement_refuses_cycle` |
 | **PR checklist** | ❌ **Fixed** for the checklist. It printed `- [x] Automated unit and regression test suite passed` for every PR having run nothing; boxes are now derived from real evidence receipts, and required-but-missing evidence produces an explicit "this PR is not verified / must not be merged" callout. ⚠️ The *signatures* behind it are still a dict literal and three regexes. | `65464c1`; `projects/pr_synthesizer.py` |
 | **Concurrent subagent writes** | ❌ All subagents in a thread share one workspace directory. A per-path lock serialises writes but there is no shared version counter, so the second writer silently overwrites the first — and both report success. | `subagents/executor.py:1360-1363`; `file_operation_lock.py:20-27` |
 | **Goal hierarchy** | ⚠️ The run loop's goal is one flat objective string with no children. The versioned plan store that *does* model this has no run-loop caller. | `agents/goal_state.py:22-31`; `goals/` unimported by `runtime/` |
-| **Legacy `/loop` background execution** | ⚠️ `/loop:start` and `goal_engine` persist a goal and milestones; they do not launch a background worker. A step without an executor now explicitly refuses and records no progress. Use APEX/RunManager for a real agent run; the legacy goal record is not proof that work ran or was verified. | `harness/continuous/runner.py`; `tests/test_continuous_goal_engine.py` |
+| **Legacy `/loop` background execution** | ✅ **Retired.** `/loop:start`, `/loop:pause`, `/loop:resume` and the `goal_engine` mutating actions now refuse by name and point at the real run path (`RunManager`); nothing dispatches these records, so a resume that used to persist `executing` and report success was the clearest case of a record standing in for work. `/loop:status` stays read-only and reports every row as `retired` with `verified: "never"`; `goal_engine action="retire"` stamps that onto the stored records **without deleting any**. `/goal create` is not retired — it emits a directive for the run already in flight — but it no longer mints a goal record. Send the objective as a normal message in a thread, and declare `acceptance_criteria` on the run to get a measured verdict. | `harness/continuous/`; `tests/test_continuous_goal_engine.py`, `test_backend_handlers.py` |
 | **Distribution tracing** | ⚠️ Off by default and **not reachable from `config.yaml` at all** — there is no `observability:`/`trace:` key in `AppConfig`. The run-event feed and `X-Trace-Id` correlation do work. | `observability/config.py:68`; `config/app_config.py:258-509` |
 | **Behavioural evaluation** | ❌ 26,933 tests, none of which asks whether the *agent* works. Loop-detection and duplicate-work guards have unit tests; plan success and tool-failure recovery have no behavioural eval. | `alpha/benchmarks/suites.py` evaluators are pure functions with fixtures |
 | **Mixture-of-Agents tool** | ❌ **Fixed.** It injected a `mock_worker` returning a fixed string and never called a model. It now resolves every named model through the real model factory: an unconfigured name is reported as a failed perspective, an all-failed round is an explicit refusal rather than a consensus, and a partial round reports `1/2 models answered`. | `65464c1`; `models/moa/workers.py` |
@@ -294,6 +294,7 @@ none of it is hypothetical.
 | **Irreversible git** | ✅ Fixed. `force_push` and `git_push_protected` were already classified as approval-requiring by the autonomy guard, but `assert_requires_approval` had no production caller — so nothing stopped a force-push over `main`. The `bash` tool now refuses both, with `sandbox.allow_protected_git_push: true` to restore it. | `sandbox/git_push_guard.py` |
 | **Code-tool workspace escape** | ✅ Fixed. `auto_test_and_repair` ran a model-supplied string through `shell=True` with no gate while `bash` required `allow_host_bash`, and `manage_code_checkpoint` wrote `root / target_files[i]` after `mkdir(parents=True)`, so `../..` both read and wrote outside the workspace. Roots are bounded (`sandbox.workspace_roots`) and a caller-supplied `test_command` now needs the same opt-in `bash` does. | `sandbox/workspace_boundary.py` |
 | **Local sandbox as a boundary** | ⚠️ `LocalSandbox` is a path convention running at full user privilege; Windows has no Job Object. Real isolation requires AIO/E2B/BoxLite. The code says so itself. | `sandbox/AGENTS.md`: *"This is not a host filesystem security boundary."* |
+| **Frontend reads a disabled API as a broken one** | ✅ Fixed. `errMsg()` rewrote a `403`/`404` into a generic sentence, so the Gateway's own setup instructions never reached the screen: `agents_api.enabled=false` (403) rendered as *"Not allowed — this action needs admin rights or a feature flag."*, and the un-bootstrapped-company 404 (*"No active organizations found. Bootstrap a company first."*) rendered as *"Not found — it may have been deleted."* — telling an operator a company they never created had gone missing. `lib/server-reasons.ts` now keeps the server's sentence and classifies both as configuration states: **"Agents API is disabled by configuration"** and **"No company configured — this view is unavailable"**, on the Agents, Overview, Board, Team Ops and Companies views. A 403/404 carrying any *other* reason is deliberately left unclassified. | `frontend/src/lib/server-reasons.ts`; `frontend/src/lib/server-reasons.test.mjs` |
 
 ### When to pick something else
 
@@ -1083,7 +1084,7 @@ it sees that.
 | [docs/USE_CASES.md](docs/USE_CASES.md) | End-to-end jobs and the subsystem behind each |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Runtime planes, middleware chain, engine map |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every setting, resolved order, env vars |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 72 Gateway routers, SSE events, auth |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 74 Gateway routers, SSE events, auth |
 | [docs/SECURITY.md](docs/SECURITY.md) | Enclave, approvals, sandbox boundaries, threat model |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, Helm, Nginx, Windows installer |
 | [docs/PRODUCTION.md](docs/PRODUCTION.md) | Runbook, probes, `/api/ops/*`, disaster recovery |
@@ -1159,7 +1160,10 @@ Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
   pins all 139 tools, 74 routers, 46 middlewares, and 13 supervisor loops. CI fails
-  on drift, so the documented capability counts cannot silently rot.
+  on drift **of that generated artifact** (`scripts/check_generated_drift.py`
+  byte-compares it against a fresh regeneration), so the manifest cannot silently
+  rot. The gate does not read Markdown: a prose count elsewhere is still checked
+  by hand against the manifest — see `docs/DISCOVERABILITY.md` §3.1.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing
   `Runtime | None = None` makes pydantic schema-generate `ToolRuntime`'s

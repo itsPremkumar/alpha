@@ -227,11 +227,37 @@ Three stores carried exactly that shape and now carry the same disclosure:
   and accepts `/loop:status <goal-id>` for one goal's milestones. Keep these
   output and durability contracts covered by
   `tests/test_continuous_goal_engine.py` and `tests/test_backend_handlers.py`.
-  Creating a record leaves it in `planning`; it is not a background dispatch.
-  `ContinuousGoalRunner.step()` must receive a real executor callback or return
-  `awaiting_executor` without changing iterations/milestones. Never synthesize
-  execution output or verification evidence. The Gateway has no production
-  dispatcher for this legacy store; APEX/RunManager is the real run path.
+
+  **The store is RETIRED, and the retirement is a refusal, not a deprecation.**
+  `RunManager` is the sole run-lifecycle owner and the only reachable instance
+  is Gateway-owned (`app.gateway.deps.get_run_manager`), which the harness
+  cannot import — so `/loop:start`, `/loop:pause`, `/loop:resume` and the
+  `goal_engine` mutating actions refuse **by name** and name the real path
+  instead. `/loop:status` stays, read-only. `/goal create` is deliberately **not** retired:
+it is the natural-language trigger `commands/autonomous_engine.py` fires, and it
+never dispatched a worker — it emitted a directive for the run already in
+flight, which is the real path. It no longer mints a goal record, because that
+record was what made "a goal was created" read as "work started". Two properties
+are load-bearing:
+
+  - **`continuous/store.py::describe_goal` is the single owner of how a legacy
+    record reads.** The model tool and the `/loop:*` commands both project
+    through it, because three hand-written renderers is three chances for one
+    to print a stale `executing` row as live execution. It always reports
+    `status: "retired"` (with the original under `recorded_status`) and
+    `verified: "never"` — a record that admits no checks has not *failed*
+    verification either, so a `False` would be a claim nobody measured.
+  - **Retirement is additive and deletes nothing.** `GoalStore.retire_all()`
+    (surfaced as `goal_engine action="retire"`, deliberately *not* as a
+    `/loop:*` slash command — a new command name would need a command-catalog
+    row) stamps `retired` / `retired_at` / `retired_reason` onto existing rows;
+    a degraded store is refused rather than rewritten from a partial in-memory
+    view, which is the one outcome that *would* destroy data.
+
+  `ContinuousGoalRunner` remains as a library primitive for a caller that
+  injects a **real** `executor_fn`; `step()` without one returns
+  `awaiting_executor` and changes no iteration or milestone. Never synthesize
+  execution output or verification evidence.
 - **`continual/state.py` (`HarnessState`)** backs `ContinualHarnessMiddleware`,
   which is appended to **every** lead agent and builds its system-reminder from
   `self.entries`. A corrupt state file therefore injected *no* reminder at all —

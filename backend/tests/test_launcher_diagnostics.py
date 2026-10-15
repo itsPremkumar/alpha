@@ -82,7 +82,10 @@ def _run(harness_source: str, root: Path, env: dict[str, str]) -> dict[str, str]
         encoding="utf-8",
         errors="replace",
         env=environment,
-        timeout=120,
+        # Generous for the same reason as the watchdog harness: the extracted
+        # blocks do no real I/O, so this is PowerShell start-up, and a loaded
+        # host makes start-up slow enough to trip a tight bound.
+        timeout=300,
         check=False,
     )
     assert "HARNESS_BROKEN" not in proc.stdout, f"start.ps1 was reordered; the extraction harness no longer finds its markers.\n{proc.stdout}\n{proc.stderr}"
@@ -91,9 +94,7 @@ def _run(harness_source: str, root: Path, env: dict[str, str]) -> dict[str, str]
         if line.startswith("RESULT_"):
             key, _, value = line.partition("=")
             out[key] = value
-    assert "RESULT_STATUS" in out or "RESULT_ORIGINAL_EXISTS" in out or "RESULT_GW" in out or "RESULT_KILLED" in out or "RESULT_LIVENESS" in out or "RESULT_READY" in out, (
-        f"harness produced no result\nstdout={proc.stdout!r}\nstderr={proc.stderr!r}"
-    )
+    assert {"RESULT_STATUS", "RESULT_ORIGINAL_EXISTS", "RESULT_GW", "RESULT_KILLED", "RESULT_LIVENESS", "RESULT_READY", "RESULT_SWEEP"} & set(out), f"harness produced no result\nstdout={proc.stdout!r}\nstderr={proc.stderr!r}"
     return out
 
 
@@ -603,3 +604,162 @@ def test_service_liveness_helper_checks_the_port() -> None:
     end = launcher.index("# -- Terminal-state bookkeeping", start)
     helper = launcher[start:end]
     assert "return -not (Test-PortListening -Port $Port)" in helper
+
+
+# ===========================================================================
+# 5. A gateway that hangs during import holds no port - and no port-based
+#    killer can ever see it
+# ===========================================================================
+#
+# `uvicorn` binds 8001 only AFTER the application import completes (2-3 min,
+# measured). A wedged import - a deadlock in module-level code, a blocking
+# network call - therefore produces a process that is alive, holds NO listener,
+# and emits nothing useful. That state is invisible to every port-based killer:
+# the watchdog's Stop-PortTree only finds LISTENING pids, so its Tier-2 restart
+# is a permanent no-op against it, and only a command-line match finds it.
+#
+# Before this was handled, the boot wait simply ran out its full 15-minute budget
+# and then FAILED the entire startup (exit 1). A hung import during a
+# watchdog-spawned boot is recoverable - kill it by command line and try again -
+# but nothing ever did that.
+
+HARNESS_HUNG_GATEWAY = r"""
+$src = Get-Content -LiteralPath $env:ALPHA_LS_SRC -Raw
+$from = $src.IndexOf('for ($i = 1; $i -le $maxAttempts; $i++) {')
+$to   = $src.IndexOf('if (-not $gatewayReady -or -not $frontendReady) {')
+if ($from -lt 0 -or $to -le $from) {
+    Write-Output "HARNESS_BROKEN: markers missing ($from/$to)"
+    exit 3
+}
+$loop = $src.Substring($from, $to - $from)
+
+# Read the shipped threshold rather than hard-coding it: a rename or a removal
+# must fail the harness loudly instead of silently exercising a branch whose
+# constant does not exist (PowerShell reads an undefined name as $null, and
+# `$null -gt 45` is simply false - a test that could only ever pass).
+$m = [regex]::Match($src, '(?m)^\s*\$GatewayNoListenerSeconds\s*=\s*(\d+)')
+if (-not $m.Success) {
+    Write-Output 'HARNESS_BROKEN: $GatewayNoListenerSeconds is not a literal int in start.ps1'
+    exit 3
+}
+$GatewayNoListenerSeconds = [int]$m.Groups[1].Value
+
+$GatewayPort  = 8001
+$FrontendPort = 3000
+$maxAttempts       = [int]$env:ALPHA_LS_MAX_ATTEMPTS
+$gatewayReady      = $false
+$frontendReady     = $false
+$gatewayOkLogged   = $false
+$frontendOkLogged  = $false
+# Alive (the wrapper never exits) but holding no port: the hung-import state.
+$gatewayProcess    = [pscustomobject]@{ HasExited = $false; ExitCode = $null; Id = 4242 }
+$frontendProcess   = [pscustomobject]@{ HasExited = $false; ExitCode = $null; Id = 4243 }
+$script:LastGatewayProbeError  = ''
+$script:HealthWrites           = @()
+$script:Swept                  = @()
+$script:Restarts               = @()
+$script:GatewayPortUp          = ($env:ALPHA_LS_GW_PORT -eq '1')
+# How long the current gateway incarnation has been up. A hang is measured from
+# the spawn, so the test back-dates it rather than sleeping through the budget.
+$script:GatewaySpawnedUtc      = [DateTime]::UtcNow.AddSeconds(-([double]$env:ALPHA_LS_GW_AGE))
+
+# Nothing is serving: every readiness probe fails, exactly as during a hang.
+function Invoke-WebRequest {
+    [CmdletBinding()]
+    param([string]$Uri, [switch]$UseBasicParsing, [int]$TimeoutSec = 5)
+    throw 'nothing is listening'
+}
+function Test-MaintenanceMode { return $false }
+function Stop-OnMaintenance {}
+function Start-Sleep { param([int]$Seconds) }
+function Write-HealthFile { param([string]$Status = 'healthy', [string]$Detail = '', [hashtable]$Extra = $null) $script:HealthWrites += $Status }
+function Update-TrackedProcess { param($Process, $Port) return $Process }
+function Test-PortListening { param([int]$Port) return (($Port -eq $GatewayPort) -and $script:GatewayPortUp) }
+function Restart-GatewayService { param([int]$Attempt) $script:Restarts += $Attempt }
+function Restart-FrontendService { param([int]$Attempt) }
+# The only primitive that finds a process holding no port.
+function Stop-ServiceChainOrphans {
+    param([string]$Service, $ProcessList = $null, $KillAction = $null)
+    $script:Swept += $Service
+}
+function Show-LogTail { param($Path) }
+function Reset-GatewayBackoffIfStable {}
+function Reset-FrontendBackoffIfStable {}
+
+Invoke-Expression $loop
+
+Write-Output ("RESULT_SWEEP=" + [string]::Join(',', $script:Swept))
+Write-Output ("RESULT_RESTARTS=" + [string]::Join(',', $script:Restarts))
+Write-Output ("RESULT_I=" + $i)
+Write-Output ("RESULT_HEALTH=" + [string]::Join(',', $script:HealthWrites))
+"""
+
+
+def _hung_gateway(tmp_path: Path, *, age_seconds: int, attempts: int) -> dict[str, str]:
+    return _run(
+        HARNESS_HUNG_GATEWAY,
+        tmp_path,
+        {
+            "ALPHA_LS_GW_AGE": str(age_seconds),
+            "ALPHA_LS_GW_PORT": "0",
+            "ALPHA_LS_MAX_ATTEMPTS": str(attempts),
+        },
+    )
+
+
+def test_a_gateway_that_never_binds_its_port_is_killed_and_respawned(tmp_path: Path) -> None:
+    """The hang must cost one restart, not the whole 15-minute boot budget.
+
+    ``$gatewayGone`` cannot see this state - the wrapper process is still alive -
+    so the loop has to reach it by its own rule: no listener since the spawn,
+    past a budget the launcher already considers a failed boot.
+    """
+    out = _hung_gateway(tmp_path, age_seconds=10_000, attempts=1)
+
+    assert out["RESULT_SWEEP"] == "gateway", f"the hung chain holds no port, so only a command-line match can find it; got {out!r}"
+    assert out["RESULT_RESTARTS"] != "", "killing it is only useful if a replacement is spawned"
+
+
+def test_a_slow_but_normal_gateway_import_is_not_killed(tmp_path: Path) -> None:
+    """Import takes 2-3 min; the rule must not fire inside that.
+
+    A launcher that kills every gateway still importing has traded a hang for a
+    restart loop, which is the same failure with better log messages.
+    """
+    out = _hung_gateway(tmp_path, age_seconds=45, attempts=3)
+
+    assert out["RESULT_SWEEP"] == "", f"a gateway still inside its import budget must be left alone, got {out!r}"
+    assert out["RESULT_RESTARTS"] == ""
+
+
+def test_the_hung_gateway_rule_needs_a_visible_listener_to_not_fire(tmp_path: Path) -> None:
+    """A bound gateway is past the import; the rule must switch off.
+
+    Old age plus a working port means the gateway came up and the port went away
+    again. That is ``$gatewayGone``'s business if the process died, and the
+    launcher's own restart path if it did not - not this rule's.
+    """
+    root = tmp_path / "bound"
+    root.mkdir()
+    out = _run(
+        HARNESS_HUNG_GATEWAY,
+        root,
+        {
+            "ALPHA_LS_GW_AGE": "10000",
+            "ALPHA_LS_GW_PORT": "1",
+            "ALPHA_LS_MAX_ATTEMPTS": "2",
+        },
+    )
+
+    assert out["RESULT_SWEEP"] == "", f"a bound gateway is not a hung import, got {out!r}"
+
+
+def test_the_hung_gateway_rule_is_wired_into_the_boot_wait() -> None:
+    """The branch must live in the shipped boot wait, not in a helper nobody calls."""
+    launcher = _launcher_source()
+    loop_start = launcher.index("for ($i = 1; $i -le $maxAttempts; $i++) {")
+    loop_end = launcher.index("if (-not $gatewayReady -or -not $frontendReady) {")
+    boot_wait = launcher[loop_start:loop_end]
+    assert "Stop-ServiceChainOrphans" in boot_wait, "the boot wait must reach the hung-import case by command-line match; a port-based check can never observe a process that is still importing"
+    assert "GatewaySpawnedUtc" in boot_wait, "the hang must be measured from the spawn, not from the process start time"
+    assert launcher.count("GatewaySpawnedUtc = [DateTime]::UtcNow") >= 2, "every gateway spawn site must reset the clock, or a respawned gateway inherits the previous incarnation's age and is killed the instant it boots"

@@ -858,13 +858,16 @@ function VitalsBody({
           <ul className="space-y-1.5">
             {data.probes.map((p) => (
               <li key={p.key} className="flex items-start gap-2 text-[11px]">
-                <span className={`mt-1 size-2 shrink-0 rounded-full ${p.ok ? "bg-emerald-500" : "bg-red-500"}`} aria-hidden="true" />
+                <span className={`mt-1 size-2 shrink-0 rounded-full ${p.ok === null ? "bg-muted-foreground" : p.ok ? "bg-emerald-500" : "bg-red-500"}`} aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="font-medium">{p.label}</span>
-                    <Badge tone={p.ok ? "green" : "red"}>{p.ok ? "ready" : "not ready"}</Badge>
+                    {/* Three verdicts, three renderings: an unreported answer is
+                        neither "ready" nor "not ready" — those are both claims
+                        about a measurement that never happened. */}
+                    <Badge tone={p.ok === null ? "gray" : p.ok ? "green" : "red"}>{p.ok === null ? "not reported" : p.ok ? "ready" : "not ready"}</Badge>
                   </div>
-                  {!p.ok && p.detail && <p className="text-muted-foreground">{p.detail}</p>}
+                  {p.ok !== true && p.detail && <p className="text-muted-foreground">{p.detail}</p>}
                 </div>
               </li>
             ))}

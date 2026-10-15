@@ -55,10 +55,18 @@ cancellation and text-cache drain/cleanup.
 
 ### Acceptance verification result event
 
-The Gateway run verification endpoint and its honest scope, persistence
-semantics, and next gaps are defined here and in the adjacent run-verification
-contract: [`runtime/AGENTS.md`](AGENTS.md#acceptance-verification-result-event).
-Never equate a terminal run status with verified acceptance.
+`runs/verification.py` is the deterministic overlay and
+`GET /api/threads/{thread_id}/runs/{run_id}/verification` its only reader;
+neither decides a lifecycle — `RunManager` still does. Never equate a terminal
+run status with verified acceptance: `success` with criteria and no evidence, and
+`error` either way, return `unverified`. The auto-verifier supports explicit
+exact-text file readback only, and returns `unverified` when *any* criterion is
+outside it rather than a partial pass. The first complete measurement is
+persisted as a singleton `run.verification` event keyed by a SHA-256 of the
+stored criteria, so later reads replay it and changed criteria re-measure. No
+criteria is `not_requested`, not a pass; the 32-criterion ceiling is refused, not
+truncated. Tests: `tests/test_run_acceptance_criteria.py`,
+`tests/test_run_usage_endpoint.py`.
 ### Safe Run Auto-Recovery
 
 The detailed continuation contract belongs to
