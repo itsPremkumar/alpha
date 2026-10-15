@@ -4,7 +4,13 @@ Verifies:
 1. /skill:create, /skill:list, /skill:test against real SkillStorage — /skill:test
    derives `passed` from real executed checks (exists / frontmatter validator /
    container path / SkillScan secret audit); broken frontmatter => passed False
-2. /loop:start, /loop:status, /loop:pause, /loop:resume against ContinuousGoalRunner
+2. /loop:start, /loop:pause, /loop:resume REFUSE by name (the legacy surface is
+   retired and no worker dispatched those records); /loop:status stays read-only
+   and reports every record as retired and never verified. The retirement stamp
+   is `goal_engine action="retire"`, which deletes nothing. /goal create is
+   deliberately NOT retired — it is the natural-language trigger that emits a
+   directive for the run already in flight, not a loop mutator — but it no
+   longer mints a goal record
 3. /goal:decompose against CognitiveMetaPlanner
 4. /subagent:spawn, /subagent:list against SubagentLifecycleManager
 5. /doctor, /security-review, /compact run their real in-process probes against
@@ -23,6 +29,7 @@ from fastapi.testclient import TestClient
 
 import alpha.commands.backend_handlers as bh
 from alpha.commands import command_registry
+from alpha.commands.catalog import get_default_catalog_entries
 from app.gateway.app import create_app
 
 
@@ -102,67 +109,96 @@ def test_skill_test_broken_frontmatter_reports_failure():
     assert "[FAIL] Valid frontmatter schema" in res.output
 
 
-def test_loop_handlers(monkeypatch, tmp_path):
-    from alpha.harness.continuous.runner import ContinuousGoalRunner
+def test_loop_mutation_handlers_refuse_the_retired_surface(monkeypatch, tmp_path):
+    """`/loop:start`, `/loop:pause` and `/loop:resume` must refuse by name.
+
+    Nothing dispatches these records, so every one of these verbs used to write
+    a row that read like launched work — a resume persisted `executing` and
+    reported success with no worker behind it. The refusal has to say *where to
+    go instead*; a bare "unsupported" leaves the caller nowhere.
+    """
+    from alpha.harness.continuous.models import LEGACY_MIGRATION_GUIDANCE, LEGACY_RETIREMENT_REASON
     from alpha.harness.continuous.store import GoalStore
 
     store = GoalStore(storage_path=tmp_path / "goals.json")
-    runner = ContinuousGoalRunner(store=store)
+    existing = store.create_goal(title="Pre-existing record")
+    store.update_goal_status(existing.goal_id, "executing", strategy_note="Worker claimed it.")
     monkeypatch.setattr("alpha.harness.continuous.store.get_goal_store", lambda: store)
-    monkeypatch.setattr("alpha.harness.continuous.runner._global_goal_runner", runner)
-    # 1. Start loop
+
     res_start = command_registry.execute("/loop:start Deploy high-availability Kubernetes cluster")
-    assert res_start.status == "success"
-    goal_id = res_start.data.get("goal_id")
-    assert goal_id is not None
-    assert "Goal recorded:" in res_start.output
-    assert "awaiting active agent execution" in res_start.output
-    assert store.get_goal(goal_id).status == "planning"
+    assert res_start.status == "error"
+    assert "/loop:start is retired." in res_start.output
+    assert LEGACY_RETIREMENT_REASON in res_start.output
+    assert LEGACY_MIGRATION_GUIDANCE in res_start.output
+    assert "No goal record was created." in res_start.output
+    assert res_start.data == {"retired": True, "created": False, "migration": LEGACY_MIGRATION_GUIDANCE}
+    # A refused start must leave the store exactly as it found it.
+    assert [g.goal_id for g in store.list_goals()] == [existing.goal_id]
 
-    # 2. Loop status
-    res_status = command_registry.execute("/loop:status")
-    assert res_status.status == "success"
-    assert res_status.data.get("active_loops", 0) > 0
+    for handler, command in ((bh.handle_loop_pause, "/loop:pause"), (bh.handle_loop_resume, "/loop:resume")):
+        result = handler(existing.goal_id)
+        assert result.status == "error"
+        assert f"{command} is retired." in result.output
+        assert LEGACY_MIGRATION_GUIDANCE in result.output
+        assert result.data["changed"] is False
+        assert result.data["goal_id"] == existing.goal_id
+        # The lie this retirement removes: `executing` written with no worker.
+        assert store.get_goal(existing.goal_id).status == "executing"
 
-    # 3. Pause loop
-    res_pause = command_registry.execute(f"/loop:pause {goal_id}")
-    assert res_pause.status == "success"
-
-    # 4. Resume loop
-    res_resume = command_registry.execute(f"/loop:resume {goal_id}")
-    assert res_resume.status == "success"
-
-
-def test_loop_pause_and_resume_require_an_unambiguous_target(monkeypatch, tmp_path):
-    from alpha.harness.continuous.store import GoalStore
-
-    store = GoalStore(storage_path=tmp_path / "goals.json")
-    first = store.create_goal(title="First loop", description="first")
-    second = store.create_goal(title="Second loop", description="second")
-    store.update_goal_status(first.goal_id, "executing")
-    store.update_goal_status(second.goal_id, "executing")
-    monkeypatch.setattr("alpha.harness.continuous.store.get_goal_store", lambda: store)
-
+    # The no-argument form refuses too, and names no target it could have meant.
     ambiguous = bh.handle_loop_pause("")
     assert ambiguous.status == "error"
-    assert set(ambiguous.data["candidate_goal_ids"]) == {first.goal_id, second.goal_id}
-    assert store.get_goal(first.goal_id).status == "executing"
-    assert store.get_goal(second.goal_id).status == "executing"
-
-    paused = bh.handle_loop_pause(second.goal_id)
-    assert paused.status == "success"
-    assert paused.data == {"goal_id": second.goal_id, "status": "paused"}
-    assert store.get_goal(first.goal_id).status == "executing"
-    assert store.get_goal(second.goal_id).status == "paused"
-
-    resumed = bh.handle_loop_resume(second.goal_id)
-    assert resumed.status == "success"
-    assert resumed.data == {"goal_id": second.goal_id, "status": "executing"}
-    assert store.get_goal(first.goal_id).status == "executing"
-    assert store.get_goal(second.goal_id).status == "executing"
+    assert ambiguous.data["goal_id"] is None
 
 
-def test_loop_status_summarizes_history_and_bounds_goal_details(monkeypatch, tmp_path):
+def test_retirement_is_not_published_as_a_slash_command():
+    """The stamp is a tool action, not a conversation verb.
+
+    A new `/loop:*` row would have to be published in the command catalog, and
+    `tests/test_discovery_plane_parity.py` holds every handler binding to a real
+    catalog row — registering it without publishing it leaks an unpublished alias.
+    The capability stays reachable through `goal_engine action="retire"`.
+    """
+    published = {row[0] for row in get_default_catalog_entries()}
+    assert not any(name.startswith("/loop") and "retire" in name for name in published)
+
+    # ...and nothing binds a `/loop ... retire` name to a handler either, so the
+    # command cannot be reached by typing it even though the function is gone.
+    for name in ("/loop:retire", "/loop retire"):
+        definition, _args = command_registry.find_command(name)
+        assert definition is None or not definition.command.startswith("/loop retire")
+
+
+def test_goal_create_still_directs_the_active_run_without_creating_a_record():
+    """`/goal create` is the NL trigger, not the retired loop surface.
+
+    It never dispatched a worker — it emitted an instruction for the run already
+    in flight — so it stays. What it must not do any more is mint a legacy goal
+    record, because that is what made "a goal was created" read as "work
+    started".
+    """
+    from alpha.harness.continuous.models import LEGACY_MIGRATION_GUIDANCE
+
+    res = command_registry.execute("/goal create Build Mars Rover")
+
+    assert res.status == "success"
+    assert res.command == "/goal create"
+    assert res.data["created_goal_record"] is False
+    assert res.data["is_autonomous_trigger"] is True
+    assert res.data["migration"] == LEGACY_MIGRATION_GUIDANCE
+    assert res.autonomous_directives
+    assert "Build Mars Rover" in res.autonomous_directives[0]
+    assert "not evidence that anything ran" in res.output
+
+
+def test_loop_status_reports_every_record_as_retired_and_never_verified(monkeypatch, tmp_path):
+    """The read half of the retirement.
+
+    54 records still carrying `executing` used to render as "54 active" — the
+    exact impression of a fleet of running loops behind a store nothing polls.
+    They now render as recorded-status history on retired records.
+    """
+    from alpha.harness.continuous.models import LEGACY_MIGRATION_GUIDANCE, LEGACY_RETIREMENT_REASON
     from alpha.harness.continuous.store import GoalStore
 
     store = GoalStore(storage_path=tmp_path / "goals.json")
@@ -176,25 +212,51 @@ def test_loop_status_summarizes_history_and_bounds_goal_details(monkeypatch, tmp
     result = bh.handle_loop_status("")
 
     assert result.status == "success"
-    assert result.data["active_loops"] == 54
+    assert result.data["active_loops"] == 0
+    assert result.data["retired_goals"] == 55
     assert result.data["total_goals"] == 55
     assert result.data["status_counts"] == {"executing": 54, "paused": 1}
     assert len(result.data["goals"]) == 10
     assert result.data["omitted_goals"] == 45
-    assert "54 active, 55 total" in result.output
+    assert result.data["retirement_reason"] == LEGACY_RETIREMENT_REASON
+    assert result.data["migration"] == LEGACY_MIGRATION_GUIDANCE
+    assert "0 active" in result.output
+    assert "legacy loop surface is retired" in result.output
+    assert "None of these records is evidence" in result.output
     assert "45 additional goal(s) omitted" in result.output
-    assert "use /loop:status <goal-id> for milestone detail" in result.output
     assert "Analyze environment and dependencies" not in result.output
+    # Every projected row is retired, and none of them claims verification.
+    for view in result.data["goals"]:
+        assert view["status"] == "retired"
+        assert view["verified"] == "never"
 
     detail = bh.handle_loop_status(goals[-1].goal_id)
     assert detail.status == "success"
     assert detail.data["goal_id"] == goals[-1].goal_id
-    assert detail.data["status"] == "paused"
-    assert "Inspect target goal [pending]" in detail.output
+    assert detail.data["retired"] is True
+    assert detail.data["verified"] == "never"
+    assert "Recorded status: `paused` | Verified: never" in detail.output
+    assert "Inspect target goal [unverified; recorded `pending`]" in detail.output
 
     missing = bh.handle_loop_status("goal_missing")
     assert missing.status == "error"
     assert missing.data == {"goal_id": "goal_missing", "status": "not_found"}
+
+
+def test_loop_status_reports_unknown_rather_than_empty_for_an_unreadable_store(monkeypatch, tmp_path):
+    from alpha.harness.continuous.store import GoalStore
+
+    corrupt_path = tmp_path / "goals.json"
+    corrupt_path.write_text("{not json", encoding="utf-8")
+    store = GoalStore(storage_path=corrupt_path)
+    monkeypatch.setattr("alpha.harness.continuous.store.get_goal_store", lambda: store)
+
+    result = bh.handle_loop_status("")
+
+    assert result.status == "error"
+    assert result.data["reported"] is False
+    assert result.data["goals"] == []
+    assert "Goal state is UNKNOWN, not empty" in result.output
 
 
 def test_goal_decompose_handler():

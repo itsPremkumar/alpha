@@ -10,6 +10,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from alpha.harness.continuous.models import (
+    LEGACY_MIGRATION_GUIDANCE,
+    LEGACY_RETIREMENT_REASON,
     Goal,
     GoalStatus,
     Milestone,
@@ -22,6 +24,56 @@ from alpha.persistence.storekit.atomic import atomic_write_bytes
 logger = logging.getLogger(__name__)
 
 _DEFAULT_GOAL_DIR = ".alpha/goals"
+
+
+def describe_goal(goal: Goal) -> dict[str, object]:
+    """Project one legacy record into what it can honestly be said to prove.
+
+    The single owner of that projection. ``goal_engine`` (list/inspect),
+    ``/loop:status`` and ``/loop:status <id>`` all read through here, because
+    three hand-written renderers is three chances for one of them to print a
+    stale ``executing`` row as live execution.
+
+    Two fields are load-bearing:
+
+    - ``status`` is always ``"retired"``. The *recorded* status is preserved
+      beside it under ``recorded_status`` for forensics, because rewriting the
+      stored value would destroy the evidence of how the row got that way.
+    - ``verified`` is the string ``"never"``, never a boolean. A record that
+      admits no ``verification_checks`` has not failed verification either — it
+      was never verified, and ``False`` would be a claim nobody measured.
+    """
+    return {
+        "goal_id": goal.goal_id,
+        "title": goal.title,
+        "description": goal.description,
+        "status": "retired",
+        "recorded_status": goal.status,
+        "retired": True,
+        "retirement_reason": goal.retired_reason or LEGACY_RETIREMENT_REASON,
+        "retired_at": goal.retired_at,
+        "migration": LEGACY_MIGRATION_GUIDANCE,
+        "verified": "never",
+        "verification_checks": [check.to_dict() for milestone in goal.milestones.values() for check in milestone.verification_checks],
+        "iteration": goal.iteration,
+        "max_iterations": goal.max_iterations,
+        "current_milestone_id": goal.current_milestone_id,
+        "created_at": goal.created_at,
+        "updated_at": goal.updated_at,
+        "heartbeat_at": goal.heartbeat_at,
+        "milestones": [
+            {
+                "milestone_id": milestone.milestone_id,
+                "title": milestone.title,
+                "status": "unverified",
+                "recorded_status": milestone.status,
+                "dependencies": list(milestone.dependencies),
+                "attempts": milestone.attempts,
+            }
+            for milestone in goal.milestones.values()
+        ],
+        "strategy_notes": list(goal.strategy_notes[-5:]),
+    }
 
 
 class GoalStore:
@@ -216,6 +268,46 @@ class GoalStore:
                 goal.strategy_notes.append(f"[{_now()[:19]}] {strategy_note}")
             self._save()
             return goal
+
+    def retire_all(self) -> dict[str, object]:
+        """Stamp every stored record retired, in one additive write.
+
+        This is a **label**, never a deletion: rows, milestones and strategy
+        notes are all preserved, and the stamp only says "this record is not
+        evidence of work". It exists because an operator who wants the on-disk
+        file to stop looking like a fleet of running loops should be able to say
+        so explicitly instead of hand-editing JSON.
+
+        The read path retires records whether or not this ran
+        (:func:`describe_goal`), so calling it is a labelling convenience, not a
+        precondition for honesty. A degraded store is refused rather than
+        rewritten from a partial in-memory view, which is the one outcome that
+        *would* lose data.
+        """
+        if self.is_degraded:
+            return {
+                "retired": 0,
+                "total": 0,
+                "durable": False,
+                "error": f"goal store at {self.storage_path} could not be read ({self.load_error}); nothing was rewritten",
+            }
+        with self._lock:
+            stamped_at = _now()
+            retired = 0
+            for goal in self._goals.values():
+                if not goal.retired:
+                    goal.retired = True
+                    goal.retired_at = stamped_at
+                    goal.retired_reason = LEGACY_RETIREMENT_REASON
+                    retired += 1
+            landed = self._save()
+            total = len(self._goals)
+        return {
+            "retired": retired,
+            "total": total,
+            "durable": landed,
+            "error": None if landed else self.save_error,
+        }
 
 
 _global_goal_store = GoalStore()
