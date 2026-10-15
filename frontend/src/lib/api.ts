@@ -19,19 +19,53 @@ function failed(err: unknown): { ok: false; error: string } {
 }
 
 const PAGE_REQUEST_TIMEOUT_MS = 30_000;
+const THREAD_LIST_TIMEOUT_RETRY_MS = 2_000;
 
-async function fetchWithTimeout(path: string, init: RequestInit = {}): Promise<Response> {
+class ApiRequestTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Request timed out after ${timeoutMs / 1000} seconds.`);
+    this.name = "ApiRequestTimeoutError";
+  }
+}
+
+async function fetchWithTimeout(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = PAGE_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PAGE_REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await apiFetch(path, { ...init, signal: controller.signal });
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error(`Request timed out after ${PAGE_REQUEST_TIMEOUT_MS / 1000} seconds.`);
+      throw new ApiRequestTimeoutError(timeoutMs);
     }
     throw error;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** One bounded retry for an idempotent read after a transport failure only. */
+async function fetchThreadPage(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetchWithTimeout(path, init);
+  } catch (error) {
+    if (error instanceof ApiRequestTimeoutError) {
+      try {
+        return await fetchWithTimeout(path, init, THREAD_LIST_TIMEOUT_RETRY_MS);
+      } catch (retryError) {
+        if (retryError instanceof ApiRequestTimeoutError) {
+          throw new ApiRequestTimeoutError(PAGE_REQUEST_TIMEOUT_MS + THREAD_LIST_TIMEOUT_RETRY_MS);
+        }
+        throw retryError;
+      }
+    }
+    if (error instanceof ApiClientError && error.kind === "network") {
+      return fetchWithTimeout(path, init);
+    }
+    throw error;
   }
 }
 
@@ -80,7 +114,7 @@ export async function fetchThreadsResult(limit?: number): Promise<FetchResult<Th
 
   while (true) {
     try {
-      const res = await fetchWithTimeout(`/threads/search`, {
+      const res = await fetchThreadPage(`/threads/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ limit: pageSize, offset }),

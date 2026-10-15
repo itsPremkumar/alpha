@@ -103,7 +103,9 @@ mane-vs-face crop rule, and the desktop/installer surfaces are in the
   30s deadline; a malformed 200 envelope is a failure, not an empty list; a
   non-decreasing cursor stops the walk and is reported. A truncated walk returns
   the rows that did arrive with `incomplete` + `resumeCursor` so the UI can say
-  the history is partial.
+  the history is partial. The idempotent thread-list read may retry one network
+  failure, or a 30s timeout with a 2s bounded retry; do not retry HTTP failures,
+  malformed responses, or local cancellation, and keep the final failure visible.
 - Every bot profile exposes project creation and attaches that bot as lead via
   `projects.ts -> createProject(..., agents)`. The Projects view owns multi-bot
   membership through the real presence/attach/detach routes, then re-reads the

@@ -44,9 +44,12 @@ export class ApiClientError extends Error {
 }
 let next = { ok: true, json: async () => [] };
 let queue = [];
-export function setResponse(r) { next = r; queue = []; }
-export function setResponses(responses) { queue = [...responses]; }
+let callCount = 0;
+export function setResponse(r) { next = r; queue = []; callCount = 0; }
+export function setResponses(responses) { queue = [...responses]; callCount = 0; }
+export function getCallCount() { return callCount; }
 export async function apiFetch(_path, init) {
+  callCount += 1;
   const r = queue.length > 0 ? queue.shift() : next;
   if (r.error) throw r.error;
   // A response that never arrives stands in for a hung server connection:
@@ -79,7 +82,7 @@ let apiCode = transpile(read("./api.ts"));
 apiCode = apiCode.replace(/from\s+"\.\/api-client"/, `from "${apiClientStubUrl}"`);
 apiCode = apiCode.replace(/from\s+"@\/types\/chat"/, `from "${typesStubUrl}"`);
 const { fetchThreads, fetchThreadsResult, fetchThreadHistory, fetchThreadHistoryResult, fetchProvidersCatalog } = await import(toDataUrl(apiCode));
-const { setResponse, setResponses } = await import(apiClientStubUrl);
+const { ApiClientError, getCallCount, setResponse, setResponses } = await import(apiClientStubUrl);
 
 /* ── Stub 2: http for comm.ts / inbox.ts / teamops.ts ──────────────────── */
 
@@ -121,10 +124,28 @@ const { setHttpFail } = await import(httpStubUrl);
 /* ── api.ts: failure is distinguishable from empty ─────────────────────── */
 
 test("fetchThreadsResult reports gateway failure as ok:false, never as an empty list", async () => {
-  setResponse({ error: new Error("The request could not be completed. Check your connection.") });
+  setResponse({
+    error: new ApiClientError("network", 0, "The request could not be completed. Check your connection."),
+  });
   const result = await fetchThreadsResult();
   assert.equal(result.ok, false);
   assert.match(result.error, /connection/);
+  assert.equal(getCallCount(), 2, "one transient transport failure gets exactly one retry");
+});
+
+test("thread-list read retries a transient transport failure and recovers automatically", async () => {
+  setResponses([
+    { error: new ApiClientError("network") },
+    {
+      ok: true,
+      status: 200,
+      json: async () => [{ thread_id: "thread-recovered", metadata: { title: "Recovered" } }],
+    },
+  ]);
+  const result = await fetchThreadsResult();
+  assert.equal(result.ok, true);
+  assert.equal(result.value[0].thread_id, "thread-recovered");
+  assert.equal(getCallCount(), 2);
 });
 
 test("a non-OK thread-list response maps to ok:false (no fabricated [])", async () => {
@@ -132,6 +153,7 @@ test("a non-OK thread-list response maps to ok:false (no fabricated [])", async 
   const result = await fetchThreadsResult();
   assert.equal(result.ok, false);
   assert.match(result.error, /503/);
+  assert.equal(getCallCount(), 1, "an HTTP error must not be replayed");
 });
 
 test("a genuinely empty thread list is ok:true with [] — empty ≠ failed", async () => {
@@ -379,7 +401,7 @@ test("a page request that never answers fails on a deadline instead of hanging t
   const started = Date.now();
   const result = await fetchThreadsResult();
   assert.equal(result.ok, false);
-  assert.match(result.error, /timed out after 30 seconds/);
+  assert.match(result.error, /timed out after 32 seconds/);
   assert.ok(Date.now() - started < 35_000);
 });
 
