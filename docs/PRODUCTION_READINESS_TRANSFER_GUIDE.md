@@ -94,26 +94,25 @@ docs/PRODUCTION_READINESS_INVENTORY.md. Follow the owning subsystem guide.
 
 First inspect git status, branch, HEAD, remotes, current processes, ports 3000
 and 8001, logs/alpha_health.json, and the newest logs/diagnostics archive. The
-last observed state had frontend :3000 returning HTTP 200 while Gateway :8001
-was absent; Windows launcher recovery had spawned a new Uvicorn process. Prior
-diagnostics showed SQLite readiness timeouts and client resets; watchdog logs
-also showed no-op restarts because the Gateway port was free. A launcher source
-fix now moves the no-listener deadline check ahead of HTTP probes and reports
-wall-clock elapsed time; tests passed, but the running launcher predates that
-edit. Check the live state before acting. Preserve logs and do not kill an active
-recovery attempt. Diagnose and reproduce the
-Gateway startup/readiness failure before changing code. Measure import/startup
-time and SQLite probe contention on the current checkout; historical measurements
-are clues, not current evidence.
+last verified main commit is 1ffdbae, pushed to origin/main. It hardens Windows
+launcher recovery for a missing Gateway listener, a bound but unready Gateway,
+and consecutive port-up readiness failures; it also fixes stale health fields.
+The current local stack returned HTTP 200 from Gateway readiness and the frontend,
+and its health file reported `status=healthy`, `phase=running`. A bounded live UI
+file write/read task also completed with exact tool receipts, but it was not a
+coding or swarm task. Recheck the live state before acting, and do not restart a
+healthy stack without a concrete reason. Prior diagnostics showed SQLite
+readiness timeouts and slow startup; measure current cold-start and database
+probe behavior before claiming that incident resolved.
 
 Keep Alpha's Gateway RunManager as the only run lifecycle owner. Do not add a
 parallel scheduler/executor or claim cross-process exactly-once semantics for
 single-process JSON/JSONL stores. Thread goals only have bounded in-run
 continuation; durable wake/reschedule is still a gap and requires owner plus
 generation fencing across edit/clear/complete/restart and RunManager admission.
-The latest reported main commit is 3d95eb1, which hardened approval grants and
-added exact-path, run-correlated artifact readback evidence. Re-inspect current
-code and tests rather than assuming summaries are current. General typed
+The prior baseline commit 3d95eb1 hardened approval grants and added exact-path,
+run-correlated artifact readback evidence. Re-inspect current code and tests
+rather than assuming summaries are current. General typed
 command/HTTP/reviewer evidence collectors and re-verification history remain
 incomplete. Never mark arbitrary language criteria verified without a supported
 collector or owner evidence.
