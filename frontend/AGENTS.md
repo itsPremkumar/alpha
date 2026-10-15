@@ -111,6 +111,12 @@ mane-vs-face crop rule, and the desktop/installer surfaces are in the
   attach is not proof the bots joined. Presence rows are validated, project
   conversations are paginated, and moving a conversation re-reads the parent's
   thread list through `onThreadsChanged`.
+- The left rail derives its conversation badge from ChatView's loaded thread
+  set; its count and empty-state copy must say when they describe that loaded
+  view. Crew presence is fetched for expanded visible projects. The explicit
+  selected-bot project filter may read all project rosters because membership
+  is needed to include staffed projects that have no loaded conversations.
+  `ProjectDetailPanel` remains the owner of a project's paginated history.
 
 ## Build discipline: `next build` and a running server cannot share `.next`
 

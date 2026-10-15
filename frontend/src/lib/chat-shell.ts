@@ -23,7 +23,7 @@
 import { get } from "./http";
 import { DEFAULT_AGENT_NAME } from "./default-agent";
 import { absoluteStamp, isRecent, PRESENCE_WINDOW_SECONDS, relTime } from "./time";
-import { listProjectAgents, projectThreads, type Project, type ProjectThread } from "./projects";
+import { listProjectAgents, type Project, type ProjectThread } from "./projects";
 import { threadTitle } from "./threads-ext";
 import type { BotProfile } from "@/types/bots";
 import type { Thread } from "@/types/chat";
@@ -177,10 +177,10 @@ export function botStatusText(status: string | null | undefined): string {
 /**
  * Everything the rail claims about one project, each field with its own failure.
  *
- * The two reads are kept apart on purpose. A project whose presence read fails
- * still has a measured conversation count, and a project whose conversation
- * read fails still has a measured crew; folding them into one status would lose
- * whichever read answered.
+ * Conversation counts are derived locally from the thread list already loaded
+ * for the rail. Crew membership is fetched only for projects the rail needs to
+ * render (or all projects when the selected-bot filter must determine
+ * membership).
  */
 export interface ProjectRailRow {
   projectId: string;
@@ -194,13 +194,12 @@ export interface ProjectRailRow {
 }
 
 /**
- * Read the rail's per-project facts.
+ * Read only the rail's crew facts.
  *
- * `GET /projects` returns `ProjectResponse` with no counts and no membership
- * (`projects.py:42-49`), so both facts need their own request per project. That
- * is N+1 by necessity, not by choice, and every one of them is bounded by
- * `deadlineMs` and individually recoverable: a project that fails is rendered
- * as a failure on that row while the rest of the rail renders normally.
+ * Do not call `projectThreads()` here. The rail already receives the complete
+ * loaded conversation list from its parent, so re-reading up to 500 rows per
+ * project created an unnecessary N+1 burst on every chat load. The project
+ * detail panel remains the owner of a project's separately paginated history.
  *
  * `leadsSelectedBot` is `null` for a null bot name — with no bot selected the
  * question is not asked, and answering "no" would claim the project belongs to
@@ -213,17 +212,7 @@ export async function readProjectRailRows(
 ): Promise<ProjectRailRow[]> {
   return Promise.all(
     projects.map(async (project): Promise<ProjectRailRow> => {
-      const [conversations, crew] = await Promise.all([
-        // Two independent reads, so a failing presence read costs the crew and
-        // not the conversation count, and the other way round.
-        withDeadline(projectThreads(project.id), deadlineMs).then(
-          (threads) => ({ count: threads.length as number | null, error: null as string | null }),
-          (error: unknown) => ({
-            count: null as number | null,
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        ),
-        withDeadline(listProjectAgents(project.id), deadlineMs).then(
+      const crew = await withDeadline(listProjectAgents(project.id), deadlineMs).then(
           (members) => ({
             members: members.map((member) => member.bot_name) as string[] | null,
             error: null as string | null,
@@ -232,12 +221,11 @@ export async function readProjectRailRows(
             members: null as string[] | null,
             error: error instanceof Error ? error.message : String(error),
           }),
-        ),
-      ]);
+        );
       return {
         projectId: project.id,
-        conversationCount: conversations.count,
-        conversationError: conversations.error,
+        conversationCount: null,
+        conversationError: null,
         members: crew.members,
         crewError: crew.error,
         leadsSelectedBot:
@@ -247,9 +235,22 @@ export async function readProjectRailRows(
   );
 }
 
+/** Count only conversations in the thread list currently loaded by ChatView. */
+export function countLoadedProjectConversations(
+  threads: ReadonlyArray<Pick<Thread, "projectId">>,
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const thread of threads) {
+    if (thread.projectId) {
+      counts.set(thread.projectId, (counts.get(thread.projectId) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
 function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Timed out reading this project's conversations.")), ms);
+    const timer = setTimeout(() => reject(new Error("Timed out reading this project's team.")), ms);
     work.then(
       (value) => {
         clearTimeout(timer);

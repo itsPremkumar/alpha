@@ -76,8 +76,8 @@ test("Projects is not a nested scroller competing for the scroll budget", () => 
 });
 
 test("a fixed number decides how many rows show", () => {
-  // One number, one place. Two literals is how "show 6" in the standalone
-  // list and "show 6" in the project list stop meaning the same thing.
+  // One number, one place. The two rendered lists and the visible-project
+  // presence request scope all use the same cap.
   const limit = rail.match(/^\s*(?:export\s+)?const SIDEBAR_ROW_LIMIT = (\d+);$/m);
   assert.ok(limit, "SIDEBAR_ROW_LIMIT must be the single source of the cap");
   assert.ok(
@@ -88,8 +88,8 @@ test("a fixed number decides how many rows show", () => {
   const slices = rail.match(/\.slice\(0,\s*[^)]+\)/g) ?? [];
   assert.equal(
     slices.filter((s) => /SIDEBAR_ROW_LIMIT/.test(s)).length,
-    2,
-    "both lists must slice on the shared constant",
+    3,
+    "both lists and the bounded visible-project read must use the shared constant",
   );
   assert.ok(
     !slices.some((s) => /^\.\s*slice\(0,\s*\d+\)$/.test(s.replace(/\s+/g, ""))),

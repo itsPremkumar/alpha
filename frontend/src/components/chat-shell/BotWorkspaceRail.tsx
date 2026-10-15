@@ -41,6 +41,7 @@ import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { Project } from "@/lib/projects";
 import {
   botPresence,
+  countLoadedProjectConversations,
   dedupeBots,
   groupConversations,
   projectStatusText,
@@ -145,12 +146,24 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
 
   const botName = activeBot ? activeBot.name : null;
 
+  // The rail initially renders six projects. Read crew presence only for the
+  // expanded rows in that visible slice; fetching every project's roster and
+  // full conversation history on each chat load caused hundreds of requests
+  // for large workspaces. Bot scope is the exception: exact membership is
+  // needed to include projects staffed to the selected bot even when they have
+  // no conversations, so that explicit filter reads every roster.
+  const projectsToRead = useMemo(() => {
+    if (botName && projectScope === "bot") return projects;
+    const visible = showAllProjects ? projects : projects.slice(0, SIDEBAR_ROW_LIMIT);
+    return visible.filter((project) => project.id === activeProjectId || expandedProjects[project.id]);
+  }, [activeProjectId, botName, expandedProjects, projectScope, projects, showAllProjects]);
+
   const loadRows = useCallback(async () => {
     const generation = generationRef.current + 1;
     generationRef.current = generation;
     setRefreshing(true);
     try {
-      const next = await readProjectRailRows(projects, botName);
+      const next = await readProjectRailRows(projectsToRead, botName);
       if (generationRef.current !== generation) return;
       setRows(next);
       setRowsError(null);
@@ -160,7 +173,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
     } finally {
       if (generationRef.current === generation) setRefreshing(false);
     }
-  }, [projects, botName]);
+  }, [botName, projectsToRead, threads]);
 
   useEffect(() => {
     if (projects.length === 0) {
@@ -197,9 +210,20 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
         raw: null,
       };
 
-  const projectRows = projects.map((project) =>
-    railRowFor(rows ?? [], project.id),
+  const loadedConversationCounts = useMemo(
+    () => countLoadedProjectConversations(threads),
+    [threads],
   );
+  const projectRows = projects.map((project) => {
+    const row = railRowFor(rows ?? [], project.id);
+    return {
+      ...row,
+      // The rail's already-loaded thread set is the count source. This lets
+      // collapsed projects render an honest count without fetching crew data.
+      conversationCount: loadedConversationCounts.get(project.id) ?? 0,
+      conversationError: null,
+    };
+  });
 
   // Determine projects scoped to this bot
   const botProjectRows = projectRows.filter((row) => {
@@ -629,7 +653,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                             }`}
                             title={
                               count !== null
-                                ? `${count} conversations in this project`
+                                ? `${count} loaded conversations in this project`
                                 : "Conversation count unknown"
                             }
                           >
@@ -747,10 +771,10 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                           </div>
 
                           {/* Who is on this project.
-                              No extra request: `row.members` is already
-                              populated by the per-project presence read that
-                              `readProjectRailRows` performs, so this renders a
-                              fact the rail is already fetching.
+                              Presence is read when this row is expanded (or
+                              when bot scope needs every project's membership),
+                              so this renders a fact already fetched for the
+                              current view without an additional request.
 
                               The three states are kept apart on purpose.
                               `members === null` means the read did not answer,
@@ -820,7 +844,7 @@ export function BotWorkspaceRail(props: BotWorkspaceRailProps) {
                                   with {currentBotDisplayName} yet.
                                 </>
                               ) : (
-                                "No conversations in this project yet."
+                                "No loaded conversations for this project."
                               )}
                             </span>
                           ) : (

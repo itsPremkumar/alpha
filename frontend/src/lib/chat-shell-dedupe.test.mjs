@@ -71,8 +71,8 @@ const SIBLING_STUBS = {
     "export const PRESENCE_WINDOW_SECONDS = 300;",
   ].join(NL),
   "projects.mjs": [
-    "export const listProjectAgents = async () => new Map();",
-    "export const projectThreads = async () => ({ threads: [], conversationCount: 0, error: null });",
+    "export const calls = [];",
+    "export const listProjectAgents = async (projectId) => { calls.push(projectId); return []; };",
   ].join(NL),
   "threads-ext.mjs": "export const threadTitle = () => null;",
   // `chat-shell.ts` reads the default agent's name to build the context
@@ -216,6 +216,29 @@ test("an existing row is returned untouched rather than replaced by the fallback
   assert.equal(row.conversationCount, 7);
   assert.deepEqual(row.members, ["coder"]);
   assert.equal(row.leadsSelectedBot, true);
+});
+
+test("project rail counts loaded threads without fetching project histories", async () => {
+  const { countLoadedProjectConversations, readProjectRailRows } = await loadChatShell();
+  const projects = [{ id: "p1" }];
+  const threads = [
+    { projectId: "p1" },
+    { projectId: "p1" },
+    { projectId: "p2" },
+    { projectId: null },
+  ];
+  const rows = await readProjectRailRows(projects, null);
+
+  assert.deepEqual([...countLoadedProjectConversations(threads)], [["p1", 2], ["p2", 1]]);
+  assert.equal(rows[0].conversationCount, null, "crew refreshes do not own conversation counts");
+  assert.deepEqual(rows.map((row) => row.members), [[]]);
+  assert.deepEqual(rows.map((row) => row.projectId), ["p1"]);
+  const implementation = flat(chatShellSource.slice(
+    chatShellSource.indexOf("export async function readProjectRailRows"),
+    chatShellSource.indexOf("function withDeadline"),
+  ));
+  assert.doesNotMatch(implementation, /projectThreads\(/, "history must not be re-read per project");
+  assert.match(implementation, /listProjectAgents\(project\.id\)/, "crew presence stays available");
 });
 
 test("the agent selector is reachable from the keyboard, not click-only", () => {
@@ -484,16 +507,10 @@ test("an expanded project shows its agents, and never turns an unread crew into 
   );
 });
 
-test("the empty project list never claims a project is empty when its badge says otherwise", () => {
-  // The contradiction the operator reported: a row whose badge read 3, and
-  // whose expanded body read "No conversations in this project yet."
-  //
-  // Two different sources produced those. The badge is `row.conversationCount`,
-  // counted by the Gateway over the whole project. The list is `projThreads`,
-  // which comes from `groupConversations(threads, ...)` on a thread set that
-  // ChatView has ALREADY filtered to the selected agent. So "empty" here only
-  // ever meant "empty for this agent" - and the copy said otherwise, in the
-  // same row as a badge that said the opposite.
+test("the project list describes the loaded conversation view accurately", () => {
+  // The badge and list are derived from ChatView's loaded thread set, which may
+  // already be filtered to the selected agent. The UI must not imply this is a
+  // complete server-side project history.
   //
   // Asserted on the copy, because the copy is the defect. A test that merely
   // checked the list renders would pass while the UI contradicted itself.
@@ -514,21 +531,21 @@ test("the empty project list never claims a project is empty when its badge says
   assert.match(region, /row\.conversationCount === null/, "an unreported count stays unknown");
   assert.match(region, /Conversations not reported\./);
 
-  // The contradiction case, which is the one that was wrong.
+  // The filtered-view case must say the count belongs to this project and
+  // distinguish it from this bot's empty view.
   assert.match(
     region,
     /row\.conversationCount > 0 \? \(/,
-    "a non-zero project count must take its own branch",
+    "a non-zero loaded count must take its own branch",
   );
   assert.match(
     region,
     /in this project, none with/,
-    "and that branch must say the project HAS conversations, naming the agent",
+    "and that branch must name the agent",
   );
   assert.match(region, /\{currentBotDisplayName\}/, "the agent must be named, as the standalone copy does");
 
-  // The genuinely-empty case must still exist and keep its original wording.
-  assert.match(region, /No conversations in this project yet\./);
+  assert.match(region, /No loaded conversations for this project\./);
 });
 
 test("the workspace top bar renders no location breadcrumb", () => {
