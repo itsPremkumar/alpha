@@ -394,7 +394,11 @@ def test_compact_reports_honest_not_implemented():
     assert not res_comp.autonomous_directives
 
 
-def test_gateway_backend_dispatch():
+def test_gateway_backend_dispatch(monkeypatch):
+    # This test covers command routing, not the operator login flow.
+    monkeypatch.setenv("ALPHA_AUTH_DISABLED", "1")
+    monkeypatch.delenv("ALPHA_ENV", raising=False)
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
     app = create_app()
     client = TestClient(app)
 

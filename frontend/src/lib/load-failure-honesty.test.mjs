@@ -452,7 +452,7 @@ test("KanbanSection surfaces project and server-board fetch failures", () => {
 test("KanbanSection renders the no-organization 404 as not-configured, not as a failed read", () => {
   const src = read("../components/sections/KanbanSection.tsx");
   // Classified by the server's own sentence, in its own branch.
-  assert.match(src, /if \(\/No active organizations found\/i\.test\(message\)\)/);
+  assert.match(src, /isNoCompanyConfigured\(e\)/);
   assert.match(src, /setServerBoardNotConfigured\(message\)/);
   assert.match(src, /else \{\s*setServerBoardError\(message\);\s*\}/);
   // Both renderings exist, and they are different components: a notice for the

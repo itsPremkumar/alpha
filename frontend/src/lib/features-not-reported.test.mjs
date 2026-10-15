@@ -181,16 +181,16 @@ test("AgentsSection distinguishes 'not reported' from 'switched off'", () => {
   assert.match(src, /export function AgentsSection\(props: \{ enabled: boolean \| null \}\)/);
   assert.match(src, /props\.enabled === null/, "the branch must read the third state explicitly");
   assert.match(src, /Agent management status was not reported/);
-  assert.match(src, /Agent management is switched off/);
+  assert.match(src, /AGENTS_API_DISABLED_VIEW\.title/);
   // The config instruction is the consequence of `false` ONLY: it sits in the
   // non-null arm of the ternary, so an unanswered Gateway cannot receive it.
   assert.match(
     src,
-    /props\.enabled === null\s*\?[\s\S]{0,400}?Ask your administrator to set agents_api\.enabled=true/,
+    /notReported\s*\?[\s\S]{0,400}?AGENTS_API_DISABLED_VIEW\.hint/,
     "the instruction must be reachable only when the server said `false`",
   );
   const hint = src.slice(src.indexOf("hint={"), src.indexOf("hint={") + 900);
-  assert.match(hint, /props\.enabled === null/, "the hint is a ternary on the third state");
+  assert.match(hint, /notReported\s*\?/, "the hint distinguishes the third state");
 });
 
 test("AgentsSection never fetches the disabled API", () => {
