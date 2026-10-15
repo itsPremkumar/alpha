@@ -32,18 +32,114 @@ crash or `taskkill` never creates it and is always recovered.
   gate, the supervisor-lock and cooldown branches — is executed (not described)
   by `backend/tests/test_watchdog_decision_table.py`, which extracts the real
   config block, `Get-StackSnapshot` and `Invoke-HealthCheck` under PowerShell
-  with every probe, lock and destructive action stubbed. Two invariants that
-  test owns and that are easy to break by eye: **a deferral must not feed
-  `$script:ConsecutiveFailures`** (it counts against `$script:DeferPasses`
-  instead, which is why that counter is what "Deferring recovery xN" logs), and
-  **a `return` must sit on its own line** — PowerShell parses a bare `return`
-  trailing another statement on the same line as a positional *argument* to
-  that statement, which silently turned the cooldown branch into a fall-through
-  into Tier 2/3. Keep the three extraction markers (`$ErrorActionPreference =
+  with every probe, lock and destructive action stubbed. Invariants that test
+  owns, each one a bug this file has actually shipped:
+
+  - **A deferral must not feed `$script:ConsecutiveFailures`.** It counts
+    against `$script:DeferPasses` instead, which is why that counter is what
+    "Deferring recovery xN" logs. Feeding the escalation counter is what let a
+    long boot accumulate 28 failures and escalate on the very next check.
+  - **A `return` must sit on its own line.** PowerShell parses a bare `return`
+    trailing another statement on the same line as a positional *argument* to
+    that statement, which silently turned the cooldown branch into a fall-through
+    into Tier 2/3.
+  - **A successful full-stack spawn opens a BOOT-GRACE window, and that window
+    is keyed to `$script:LastStackSpawnUtc`, not to "the launcher looks dead".**
+    See "The boot-grace window" below.
+  - **A Tier-2 attempt that freed nothing must not consume the restart budget.**
+    See "Honest Tier-2 budget" below.
+
+  Keep the three extraction markers (`$ErrorActionPreference =
   "SilentlyContinue"`, `function Get-StackSnapshot`, `function
   Invoke-HealthCheck`, `function Invoke-WatchdogOfWatchdog`) stable.
 
-- **`../start.ps1`** (Layer 2, the launcher) — three behaviours the watchdog's
+  The harness drives time with `ALPHA_WD_PASS_GAP_SECONDS`, which back-dates
+  `$script:LastActionUtc` and `$script:LastStackSpawnUtc` between passes. The
+  shipped loop sleeps `$CheckIntervalSeconds`, so its cooldowns and its grace
+  age in wall-clock time; harness passes finish in milliseconds, which silently
+  lets the 30 s cooldown swallow every multi-pass scenario — that is why the
+  2026-10-14 restart storm was invisible to the suite until the gap existed.
+  **A new time-based branch is untestable without one**: add a pass gap rather
+  than asserting against a value nothing can move.
+
+### The boot-grace window
+
+`Start-AlphaStack` returns the moment `wscript` has been handed the launcher, but
+the launcher is **invisible** until `start.ps1` has taken over the ports and
+written `logs\alpha.pid` plus its first heartbeat. Until then
+`Get-StackSnapshot` honestly reads `launcher=dead`, and the Tier-3 gate defers
+only for a *visible* launcher — so the straight-line conclusion was "nobody can
+act, replace the stack". The generic cooldown (30 s, doubling to a 300 s cap)
+expires long before a boot does, so it never broke the cycle either.
+
+Measured on this machine, 2026-10-14 (`logs/watchdog.log`):
+
+```
+22:05:50 stack :: full_restart -> spawned (… launcher=dead …)
+22:06:34 stack :: full_restart -> spawned (… launcher=dead …)
+22:07:45 stack :: full_restart -> spawned (… launcher=dead …)
+```
+
+Three spawns in ~2 minutes against a stack that needs minutes to come up, each
+pass killing the stack the previous pass had just created.
+
+So a successful spawn records `$script:LastStackSpawnUtc`, and while inside
+`$StackBootGraceSeconds` **and** `-not $s.LauncherAlive` the watchdog OBSERVES: a
+`boot-grace` heartbeat plus a one-time diagnostic line, no escalation. Three
+rules keep it from becoming a way to never recover:
+
+- **It requires `-not $s.LauncherAlive`.** A launcher that *is* visible still
+  gets its normal Tier-2 component restart. A visible launcher is one that can
+  act, and suppressing Tier 2 for it throws away the only recovery left.
+- **It requires a spawn this loop actually made.** `$script:LastStackSpawnUtc`
+  stays `$null` until `Start-AlphaStack` returns true — a *failed* spawn grants
+  no window — so a machine with no launcher, the state where recovery is most
+  urgent, is never slowed down.
+- **It is bounded, and a bound shorter than the state it absorbs is decoration.**
+  `$StackBootGraceSeconds` must stay above the measured 70 s launcher-invisibility
+  window and below `$StartupGraceSeconds`. Past the window the shipped decision
+  returns unchanged: a dead launcher escalates, exactly as before.
+
+Boot-grace is a **deferral**, so by the rule above it resets
+`$script:ConsecutiveFailures` and feeds `$script:DeferPasses`. It releases the
+supervisor lock before returning, like the other deferrals, so a pass that
+genuinely needs to act is never blocked by one that is only waiting.
+
+### Honest Tier-2 budget
+
+`Stop-PortTree` reports three outcomes, and the caller charges a different budget
+for each because they are three different facts:
+
+| outcome | what actually happened | charged to |
+| --- | --- | --- |
+| `killed` | a bound port was freed — a real restart | `MaxComponentRecoveries` |
+| `already-free` | **nothing was there to kill** — a no-op | `MaxComponentNoopPasses` |
+| `stuck` | a bound port refused to die — a failed restart | `MaxComponentRecoveries` |
+
+`uvicorn` binds 8001 only *after* the 2–3 minute application import, so **a
+perfectly healthy booting gateway makes every Tier-2 attempt a no-op.** Charging
+those as restarts exhausted the budget in three passes and then handed the Tier-3
+gate its "budget exhausted" case, escalating a stack that was booting normally.
+Measured, same log, same incident:
+
+```
+22:01:16 gateway :: component_restart -> noop (port 8001 already free before kill)
+22:01:48 gateway :: component_restart -> noop (…)
+22:04:47 gateway :: component_restart -> noop (…)
+22:05:35 [WARN] gateway exceeded 3 component restarts - escalating to full stack
+```
+
+Not charging no-ops is therefore only half the fix. If a launcher claims to be
+working forever while a port stays closed, every attempt no-ops forever and the
+port-tree kill provably cannot help — escalation has to come from a counter of
+its own, which must be bounded. Both ceilings must have room to act (`-and`,
+never `-or`); joining them with `-or` leaves whichever is not currently charged
+unbounded, and a component that always frees its port is then restarted forever.
+`$MaxComponentNoopPasses` is sized above the launcher's own longest service boot
+so a launcher still legitimately importing is never out-escalated, while
+escalation stays eventual.
+
+- **`../start.ps1`** (Layer 2, the launcher) — four behaviours the watchdog's
   honesty depends on, pinned by `backend/tests/test_launcher_diagnostics.py`:
 
   - **Steady-state service liveness is the listener, not the wrapper PID.** A
@@ -77,6 +173,25 @@ crash or `taskkill` never creates it and is always recovered.
     archives but zero gateway archives. If you add a spawn site, add the
     `Stop-ServiceChainOrphans` + `Archive-ServiceLogs` calls directly above
     it — the 400-char sweep-then-archive pairing is asserted.
+  - **A gateway that never binds its port is killed by command line, not waited
+    out.** `uvicorn` binds 8001 only *after* the 2–3 minute application import,
+    so a **wedged** import is a process that is alive, holds **no listener**, and
+    emits nothing useful. That is the one failure state no port-based recovery
+    can reach: `Free-PortOrExit` sees nothing, and the watchdog's `Stop-PortTree`
+    only kills LISTENING pids, so its Tier-2 restart is a permanent no-op against
+    it (this is where the "already free before kill" no-ops in the log above come
+    from). Only a command-line match names such a process.
+
+    So the boot wait tracks `$script:GatewaySpawnedUtc` — set at *every* gateway
+    spawn site, because `Update-TrackedProcess` can adopt a different pid
+    mid-boot, and an unreset clock makes a respawned gateway inherit the previous
+    incarnation's age and get killed the instant it binds. When the port has
+    never come up and `$GatewayNoListenerSeconds` has elapsed, the launcher calls
+    `Stop-ServiceChainOrphans` and respawns instead of consuming the rest of the
+    15-minute budget and then calling `Fail-Startup`. Without it a recoverable
+    hang became a terminal startup failure (exit 1). The threshold must stay
+    **above** the launcher's own 240 s gateway patience and **below** the boot
+    wait; both bounds are pinned by `test_launcher_watchdog_budget.py`.
 - **`register_autostart.ps1`** — registers the scheduled tasks. **Generated
   `recovery/autostart/*.vbs` launchers bake this machine's absolute path, so
   they are gitignored** (see `.gitignore`) and must be regenerated with

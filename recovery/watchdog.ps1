@@ -52,7 +52,27 @@ $WatchdogHeartbeatMaxAge  = 90    # loop heartbeat older than this = frozen loop
 $LauncherHeartbeatMaxAge  = 360   # start.ps1 can legitimately pause up to 300 s in backoff
 $StartupGraceSeconds      = 600   # a launcher younger than this is still in first boot
 $MaxDeferredRecoveries    = 8     # checks we let a live launcher heal itself first
-$MaxComponentRecoveries   = 3     # per-component restarts before escalating to the stack
+$MaxComponentRecoveries   = 3     # per-component RESTARTS before escalating to the stack
+# A Tier-2 attempt that frees nothing (the port was already free - "already-free"
+# from Stop-PortTree) is NOT a restart and must not be charged as one, so it is
+# charged here instead. The bound is sized ABOVE the launcher's own longest
+# service boot: uvicorn holds no listener for the whole 2-3 min import, so a
+# booting gateway makes every attempt a no-op, and a bound shorter than the
+# launcher's patience would escalate a stack that is booting normally. Measured
+# 2026-10-14: three consecutive "already free before kill" no-ops exhausted
+# MaxComponentRecoveries and escalated a healthy boot at 22:05:35.
+$MaxComponentNoopPasses   = 41    # 41 x 30 s = 1230 s > start.ps1's 1200 s frontend budget
+# Post-spawn BOOT GRACE. Start-AlphaStack returns the moment wscript has been
+# handed the launcher, but the launcher is INVISIBLE to us for a while after
+# that: start.ps1 takes over the ports and only then writes logs\alpha.pid and
+# its first heartbeat. Measured on this machine, the gap between one
+# `stack :: full_restart` log line and the next was 44 s and 71 s, and the
+# Tier-3 gate - which defers only for a VISIBLE launcher - escalated three times
+# in ~2 minutes, each pass killing the stack the previous pass had just spawned.
+# The generic cooldown (below) is SHORTER than that window, which is why it never
+# stopped the storm. Inside this window, and only while the launcher is still
+# invisible, the watchdog OBSERVES instead of escalating.
+$StackBootGraceSeconds    = 150   # > the measured 70 s invisibility, < $StartupGraceSeconds
 # A supervisor must be MORE patient than the process it supervises, otherwise it
 # kills a component that is still legitimately booting. start.ps1 waits
 # `MaxWaitSeconds 240` for the gateway and `360` for the frontend before it
@@ -75,11 +95,21 @@ $script:ConsecutiveFailures = 0
 # failures, so the working-tier defer in Invoke-HealthCheck RESETS
 # ConsecutiveFailures instead of feeding it, and this counter is what
 # "Deferring recovery x24" counts. It resets whenever the stack is OK or a
-# recovery action is taken.
+# recovery action is taken. The post-spawn boot grace is a deferral by the same
+# rule: it feeds this counter, never ConsecutiveFailures.
 $script:DeferPasses  = 0
 $script:ComponentAttempts   = @{}
+# Consecutive Tier-2 passes that freed nothing, per component. Separate from
+# ComponentAttempts because a no-op is not evidence that the component needs
+# replacing - it is evidence that killing its port cannot help. See
+# $MaxComponentNoopPasses.
+$script:ComponentNoopPasses = @{}
 $script:LastActionUtc = $null
 $script:ActionBackoff = 0
+# When THIS process last spawned a full stack, if ever. The boot grace is keyed
+# to it, so a launcher that was already dead when we started watching (the state
+# where recovery is most urgent) is never given a grace window it did not earn.
+$script:LastStackSpawnUtc = $null
 $script:MaintenanceLogged = $false
 
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
@@ -484,7 +514,9 @@ function Restart-Component {
     } else {
         Write-RecoveryEvent -Component $Component -Action "component_restart" -Result "failed" -Reason "port $port still bound"
     }
-    return ($outcome -ne "stuck")
+    # The OUTCOME, not a boolean: the caller charges a different budget for a
+    # kill that freed the port, a kill that freed nothing, and a kill that failed.
+    return $outcome
 }
 
 # Full-stack recovery: replace the launcher (if any) and start a fresh one,
@@ -572,7 +604,9 @@ function Invoke-HealthCheck {
         $script:ConsecutiveFailures = 0
         $script:DeferPasses         = 0
         $script:ComponentAttempts   = @{}
+        $script:ComponentNoopPasses = @{}
         $script:ActionBackoff       = 0
+        $script:LastStackSpawnUtc   = $null   # the spawn it was covering completed
         $script:MaintenanceLogged   = $false
         Write-Heartbeat -Status "ok" -Stack $s.Summary
         return
@@ -647,6 +681,44 @@ function Invoke-HealthCheck {
         return
     }
 
+    # ---- Post-spawn boot grace: observe a stack we just created ---------------
+    # This is NOT a deferral of a stack in trouble; it is an admission that the
+    # snapshot is meaningless for a short, bounded period after our own spawn.
+    # Start-AlphaStack returns the moment wscript has been handed the launcher,
+    # but the launcher is invisible until start.ps1 has taken over the ports and
+    # written logs\alpha.pid plus its first heartbeat. Until then
+    # Get-StackSnapshot honestly reports launcher=dead, the Tier-3 gate below
+    # defers only for a VISIBLE launcher, and the generic cooldown expires long
+    # before the boot does - so each pass escalated again and killed the stack
+    # the previous pass had just spawned. Measured 2026-10-14: three
+    # `stack :: full_restart` spawns 44 s and 71 s apart, against a stack that
+    # needs minutes to come up.
+    #
+    # Scope, deliberately narrow: `-not $s.LauncherAlive` is REQUIRED. A launcher
+    # that IS visible still gets the normal Tier-2 component restart, and only an
+    # expired window lets a genuinely dead launcher escalate. If
+    # $script:LastStackSpawnUtc is null (we have not spawned a stack since this
+    # loop started) there is no grace at all, so the state where recovery is most
+    # urgent - a machine with no launcher - is never slowed down.
+    #
+    # Counted as a deferral, not a failure (same rule as Tier 1 and the Tier-3
+    # gate): it resets ConsecutiveFailures and feeds DeferPasses, and it hands
+    # the supervisor lock back so a pass that genuinely needs to act is never
+    # blocked by one that is only waiting.
+    if ($script:LastStackSpawnUtc -and -not $s.LauncherAlive) {
+        $sinceSpawn = ([DateTime]::UtcNow - $script:LastStackSpawnUtc).TotalSeconds
+        if ($sinceSpawn -lt $StackBootGraceSeconds) {
+            $script:ConsecutiveFailures = 0
+            $script:DeferPasses++
+            Write-Heartbeat -Status "boot-grace" -Stack $s.Summary
+            if ($script:DeferPasses -eq 1) {
+                Write-WdLog "Boot grace after full-stack spawn: launcher still invisible $([int]$sinceSpawn)s into a ${StackBootGraceSeconds}s window - observing, not escalating ($($s.Summary))"
+            }
+            Exit-SupervisorLock
+            return
+        }
+    }
+
     # Cooldown between recovery actions - never spin at full speed.
     if ($script:LastActionUtc -and $script:ActionBackoff -gt 0) {
         $sinceAction = ([DateTime]::UtcNow - $script:LastActionUtc).TotalSeconds
@@ -673,18 +745,56 @@ function Invoke-HealthCheck {
         if ($script:ComponentAttempts.ContainsKey($badComponent)) {
             $attempts = $script:ComponentAttempts[$badComponent]
         }
-        if ($attempts -lt $MaxComponentRecoveries) {
-            $script:ComponentAttempts[$badComponent] = $attempts + 1
+        $noopPasses = 0
+        if ($script:ComponentNoopPasses.ContainsKey($badComponent)) {
+            $noopPasses = $script:ComponentNoopPasses[$badComponent]
+        }
+        # BOTH ceilings must have room. Each bounds a different failure mode - the
+        # restart budget bounds repeated real kills, the no-progress streak bounds
+        # repeated attempts that free nothing - and each must independently be
+        # able to stop the loop. Joining them with -or would leave one of them
+        # unbounded, so a component that always frees its port could be restarted
+        # forever.
+        if ($attempts -lt $MaxComponentRecoveries -and $noopPasses -lt $MaxComponentNoopPasses) {
             Write-Heartbeat -Status "recovering" -Stack $s.Summary
             $script:ConsecutiveFailures = 0
             $script:DeferPasses = 0     # an action ends the deferral streak (see the config comment)
             $script:LastActionUtc = [DateTime]::UtcNow
             $script:ActionBackoff = 15
-            Restart-Component -Component $badComponent | Out-Null
+            # Charge the budget for what the kill ACTUALLY did, decided from its
+            # reported outcome rather than assumed before the attempt:
+            #   killed         -> a real restart; charge the restart budget.
+            #   already-free   -> nothing was there to kill. A booting gateway
+            #                      holds no listener for its whole 2-3 min import,
+            #                      so this is what a perfectly healthy boot looks
+            #                      like. Charging it as a restart made three
+            #                      vacuous passes exhaust $MaxComponentRecoveries
+            #                      and escalate a booting stack (measured
+            #                      2026-10-14 22:05:35). Charge the no-progress
+            #                      streak instead - bounded, and sized above the
+            #                      launcher's own boot patience so a launcher that
+            #                      is still working is never out-escalated.
+            #   stuck          -> a bound port refused to die; a real failed
+            #                      restart, so it charges the restart budget.
+            $outcome = Restart-Component -Component $badComponent
+            if ($outcome -eq "killed") {
+                $script:ComponentAttempts[$badComponent]   = $attempts + 1
+                $script:ComponentNoopPasses[$badComponent] = 0
+            } elseif ($outcome -eq "already-free") {
+                $script:ComponentAttempts[$badComponent]   = $attempts
+                $script:ComponentNoopPasses[$badComponent] = $noopPasses + 1
+            } else {
+                $script:ComponentAttempts[$badComponent]   = $attempts + 1
+                $script:ComponentNoopPasses[$badComponent] = $noopPasses
+            }
             return
         }
         $tier2Exhausted = $true
-        Write-WdLog "$badComponent exceeded $MaxComponentRecoveries component restarts - escalating to full stack" "WARN"
+        if ($noopPasses -ge $MaxComponentNoopPasses) {
+            Write-WdLog "$badComponent made no progress on $noopPasses consecutive passes (port never bound; the port-tree kill cannot help) - escalating to full stack" "WARN"
+        } else {
+            Write-WdLog "$badComponent exceeded $MaxComponentRecoveries component restarts - escalating to full stack" "WARN"
+        }
     }
 
     # ---- Tier 3: full stack restart ---------------------------------------
@@ -719,7 +829,13 @@ function Invoke-HealthCheck {
     $script:ConsecutiveFailures = 0
     $script:DeferPasses         = 0     # an action ends the deferral streak (see the config comment)
     $script:ComponentAttempts   = @{}
+    $script:ComponentNoopPasses = @{}
     $script:LastActionUtc = [DateTime]::UtcNow
+    # Only a spawn that actually happened opens a boot-grace window. A failed
+    # spawn gets none: there is no booting stack to protect, and the next pass
+    # must retry rather than observe.
+    if ($ok) { $script:LastStackSpawnUtc = $script:LastActionUtc }
+    else     { $script:LastStackSpawnUtc = $null }
     if ($script:ActionBackoff -eq 0) { $script:ActionBackoff = $ActionBackoffStart }
     else { $script:ActionBackoff = [Math]::Min($ActionBackoffCap, $script:ActionBackoff * 2) }
     if (-not $ok) { Write-WdLog "Full restart spawn failed - will retry after backoff" "ERROR" }

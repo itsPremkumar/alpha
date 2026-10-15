@@ -128,3 +128,39 @@ def test_watchdog_retains_its_utf8_bom() -> None:
     if not WATCHDOG.exists():
         pytest.skip("recovery/watchdog.ps1 is not present in this checkout")
     assert WATCHDOG.read_bytes().startswith(b"\xef\xbb\xbf"), "recovery/watchdog.ps1 lost its UTF-8 BOM — PowerShell 5.1 needs it"
+
+
+def test_no_listener_budget_never_aborts_a_boot_the_launcher_would_have_accepted(launcher: str) -> None:
+    """The hung-import kill must sit ABOVE the launcher's own gateway patience.
+
+    ``start.ps1`` restarts a gateway and waits ``MaxWaitSeconds 240`` for it. If
+    the boot wait killed a gateway that had not bound its port sooner than that,
+    it would be less patient than the launcher's own restart path - the launcher
+    would have waited and recovered, and this rule would have aborted the boot.
+    """
+    budget = _ps_int(launcher, "GatewayNoListenerSeconds")
+    readiness = _launcher_budget(launcher, "GatewayPort")
+
+    assert budget > readiness, (
+        f"start.ps1 kills a port-less gateway after {budget}s, but its own gateway restart path "
+        f"waits {readiness}s (MaxWaitSeconds). A boot inside that window is one the launcher "
+        "would have accepted, so killing it trades a hang for a restart loop."
+    )
+
+
+def test_no_listener_budget_beats_waiting_out_the_whole_boot(launcher: str) -> None:
+    """...and it must actually be shorter than what it replaces.
+
+    Without this the rule is decoration: the boot wait is 450 x 2 s, so a budget
+    at or above that is the same wait with extra steps, and a hung import still
+    ends the startup in ``Fail-Startup`` rather than a retry.
+    """
+    budget = _ps_int(launcher, "GatewayNoListenerSeconds")
+    match = re.search(r"\$maxAttempts\s*=\s*(\d+)", launcher)
+    assert match, "could not find $maxAttempts in start.ps1 — the boot-wait contract changed shape"
+    attempts = int(match.group(1))
+    pass_seconds = 2  # the boot wait sleeps 2 s per attempt
+
+    assert budget < attempts * pass_seconds, (
+        f"$GatewayNoListenerSeconds={budget}s is not shorter than the {attempts * pass_seconds}s boot wait it is supposed to cut short, so the launcher still ends a hung import with Fail-Startup instead of a retry"
+    )

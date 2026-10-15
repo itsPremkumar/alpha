@@ -41,6 +41,10 @@ $script:LastGatewayProbeError = ""
 # and no `gateway_last_error`, so the one moment an operator most needs the
 # reason is the moment the file lost it.
 $script:LastHealthExtra = $null
+# When the CURRENT gateway incarnation was spawned, or $null if none is up yet.
+# Set at every gateway spawn site and read by the boot wait to tell a slow import
+# from a wedged one. See $GatewayNoListenerSeconds.
+$script:GatewaySpawnedUtc = $null
 function Write-HealthFile {
     param(
         [string]$Status = "healthy",
@@ -691,12 +695,35 @@ Write-HealthFile -Status "starting" -Detail "launcher initialising"
 Write-Host "`n[1/2] Starting Gateway API on port $GatewayPort..." -ForegroundColor Yellow
 Write-Host "  logs: logs\gateway.log, logs\gateway.err.log" -ForegroundColor Gray
 
+# How long a gateway incarnation may go without EVER binding its port before the
+# boot wait treats the import as wedged and kills the chain by command line.
+# `uvicorn` binds 8001 only AFTER the application import finishes (measured
+# 2-3 min: env resolve + migrations + app import), so a wedged import produces a
+# process that is alive, holds NO listener, and defeats every port-based killer -
+# Free-PortOrExit here, and the watchdog's Stop-PortTree, which only finds
+# LISTENING pids. That is why the watchdog's Tier-2 restart was a permanent no-op
+# against this state, and only a full stack restart (which matches on command
+# line) ever cleared it.
+#
+# Sized deliberately: ABOVE the 240 s this launcher already waits when it
+# restarts a gateway, so it never aborts a boot the launcher itself would have
+# accepted, and BELOW the 900 s boot-wait budget, so it actually shortens the
+# wait instead of decorating it. Pinned by
+# backend/tests/test_launcher_watchdog_budget.py.
+$GatewayNoListenerSeconds = 300
+
 Stop-ServiceChainOrphans -Service "gateway"
 Archive-ServiceLogs -Service "gateway" -Reason "gateway start"
 $gatewayProcess = Start-Process -FilePath $uvPath `
     -ArgumentList "run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port $GatewayPort" `
     -WorkingDirectory "$RepoRoot\backend" -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput $gatewayLogOut -RedirectStandardError $gatewayLogErr
+# The hung-import clock starts here. $gatewayProcess.StartTime would do for this
+# incarnation, but Update-TrackedProcess may adopt a DIFFERENT pid mid-boot (a
+# serving process across launcher hand-offs), so the age is tracked explicitly and
+# reset at every spawn site - otherwise a respawned gateway inherits the previous
+# incarnation's age and is killed the instant it binds.
+$script:GatewaySpawnedUtc = [DateTime]::UtcNow
 
 # -- 6. Start Frontend Chat UI -----------------------------------------------
 Write-Host "[2/2] Starting Next.js Web Interface on port $FrontendPort..." -ForegroundColor Yellow
@@ -876,6 +903,7 @@ function Restart-GatewayService {
         -ArgumentList "run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port $GatewayPort" `
         -WorkingDirectory "$RepoRoot\backend" -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $gatewayLogOut -RedirectStandardError $gatewayLogErr
+    $script:GatewaySpawnedUtc = [DateTime]::UtcNow   # reset: this incarnation owes a fresh boot budget
     Write-Host "  Gateway relaunched (PID: $($script:gatewayProcess.Id)). Verifying health..." -ForegroundColor Gray
     # 90 s was too short: this gateway needs ~2-3 min from `uv run` to answering
     # /health/ready (env resolve + migrations + app import). Giving up early
@@ -1093,6 +1121,38 @@ for ($i = 1; $i -le $maxAttempts; $i++) {
         $script:gatewayRestarts += 1
         Restart-GatewayService -Attempt $script:gatewayRestarts
         continue
+    }
+
+    # A gateway that is ALIVE but has never bound its port is either still
+    # importing or wedged, and `$gatewayGone` above cannot tell them apart -
+    # the wrapper process never exits. $GatewayNoListenerSeconds is above the
+    # import time this launcher already budgets for, so inside the window this
+    # is a normal boot; past it, the only honest reading is a wedged import.
+    #
+    # This state is the one failure no port-based recovery can reach: uvicorn
+    # binds 8001 only after the import completes, so the process holds no
+    # listener, Free-PortOrExit finds nothing, and the watchdog's Tier-2 restart
+    # is a permanent no-op against it (that is the "already free before kill"
+    # no-op recorded on 2026-10-14). Only a command-line match names it, which is
+    # exactly what Stop-ServiceChainOrphans does. Before this branch the boot
+    # wait simply ran out its full 15-minute budget and FAILed the whole startup
+    # (exit 1) - a recoverable hang turned into a terminal failure.
+    if ($script:GatewaySpawnedUtc -and -not (Test-PortListening -Port $GatewayPort)) {
+        $noListenerFor = ([DateTime]::UtcNow - $script:GatewaySpawnedUtc).TotalSeconds
+        if ($noListenerFor -gt $GatewayNoListenerSeconds) {
+            Write-Host "`n[WARN] Gateway API bound no listener in $([int]$noListenerFor)s (budget ${GatewayNoListenerSeconds}s) - the import is wedged; killing the chain by command line and respawning..." -ForegroundColor Yellow
+            Write-HealthFile -Status "recovering" -Detail "gateway import hung: no listener after $([int]$noListenerFor)s (budget ${GatewayNoListenerSeconds}s); killing by command line and respawning"
+            Show-LogTail $gatewayLogErr
+            # Kill first, before the restart's own backoff sleep: this process
+            # holds no port, so nothing else can name it, and leaving it alive
+            # through the backoff means it can still bind later and collide with
+            # its own replacement.
+            Stop-ServiceChainOrphans -Service "gateway"
+            Reset-GatewayBackoffIfStable
+            $script:gatewayRestarts += 1
+            Restart-GatewayService -Attempt $script:gatewayRestarts
+            continue
+        }
     }
     if ($frontendGone) {
         $code = ""
