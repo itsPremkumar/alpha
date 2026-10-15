@@ -31,7 +31,7 @@ Alpha is a LangGraph-based AI super-agent system — a backend "super agent" wit
 - **Governance**: Tool risk policies, approval gates, capability ceilings, emergency stop
 - **Durable Runtime**: Crash recovery, network partitions, graceful shutdown, session persistence
 - **Autonomous command receipts**: Natural-language lifecycle matches show the Gateway's execution status and returned output in the chat; detection alone is not shown as a completed action
-- **APEX Autopilot**: Dispatches objectives through RunManager; completion requires evidence for every criterion. Registered probes and a narrow exact-text file-readback verifier can supply evidence automatically; arbitrary criteria remain unverified until a typed collector or owner evidence covers them.
+- **APEX Autopilot**: Dispatches objectives through RunManager; completion requires evidence for every criterion. Registered probes and run-scoped exact-text or explicit non-empty artifact file-readback checks can supply evidence automatically; arbitrary criteria remain unverified until a typed collector or owner evidence covers them.
 - **Conversation goal completion**: The bounded goal loop evaluates visible chat plus persisted successful tool receipts, while treating tool output as untrusted data; this model judgment is separate from measured APEX acceptance verification.
 - **Alpha-to-Alpha peer network**: Pair installations with single-use invites shown as QR codes and scanned locally from a camera or image; the peer network is disabled by default.
 

@@ -162,6 +162,17 @@ So both consumers already exist and already render a status, and each is updated
 to render `unimplemented` in terms of what will actually happen next for its own
 caller.
 
+### Approval grants at the Gateway boundary
+
+`approved: true` in a request body is only a request to approve. The Gateway
+strips it from command, auto-trigger, and phase-transition contexts, then restores
+the grant only when the authenticated caller passes the shared admin check. For
+that grant, `actor` is replaced with the authenticated user id; a caller-supplied
+actor cannot attribute an approval to someone else. Personal access tokens never
+grant this operator approval, even when minted by an administrator. Direct
+in-process callers still have to supply a trusted context themselves; HTTP
+payloads are not a trusted source of policy grants.
+
 ### Rejected options
 
 * **B — add 410 handlers.** Correct long-term, unbounded here (407 subsystems),

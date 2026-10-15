@@ -74,13 +74,17 @@ evaluator receipt.
 neither decides a lifecycle — `RunManager` still does. Never equate a terminal
 run status with verified acceptance: `success` with criteria and no evidence, and
 `error` either way, return `unverified`. The auto-verifier supports explicit
-exact-text file readback only, and returns `unverified` when *any* criterion is
-outside it rather than a partial pass. The first complete measurement is
+exact-text file readback plus `File artifact at "/path" exists and is non-empty`.
+Artifact evidence requires a successful `read_file` event for the exact path
+after its latest successful `write_file` in the run, if any; it records a bounded SHA-256 digest,
+reports an empty file as `NOT_MET`, and leaves absent, stale, ambiguous, or
+oversized readback unverified. It returns `unverified` when *any* criterion is
+outside the supported typed forms rather than a partial pass. The first complete measurement is
 persisted as a singleton `run.verification` event keyed by a SHA-256 of the
 stored criteria, so later reads replay it and changed criteria re-measure. No
 criteria is `not_requested`, not a pass; the 32-criterion ceiling is refused, not
 truncated. Tests: `tests/test_run_acceptance_criteria.py`,
-`tests/test_run_usage_endpoint.py`.
+`tests/test_apex_auto_acceptance.py`, `tests/test_run_usage_endpoint.py`.
 
 ### Safe Run Auto-Recovery
 

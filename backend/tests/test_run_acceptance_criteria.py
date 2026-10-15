@@ -370,6 +370,26 @@ def test_a_readback_that_does_not_contain_the_marker_fails_instead_of_passing() 
     assert body["report"]["criteria"][0]["verdict"] == "not_met"
 
 
+def test_run_endpoint_measures_explicit_artifact_readback_and_persists_digest() -> None:
+    criterion = "File artifact at `/workspace/result.txt` exists and is non-empty."
+    event_store = MemoryRunEventStore()
+    run_manager, _run_store, run_id = _create_run_with_criteria(_criteria(criterion), event_store)
+    _seed_readback_evidence(event_store, run_id)
+    app = _make_app(run_manager, event_store)
+
+    body = _verification(app, run_id)
+    replay = _verification(app, run_id)
+
+    assert body["status"] == "verified"
+    assert body["report"]["evaluator"] == "run_artifact_readback"
+    assert body["report"]["criteria"][0]["verdict"] == "met"
+    assert "sha256=" in body["report"]["criteria"][0]["evidence"]
+    assert replay == body
+
+    persisted = asyncio.run(event_store.list_events(THREAD, run_id, event_types=["run.verification"], limit=10))
+    assert len(persisted) == 1
+
+
 def test_an_unsupported_criterion_among_supported_ones_never_reports_verified() -> None:
     """One criterion the auto-verifier cannot measure poisons the whole verdict.
 
@@ -385,7 +405,7 @@ def test_an_unsupported_criterion_among_supported_ones_never_reports_verified() 
 
     assert body["status"] == "unverified"
     assert body["report"] is None
-    assert "beyond the supported exact-text file readback check" in body["reason"]
+    assert "beyond the supported exact-text or explicit artifact file readback checks" in body["reason"]
 
 
 def test_an_unsupported_criterion_alone_stays_unverified_without_evidence() -> None:

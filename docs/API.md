@@ -196,12 +196,18 @@ GET /api/threads/{thread_id}/runs/{run_id}/verification
 ```
 
 For a successful terminal run with declared acceptance criteria, Alpha measures
-only the supported exact-text file-readback check. A complete result is recorded
-as one idempotent `run.verification` event and reused on later reads. The result
-includes `status` (`verified`, `failed`, or `unverified`), a reason, and an
-optional evidence report. Unsupported criteria remain unverified. Persistence
-and restart guarantees follow the configured run-event backend; the memory
-backend is process-local. This endpoint does not change run status.
+the supported exact-text file-readback check and explicit non-empty artifact
+readback criteria of the form `File artifact at "/workspace/report.json" exists
+and is non-empty.` The artifact digest comes from a successful `read_file`
+result for that exact path, after the latest successful `write_file` to it if
+the run wrote it; a
+missing or stale readback is unverified, and an empty readback is a measured
+failure. A complete result is recorded as one idempotent `run.verification`
+event and reused on later reads. The result includes `status` (`verified`,
+`failed`, or `unverified`), a reason, and an optional evidence report.
+Unsupported criteria remain unverified. Persistence and restart guarantees
+follow the configured run-event backend; the memory backend is process-local.
+This endpoint does not change run status.
 
 #### Resume Run from Checkpoint
 

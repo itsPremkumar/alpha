@@ -1274,12 +1274,12 @@ async def get_run(thread_id: ThreadId, run_id: str, request: Request) -> RunResp
 async def get_run_verification(thread_id: ThreadId, run_id: str, request: Request) -> dict[str, Any]:
     """Return a measured acceptance projection for the run's declared criteria.
 
-    Automatic verification is intentionally limited to exact-text file
-    readback. General criteria stay unverified for an operator or a typed
-    collector; neither a successful run status nor the model's final prose is
-    evidence. The first complete measurement is persisted as a run event and
-    reused on subsequent reads; the source events remain the basis for that
-    measurement.
+    Automatic verification is intentionally limited to evidence measured from
+    run-scoped tool events: exact-text file readback and an explicitly declared
+    non-empty artifact readback. General criteria stay unverified; neither a
+    successful run status nor the model's final prose is evidence. The first
+    complete measurement is persisted as a run event and reused on subsequent
+    reads; the source events remain the basis for that measurement.
     """
     run_manager = get_run_manager(request)
     user_id = await get_current_user(request)
@@ -1319,13 +1319,13 @@ async def get_run_verification(thread_id: ThreadId, run_id: str, request: Reques
     if events is None:
         return {"status": "unverified", "reason": "The complete run event stream could not be read; partial events cannot verify work.", "report": None}
 
-    from alpha.apex.auto_acceptance import evaluate_tool_readback_criteria
+    from alpha.apex.auto_acceptance import evaluate_run_acceptance_criteria
 
-    report = evaluate_tool_readback_criteria(descriptions, events)
+    report = evaluate_run_acceptance_criteria(descriptions, events)
     if report is None:
         result = {
             "status": "unverified",
-            "reason": "These criteria need evidence beyond the supported exact-text file readback check.",
+            "reason": "These criteria need evidence beyond the supported exact-text or explicit artifact file readback checks.",
             "report": None,
         }
     else:

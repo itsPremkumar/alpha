@@ -14,7 +14,7 @@ import logging
 import os
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from alpha.commands import (
@@ -24,6 +24,7 @@ from alpha.commands import (
     command_registry,
 )
 from alpha.commands.registry import APPROVAL_CONTEXT_KEY, UNIMPLEMENTED_STATUS
+from app.gateway.deps import is_admin_user
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,30 @@ class PhaseTransitionRequest(BaseModel):
     context: dict[str, Any] | None = Field(default=None, description="Optional execution context")
 
 
+async def _trusted_command_context(request: Request, supplied: dict[str, Any] | None) -> dict[str, Any]:
+    """Remove caller assertions and mint an approval grant only for an admin.
+
+    ``approved`` is an internal command-registry capability, not an identity
+    claim. Browser/API payloads can request an approval, but the Gateway derives
+    the actual grant from its authenticated admin predicate and replaces the
+    actor with the authenticated user id. PATs are excluded by ``is_admin_user``.
+    """
+    context = dict(supplied or {})
+    requested = context.pop(APPROVAL_CONTEXT_KEY, None) is True
+    if not requested or not await is_admin_user(request):
+        return context
+
+    user = getattr(request.state, "user", None)
+    user_id = getattr(user, "id", None)
+    if not user_id:
+        # The admin resolver can fall back to authentication in alternate ASGI
+        # compositions. A grant still needs an attributable identity here.
+        return context
+    context[APPROVAL_CONTEXT_KEY] = True
+    context["actor"] = str(user_id)
+    return context
+
+
 @router.get("")
 async def list_commands(
     category: str | None = Query(default=None, description="Filter by command category (e.g. 'core', 'mission', 'swarm')"),
@@ -143,13 +168,9 @@ async def search_commands(
 
 
 @router.post("/execute")
-async def execute_command(payload: CommandExecuteRequest) -> dict[str, Any]:
+async def execute_command(payload: CommandExecuteRequest, request: Request) -> dict[str, Any]:
     """Dispatches a slash command intent to the runtime."""
-    context = dict(payload.context or {})
-    # An approval grant is an explicit, positive act by a human; refuse to
-    # infer it from anything else in the context.
-    if APPROVAL_CONTEXT_KEY in context and context[APPROVAL_CONTEXT_KEY] is not True:
-        context.pop(APPROVAL_CONTEXT_KEY, None)
+    context = await _trusted_command_context(request, payload.context)
     try:
         result = await asyncio.wait_for(
             asyncio.to_thread(
@@ -175,7 +196,7 @@ async def execute_command(payload: CommandExecuteRequest) -> dict[str, Any]:
 
 
 @router.post("/auto-trigger")
-async def auto_trigger_command(payload: AutoTriggerRequest) -> dict[str, Any]:
+async def auto_trigger_command(payload: AutoTriggerRequest, request: Request) -> dict[str, Any]:
     """Automatically identifies the required slash command and starts executing it at the correct time."""
     phase_enum = None
     if payload.phase:
@@ -189,13 +210,13 @@ async def auto_trigger_command(payload: AutoTriggerRequest) -> dict[str, Any]:
         prompt=payload.prompt,
         phase_hint=phase_enum,
         auto_execute=payload.auto_execute,
-        context=payload.context,
+        context=await _trusted_command_context(request, payload.context),
     )
     return detection.to_dict()
 
 
 @router.post("/phase-transition")
-async def trigger_phase_transition(payload: PhaseTransitionRequest) -> dict[str, Any]:
+async def trigger_phase_transition(payload: PhaseTransitionRequest, request: Request) -> dict[str, Any]:
     """Executes phase-specific autonomous slash commands at exact lifecycle events (e.g. on error, post-code edit)."""
     try:
         phase_enum = LifecyclePhase(payload.phase.lower())
@@ -206,7 +227,7 @@ async def trigger_phase_transition(payload: PhaseTransitionRequest) -> dict[str,
         autonomous_command_engine.trigger_phase_transition,
         phase=phase_enum,
         details=payload.details,
-        context=payload.context,
+        context=await _trusted_command_context(request, payload.context),
     )
     return detection.to_dict()
 

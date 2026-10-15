@@ -243,8 +243,10 @@ the per-session active-agent count.
 `POST /api/apex/sessions/{id}/dispatch` drives one session; the
 background `apex` loop remains opt-in under `config.yaml -> autonomy.loops.apex`.
 A completed run remains `awaiting_verification` until registered probes, the
-narrow exact-text file-readback verifier, or owner-submitted measured evidence
-covers every criterion. Session, mode, and goal JSON mutations serialize across
+narrow exact-text or explicit non-empty artifact file-readback verifier, or
+owner-submitted measured evidence covers every criterion. Artifact evidence
+requires a successful read of the declared path after its latest successful
+write in that run, if any, and records a bounded content digest. Session, mode, and goal JSON mutations serialize across
 workers sharing a local runtime directory; goal decomposition commits the child
 and parent link in one snapshot. The state snapshot and event journal are separate
 writes, and this is not cross-host exactly-once. CPU/RAM budgets and

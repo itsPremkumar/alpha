@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from alpha.apex.auto_acceptance import evaluate_tool_readback_criteria
+from alpha.apex.auto_acceptance import evaluate_run_acceptance_criteria, evaluate_tool_readback_criteria
 
 
 def _events(*, written: str = "expected marker", read: str = "expected marker", read_path: str = "/workspace/result.txt") -> list[dict]:
@@ -100,3 +100,69 @@ def test_readback_cannot_pass_on_an_earlier_write_after_a_later_overwrite() -> N
 def test_auto_evaluation_refuses_mixed_supported_and_unsupported_criteria() -> None:
     criteria = ['Read the file back and verify it contains exactly "expected marker".', "All tests pass"]
     assert evaluate_tool_readback_criteria(criteria, _events()) is None
+
+
+def test_explicit_artifact_check_measures_non_empty_readback_with_digest() -> None:
+    criterion = "File artifact at `/workspace/result.txt` exists and is non-empty."
+
+    report = evaluate_run_acceptance_criteria([criterion], _events())
+
+    assert report is not None
+    assert report.evaluator == "run_artifact_readback"
+    assert report.passed is True
+    assert "bytes=15" in report.criteria[0].evidence
+    assert "sha256=" in report.criteria[0].evidence
+
+
+def test_explicit_artifact_check_reports_empty_readback_as_not_met() -> None:
+    criterion = "File artifact at `/workspace/result.txt` exists and is non-empty."
+
+    report = evaluate_run_acceptance_criteria([criterion], _events(written="", read=""))
+
+    assert report is not None
+    assert report.passed is False
+    assert report.criteria[0].verdict.value == "not_met"
+    assert "bytes=0" in report.criteria[0].evidence
+
+
+def test_existing_artifact_can_be_measured_without_a_write_in_this_run() -> None:
+    criterion = 'File artifact at "/workspace/result.txt" exists and is non-empty.'
+    events = _events()[2:]
+    events[0]["seq"] = 1
+    events[1]["seq"] = 2
+
+    report = evaluate_run_acceptance_criteria([criterion], events)
+
+    assert report is not None
+    assert report.passed is True
+    assert "sha256=" in report.criteria[0].evidence
+
+
+def test_artifact_check_requires_read_after_latest_successful_write() -> None:
+    criterion = "File artifact at `/workspace/result.txt` exists and is non-empty."
+    events = _events()
+    events.extend(
+        [
+            {
+                "seq": 5,
+                "event_type": "llm.ai.response",
+                "content": {"type": "ai", "tool_calls": [{"id": "write-2", "name": "write_file", "args": {"path": "/workspace/result.txt", "content": "changed"}}]},
+            },
+            {"seq": 6, "event_type": "llm.tool.result", "content": {"name": "write_file", "tool_call_id": "write-2", "status": "success"}},
+        ]
+    )
+
+    assert evaluate_run_acceptance_criteria([criterion], events) is None
+
+
+def test_artifact_and_exact_text_criteria_can_share_one_measured_report() -> None:
+    criteria = [
+        'Read the file back and verify it contains exactly "expected marker".',
+        "File artifact at `/workspace/result.txt` exists and is non-empty.",
+    ]
+
+    report = evaluate_run_acceptance_criteria(criteria, _events())
+
+    assert report is not None
+    assert report.passed is True
+    assert report.evaluator == "run_artifact_readback+run_tool_readback"

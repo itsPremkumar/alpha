@@ -1,5 +1,13 @@
 ### Gateway API (`app/gateway/`)
 
+Approval-gated slash commands enter through `routers/commands.py`. Treat
+request-body `context.approved` as an approval request only: mint the registry
+grant through `deps.is_admin_user`, attribute it to the authenticated user, and
+apply the same sanitizer to command, auto-trigger, and phase-transition routes.
+PATs are not operators. Do not pass client approval flags into command execution.
+Contract and regression tests: `docs/COMMAND_HONESTY.md` and
+`tests/test_command_route_approval_grants.py`.
+
 FastAPI listens on port 8001; health: `GET /health` (liveness) and `GET /health/ready` (readiness; concurrently probes the ORM engine behind `database:` plus the effective LangGraph checkpointer/Store backend - the legacy `checkpointer:` section, otherwise derived from `database:`, resolved from the startup config snapshot on `app.state`; identical concurrent requests share one in-flight probe pair, and checkpointer connections are serialized behind a strict per-process gate; disk-backed SQLite ORM readiness opens a separate short-lived, non-creating connection so a saturated application pool does not report a false database outage; in-memory SQLite continues to use its existing pooled connection; one bounded deadline; 503 while either is unreachable or the startup backend cannot be resolved; `not_configured` for process-local backends such as `backend=memory`). Set `GATEWAY_ENABLE_DOCS=false` to disable the default `/docs`, `/redoc`, and `/openapi.json` endpoints.
 
 The disk-backed SQLite ORM probe uses a separate `aiosqlite` connection. Closing
