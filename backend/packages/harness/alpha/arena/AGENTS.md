@@ -53,6 +53,7 @@ arena/
 ├── task_rubrics.py        # per-task weights, hard gates, deterministic judge bias controls
 ├── evidence.py            # evidence ledger: claim checks, verdicts, gate_from_ledger()
 ├── synthesis.py           # contribution synthesis: merge plan, CONFLICT, markdown render
+├── tournament.py          # post-bracket report wiring the four advanced primitives
 ├── modes.py               # run modes + budget profiles + the adaptive `auto` router
 └── strategies.json        # shipped strategy deck (15 reasoning × 12 workflow × 12 strategy)
 ```
@@ -113,13 +114,13 @@ arena/
 
 ### Advanced primitives (task contract → candidates → repairs → synthesis)
 
-Seven sibling modules extend the engine along the plan's second phase. Three of
-them are **wired into the executor today**; four are **engine primitives with
-tests but no executor wiring yet** — that distinction is load-bearing, and the
-summary below says which is which rather than implying all seven run in a
-tournament.
+Seven sibling modules extend the engine along the plan's second phase. **All
+seven are now wired into the executor**; three of them had been since the
+bracket shipped, and four more are wired by the post-bracket tournament report
+(`tournament.py`). What still differs is *where* each runs, and that is stated
+per module rather than implied.
 
-**Wired:**
+**Wired into the bracket itself:**
 
 * `task_rubrics.py` — `weights_for(task_type)` /
   `weighted_total_for(...)` pick the per-task rubric (coding 40/20/15/20/5,
@@ -143,30 +144,52 @@ tournament.
 * `modes.py` — the run-mode and budget-profile vocabulary (see *Modes and
   profiles*), including the `auto` router.
 
-**Primitives, not yet wired into the executor** (pure, tested, exported from
-`alpha.arena`; a tournament does not call them):
+**Wired into the post-bracket tournament report** (`tournament.py`, called by
+`ArenaExecutor._finish` once the bracket reaches a terminal state):
 
-* `task_contract.py` — a structured contract for a run's task:
-  `Requirement`/`Constraint`/`AcceptanceCheck`/`TaskContract`, plus the
-  `TaskType`, `RequirementPriority`, `VerificationMethod`, `SafetyLevel` and
-  `BudgetProfile` vocabularies.
-* `candidate.py` — `CandidateArtifact`, `RequirementCoverage`
-  (`CoverageStatus`), `Contribution`, `best_contributions(...)`,
-  `synthesis_gaps(...)`: what each competitor produced and which requirement
-  it covers.
-* `evidence.py` — `ClaimCheck` (`Verdict`), `EvidenceLedger`,
-  `gate_from_ledger(...)`: the claim→evidence table a research judge can be
-  scored against.
-* `synthesis.py` — `PatchContribution`/`MergeItem`/`MergePlan`/`SynthesisResult`,
-  `plan_merge(...)`, `synthesize(...)`, `render_markdown(...)`: merges the
-  surviving contributions into one document. It emits a **`plan_merge` — it
-  never executes anything**, and overlapping patches are flagged `CONFLICT`
-  rather than silently layered.
+* `task_contract.py` — `TaskContract.create_from_request` turns the run's own
+  task text into the requirements/constraints/acceptance vocabulary. The run's
+  declared hard gates (`default_gates`) travel beside it.
+* `candidate.py` — one `CandidateArtifact` per competitor that produced a
+  solution, each with per-requirement `RequirementCoverage`. Coverage is
+  **measured from the artifact** (keyword presence in that competitor's own
+  solution file; ≥ `MIN_COVERAGE_HITS` to read as `covered`), never declared by
+  the judge, and a competitor whose file cannot be read is named in
+  `unreadable_artifacts` rather than scored as empty content.
+* `evidence.py` — an `EvidenceLedger` over the claims the run's artifacts
+  contain. The bracket performs **no retrieval**, so every claim is recorded
+  `UNVERIFIED`; `gate_from_ledger` then never trips on an unchecked claim, only
+  a `CONTRADICTED` one, and `support_ratio` stays `None` at zero checked claims.
+* `synthesis.py` — `synthesize(...)` merges each requirement's best
+  contribution. It is emitted as a **plan**: the block carries
+  `synthesis.executed: false`, and nothing writes the sections into a workspace.
 
-Because those four are unwired, the engine will not cite a coverage number,
-an evidence verdict or a synthesis result in a live run's output. They are
-the primitives the next executor pass builds on; claiming otherwise would be
-a fabricated capability.
+The report reaches every reader: `ArenaService.status()` and `.winner()` carry
+it, `POST /runs/{id}/start|resume` returns it, and the `arena` tool renders it
+beside the champion. `arena.tournament.completed` publishes the bounded half on
+the bus, and `arena.run.completed` carries it too.
+
+The report is built on a **worker thread** (`asyncio.to_thread`), never inline:
+an arena run is driven from a Gateway route, so a synchronous read of every
+competitor's solution file on the request loop would stall every other run in
+the process. The event publish stays on the loop, because
+`ArenaService._on_event` creates a task on the current one and a worker thread
+has none.
+
+Three rules keep the report from becoming a new source of false claims:
+
+1. **A report that could not be assembled says so.** `assembled: false` with the
+   real reason is the only honest answer. An absent key is indistinguishable
+   from a run that predates the wiring, and an assembled-but-empty one reads as
+   "nothing was left uncovered".
+2. **A bracket that did not finish reports nothing.** A budget-exhausted or
+   failed run has no champion, so it gets `assembled: false` naming its status.
+3. **A report failure never fails the tournament.** The executor catches it,
+   degrades the block, and lets the completed run stand.
+
+Regression coverage: `tests/test_arena_tournament_wiring.py` drives the real
+`ArenaExecutor` through a real bracket on the scripted runner seam (no model
+calls) and asserts all four modules are cited, plus every rule above.
 
 ### Configuration (`config.yaml -> arena`)
 
@@ -251,6 +274,15 @@ produced no synthesis would be a fabricated capability. `plan` refuses `start`
 with `ArenaRunError` pointing at `estimate`, so a zero-spend mode cannot be
 mistaken for an executed one.
 
+The vocabulary is reported as honestly as it is enforced. `describe_modes()`
+gives every row an `implemented` flag and a `refusal_reason`, so the `profiles`
+tool action cannot present a mode that raises as one the engine can run, and
+`IMPLEMENTED_MODES` / `REFUSED_MODES` are the single table both the reporter and
+`tests/test_arena_tournament_wiring.py` read. Note the distinction the row makes
+explicit: a `decide` run *does* produce a contribution merge **plan** in its
+tournament report, but no mode **executes** a merge — which is exactly why
+`synthesize` stays refused.
+
 `Profile` is the operator-declared budget profile: `quick` (3 competitors),
 `standard` (5), `deep` (8) — the profile list is data, never computed from a
 model's opinion of the task. `ArenaService.resolve_profile` resolves the
@@ -324,6 +356,13 @@ with a real reason rather than a fabricated result.
   synthesis, repair dispositions, hard gates, judge blinding, mode refusals
 * `tests/test_arena_profiles.py` — profile resolution, the `auto` router,
   ceiling refusals, the `profiles` tool action, `check_start`/`check_resume`
+* `tests/test_arena_tournament_wiring.py` — the end-to-end proof that a **real**
+  tournament cites the task contract, candidate coverage, the claim ledger and
+  the merge plan; that coverage is measured from each artifact rather than
+  declared; that `UNVERIFIED` never becomes `SUPPORTED`; that the synthesis
+  stays a plan; the degraded and non-terminal report branches; the JSON
+  round-trip through the store document; and the mode vocabulary agreeing with
+  the enforcement.
 
 Run: `uv run pytest tests/test_arena_*.py -v`
 
@@ -395,6 +434,7 @@ packages/harness/alpha/arena/              # new package
 ├── task_rubrics.py
 ├── evidence.py
 ├── synthesis.py
+├── tournament.py           # NEW: post-bracket report (the four primitives' caller)
 └── modes.py
 tools/builtins/arena_tool.py               # model-facing tool
 app/gateway/routers/arena.py               # HTTP router

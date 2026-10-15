@@ -64,7 +64,42 @@ live run. A model-facing tool and an HTTP router now exist (Phase H below), but
 they are **read and preview surfaces over the pure library functions**: they
 expose what the mesh already computes, and they dispatch nothing. Until an
 executor wires them, describe this package as a tested, readable measurement
-plane — never as a capability the agent can use to route work. Phase C adds the
+plane — never as a capability the agent can use to route work.
+
+**That absence is now machine-readable, not only prose.** Every payload the
+service returns carries a `mesh_capability` block, and `MESH_CAPABILITY_NOTE`
+says the same thing in the `notes` list:
+
+```python
+{
+  "capability": "capability_mesh_executor",
+  "state": "absent",
+  "dispatches": False,
+  "note": "No executor is wired to the capability mesh...",
+  "missing_wiring": [
+    "alpha.subagents.executor:SubagentExecutor",
+    "alpha.runtime.runs:RunManager",
+    "alpha.capability_mesh:dispatch",
+  ],
+  "owner_of_real_dispatch": "alpha.subagents.executor / alpha.runtime.runs (RunManager); neither reads the mesh",
+}
+```
+
+`dispatched: false` on a preview answers "did *this call* dispatch?". The
+`mesh_capability` row answers the question a caller actually decides on — *can
+this plane dispatch at all?* `GET /api/capability-mesh/capability` serves that
+row on its own, **and answers even while the mesh is disabled**, because a
+client checking whether it *could* route is exactly the client that should be
+told before it plans around the capability. `enabled: true` does not add an
+executor, and the route says so beside `enabled`.
+
+`tests/test_capability_mesh_executor_wiring.py` pins all of it, including two
+checks that are not about wording at all: **no module in this package imports
+`alpha.subagents.executor` or `alpha.runtime.runs`**, and neither of those
+modules reads the mesh either. A future change that wires a real dispatch fails
+those two tests — which is the point.
+
+Phase C adds the
 routing *plane* (`fingerprint.py`, `decomposition.py`, `fit.py`, `assignment.py`, `policy.py`) — still with **no
 tool, no router and no executor wiring**; `route()` is a tested pure function,
 not a dispatch decision anything makes yet. Phase D adds the graph, pair
@@ -500,7 +535,7 @@ Three surfaces now reach this package, and all three are **read/preview only**:
 | --- | --- | --- |
 | `CapabilityMeshService` | `capability_mesh/service.py` | The **one** implementation both callers use. Synchronous, because every method touches the filesystem; a second implementation would let "the tool said unmeasured" sit beside "the API said measured" |
 | `capability_mesh` tool | `tools/builtins/capability_mesh_tool.py` | One `@tool` with an `action`: eleven read actions (`passports`, `memory`, `calibration`, `drift`, `policy`, `route`, `team`, `compose`, `explain`, `independence`, `shadow`) and exactly **one** write (`record`) |
-| `/api/capability-mesh` | `app/gateway/routers/capability_mesh.py` | The HTTP mirror: `GET /profiles`, `/memory` (+`?entity_id=`), `/calibration`, `/drift`, `/policy`, `/independence`, `/shadow`; `POST /route`, `/team`, `/compose`, `/records` |
+| `/api/capability-mesh` | `app/gateway/routers/capability_mesh.py` | The HTTP mirror: `GET /profiles`, `/memory` (+`?entity_id=`), `/calibration`, `/drift`, `/policy`, `/independence`, `/shadow`, `/capability`; `POST /route`, `/team`, `/compose`, `/records` |
 | `CapabilityMeshConfig` | `capability_mesh/config.py` | `config.yaml -> capability_mesh`, declared next to `arena:` in `config.example.yaml` |
 
 **Both surfaces call the library's pure functions and nothing else. NOTHING
@@ -519,6 +554,14 @@ could have broken them:
   unmeasured. The tool re-derives `ConfidenceView`'s caption from the
   evidence level and sample count rather than inventing wording, because the
   library deliberately does not serialise that derived field.
+- **The mesh's own executor-wiring state travels on every payload**, not only on
+  previews. Only the *preview* payloads said anything about dispatching before,
+  so a caller reading `/profiles` had no way to know the plane could not route
+  and would reasonably assume the answer had simply not been exercised yet. The
+  `mesh_capability` row (`capability_mesh_executor` / `absent` /
+  `dispatches: false`) closes that, and `GET /capability` serves it standalone —
+  reachable while the mesh is **disabled**, because that is exactly when a
+  client is deciding whether to plan around it.
 - **An unreadable store surfaces the store's own refusal reason** — the tool
   as `Capability mesh store error: <the store's words>`; the router as `503`
   with that same text as `detail`. Neither becomes an empty `200` with

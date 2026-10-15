@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-14T17:16:08Z",
+ "generated_at": "2026-10-15T02:36:50Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -2038,6 +2038,7 @@
   {
    "id": "apex",
    "module": "app.gateway.autonomy.loops:apex_tick",
+   "symbol": "apex_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2045,6 +2046,7 @@
   {
    "id": "company_operations",
    "module": "app.gateway.autonomy.loops:company_operations_tick",
+   "symbol": "company_operations_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2052,6 +2054,7 @@
   {
    "id": "enterprise_heartbeat",
    "module": "app.gateway.autonomy.loops:enterprise_heartbeat_tick",
+   "symbol": "enterprise_heartbeat_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2059,6 +2062,7 @@
   {
    "id": "free_models_sync",
    "module": "app.gateway.autonomy.loops:free_models_sync_tick",
+   "symbol": "free_models_sync_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2066,6 +2070,7 @@
   {
    "id": "memory_upkeep",
    "module": "app.gateway.autonomy.loops:memory_upkeep_tick",
+   "symbol": "memory_upkeep_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2073,6 +2078,7 @@
   {
    "id": "mission",
    "module": "app.gateway.autonomy.loops:mission_tick",
+   "symbol": "mission_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2080,6 +2086,7 @@
   {
    "id": "perpetual",
    "module": "app.gateway.autonomy.loops:perpetual_tick",
+   "symbol": "perpetual_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2087,6 +2094,7 @@
   {
    "id": "review_queue",
    "module": "app.gateway.autonomy.loops:review_queue_tick",
+   "symbol": "review_queue_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2094,6 +2102,7 @@
   {
    "id": "self_update",
    "module": "app.gateway.autonomy.loops:self_update_tick",
+   "symbol": "self_update_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2101,6 +2110,7 @@
   {
    "id": "sentinel",
    "module": "app.gateway.autonomy.loops:sentinel_tick",
+   "symbol": "sentinel_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2108,6 +2118,7 @@
   {
    "id": "skill_curator",
    "module": "app.gateway.autonomy.loops:skill_curator_tick",
+   "symbol": "skill_curator_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2115,6 +2126,7 @@
   {
    "id": "swarm_status",
    "module": "app.gateway.autonomy.loops:swarm_status_tick",
+   "symbol": "swarm_status_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"
@@ -2122,6 +2134,7 @@
   {
    "id": "workflow_triggers",
    "module": "app.gateway.autonomy.loops:workflow_triggers_tick",
+   "symbol": "workflow_triggers_tick",
    "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
    "wired": true,
    "state": "wired"

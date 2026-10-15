@@ -234,7 +234,10 @@ async def start_run(
         raise HTTPException(status_code=400, detail=str(error))
     except ArenaRunError as error:
         raise HTTPException(status_code=409, detail=str(error))
-    return {"run_id": run_id, "status": state["status"], "champion": state.get("champion")}
+    # `champion` alone would read as "the work is done and correct". The post-
+    # bracket report travels with it so an HTTP caller sees the requirement
+    # coverage and the claim ledger, and learns that the merge is a plan.
+    return {"run_id": run_id, "status": state["status"], "champion": state.get("champion"), "tournament": state.get("tournament")}
 
 
 @router.post("/runs/{run_id}/resume")
@@ -255,7 +258,7 @@ async def resume_run(
         state = await executing.resume(run_id, owner_id=user)
     except ArenaRunError as error:
         raise HTTPException(status_code=409, detail=str(error))
-    return {"run_id": run_id, "status": state["status"], "champion": state.get("champion")}
+    return {"run_id": run_id, "status": state["status"], "champion": state.get("champion"), "tournament": state.get("tournament")}
 
 
 @router.get("/runs/{run_id}/pairings")

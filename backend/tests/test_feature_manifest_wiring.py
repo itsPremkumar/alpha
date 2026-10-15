@@ -124,12 +124,118 @@ def test_declared_modules_exist(manifest: dict) -> None:
                 failures.append(f"{section}:{entry['id']} -> (no module declared)")
                 continue
             # Loop modules are declared as adapter call paths: module:function
-            module_path = module.split(":")[0]
+            module_path, _, symbol = module.partition(":")
             try:
-                importlib.import_module(module_path)
+                imported = importlib.import_module(module_path)
             except Exception as exc:  # noqa: BLE001 - report every drift at once
                 failures.append(f"{section}:{entry['id']} -> {module_path} ({type(exc).__name__}: {exc})")
+                continue
+            # The symbol half was previously discarded with the split, so a
+            # manifest naming a nonexistent tick adapter imported the module and
+            # called it a success. `test_declared_loop_adapters_are_resolvable`
+            # covers the registry specifically; this keeps every entry honest
+            # under the one check that already claimed to verify all of them.
+            if symbol and not hasattr(imported, symbol):
+                failures.append(f"{section}:{entry['id']} -> {module} (module imports, but defines no {symbol!r})")
     assert not failures, "manifest module drift detected:\n" + "\n".join(failures)
+
+
+def test_declared_loop_adapters_are_resolvable(manifest: dict) -> None:
+    """Every supervisor loop must name an adapter the adapter module defines.
+
+    ``generate_feature_manifest.py`` reads the adapter straight out of the
+    ``defaults`` tuple in ``register_default_loops`` and cross-checks it against
+    the functions ``app.gateway.autonomy.loops`` actually declares, so a loop the
+    supervisor would raise ``AttributeError`` on cannot be published as wired.
+    This test is the runtime half of the same claim: it imports the real modules
+    and asserts the supervisor's registered tick *is* the manifest's adapter, so
+    the two descriptions cannot drift apart in either direction.
+    """
+    import app.gateway.autonomy.loops as loop_adapters
+    from app.gateway.autonomy.supervisor import AutonomySupervisor
+
+    supervisor = AutonomySupervisor()
+    supervisor.register_default_loops()
+    registered = supervisor._specs  # noqa: SLF001 - the registry is the subject under test
+
+    entries = {entry["id"]: entry for entry in manifest["loops"]}
+    assert set(entries) == set(registered), f"manifest loops {sorted(entries)} != supervisor loops {sorted(registered)} — regenerate the manifest"
+
+    failures: list[str] = []
+    for loop_id, entry in sorted(entries.items()):
+        module_path, _, symbol = str(entry["module"]).partition(":")
+        assert module_path == "app.gateway.autonomy.loops", f"{loop_id} names adapter module {module_path!r}; every adapter lives in app.gateway.autonomy.loops"
+        assert symbol, f"{loop_id} declares no adapter symbol"
+        if not entry.get("wired"):
+            failures.append(f"{loop_id}: manifest marks it unwired ({entry.get('reason', 'no reason given')})")
+        if not callable(getattr(loop_adapters, symbol, None)):
+            failures.append(f"{loop_id}: app.gateway.autonomy.loops defines no callable {symbol!r}")
+        spec_tick = getattr(registered[loop_id], "tick")
+        if getattr(spec_tick, "__name__", None) != symbol:
+            failures.append(f"{loop_id}: supervisor registers {getattr(spec_tick, '__name__', spec_tick)!r} but the manifest names {symbol!r}")
+    assert not failures, "supervisor loop adapters are not wired:\n" + "\n".join(failures)
+
+
+def test_the_generator_detects_a_loop_whose_adapter_does_not_exist(tmp_path: Path) -> None:
+    """The generator's negative path, proved rather than assumed.
+
+    Every other check in this file reads the committed manifest, so a generator
+    that stamped ``wired: true`` unconditionally would pass all of them. This
+    runs ``collect_loops`` against a *copy* of the adapter module with one tick
+    renamed: the entry must come back unwired, carrying the name it looked for
+    and why it is missing. Without that, "the manifest measures the wiring"
+    would itself be an untested claim.
+    """
+    import importlib.util
+    import shutil
+
+    spec = importlib.util.spec_from_file_location("feature_manifest_generator", BACKEND / "scripts" / "generate_feature_manifest.py")
+    assert spec is not None and spec.loader is not None
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+
+    autonomy = BACKEND / "app" / "gateway" / "autonomy"
+    probe = tmp_path / "app" / "gateway" / "autonomy"
+    probe.mkdir(parents=True)
+    loops = (autonomy / "loops.py").read_text(encoding="utf-8")
+    renamed = loops.replace("def apex_tick()", "def apex_tick_RENAMED()", 1)
+    assert renamed != loops, "the fixture must actually rename a real tick, or this test proves nothing"
+    (probe / "loops.py").write_text(renamed, encoding="utf-8")
+    shutil.copyfile(autonomy / "supervisor.py", probe / "supervisor.py")
+
+    original_app = generator.APP
+    # `APP` must point at the `app/` package root, because `collect_loops`
+    # appends `gateway/autonomy/...` to it.
+    generator.APP = tmp_path / "app"
+    try:
+        rows = generator.collect_loops()
+    finally:
+        generator.APP = original_app
+
+    unwired = [row for row in rows if not row["wired"]]
+    assert len(unwired) == 1, f"renaming one tick must mark exactly one loop unwired, got {[row['id'] for row in unwired]}"
+    assert unwired[0]["id"] == "apex"
+    assert unwired[0]["symbol"] == "apex_tick", "the entry must name the adapter it looked for, not the id-derived guess"
+    assert unwired[0]["reason"], "an unwired entry without a reason is indistinguishable from a generator bug"
+    assert sum(1 for row in rows if row["wired"]) == len(rows) - 1, "the other loops must still resolve — a whole-file parse failure would pass this test too"
+
+
+def test_manifest_loop_wiring_is_verified_not_asserted(manifest: dict) -> None:
+    """The generator must not publish ``wired: true`` it never checked.
+
+    ``collect_loops`` used to build each entry from ``f"{loop_id}_tick"`` - a
+    name derived from the loop id, never looked up - and stamp ``wired: True``
+    unconditionally. Renaming an adapter or emptying ``loops.py`` therefore left
+    a manifest that still claimed every loop was wired, and the integration
+    health endpoint reported 100% loop coverage over loops that could not run.
+    The entry must now carry the adapter the supervisor really calls, and a
+    missing one has to surface as ``wired: false`` rather than as silence.
+    """
+    for entry in manifest["loops"]:
+        assert entry.get("module"), f"{entry['id']} declares no adapter module"
+        assert entry.get("symbol"), f"{entry['id']} declares no adapter symbol"
+        if not entry.get("wired"):
+            assert entry.get("reason"), f"{entry['id']} is unwired with no reason — an unexplained unwired entry is indistinguishable from a generator bug"
 
 
 def test_local_only_exclusions_are_recorded(manifest: dict) -> None:
@@ -279,6 +385,33 @@ def _imported_symbols(path: Path) -> set[str]:
     return symbols
 
 
+def _facade_resolved_symbols(path: Path) -> set[str]:
+    """Names pulled through ``builtins.resolve_builtin_tool("<name>")``.
+
+    ``alpha.tools.builtins`` is a PEP-562 lazy facade whose ``__getattr__``
+    resolves a public name on first access, but a direct submodule import binds
+    the *module* on the package attribute and makes that lookup hand back a
+    module instead of the tool. ``_build_registries`` therefore resolves every
+    name-collision-prone export through ``resolve_builtin_tool("name")`` rather
+    than a bare ``from alpha.tools.builtins import name``.
+
+    Those imports are real wiring — they perform the same import the registry
+    literal names — but they are ``Call`` nodes, not ``ImportFrom``, so an
+    import-symbol scan missed all 26 of them and reported every one as an
+    unregistered builtin. This helper reads the same evidence the import scan
+    reads, for that second spelling.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != "resolve_builtin_tool":
+            continue
+        for argument in node.args:
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                names.add(argument.value)
+    return names
+
+
 def test_every_exported_builtin_tool_is_registered() -> None:
     """A builtin exported from the package must reach a tool registry.
 
@@ -290,7 +423,7 @@ def test_every_exported_builtin_tool_is_registered() -> None:
     """
     exported = _relative_exported_symbols(_BUILTINS_INIT)
     assert exported, "builtins/__init__.py no longer re-exports anything"
-    registered = _imported_symbols(_TOOLS_PY)
+    registered = _imported_symbols(_TOOLS_PY) | _facade_resolved_symbols(_TOOLS_PY)
     allowlisted = set(UNREGISTERED_BUILTINS)
     missing = sorted(exported - registered - allowlisted)
     assert not missing, (
@@ -334,7 +467,7 @@ def test_imported_builtin_tools_are_actually_used_in_the_registry_module() -> No
     body, so an import-only entry fails.
     """
     imported = _imported_symbols(_TOOLS_PY)
-    referenced = _referenced_names(_TOOLS_PY)
+    referenced = _referenced_names(_TOOLS_PY) | _facade_resolved_symbols(_TOOLS_PY)
     exported = _relative_exported_symbols(_BUILTINS_INIT)
     allowlisted = set(UNREGISTERED_BUILTINS)
     dead = sorted((exported & imported) - referenced - allowlisted)

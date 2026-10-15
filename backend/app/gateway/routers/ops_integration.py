@@ -35,11 +35,46 @@ class ClassCoverage(BaseModel):
     excluded: int = 0
 
 
+class LoopWiring(BaseModel):
+    """Whether one registered autonomy loop can actually run.
+
+    Three axes are kept apart on purpose. ``enabled`` alone used to be the only
+    flag, and it is copied from the per-loop config block — so a loop an operator
+    merely *named* in ``config.yaml -> autonomy.loops`` read as enabled while the
+    master switch was off and no task existed, which is the same row an operator
+    reads when asking why ``runs: 0``.
+    """
+
+    description: str = ""
+    configured_enabled: bool = Field(..., description="The operator named this loop id and enabled it in autonomy.loops")
+    master_enabled: bool = Field(..., description="autonomy.enabled gates every loop; false means no loop runs")
+    running: bool = Field(..., description="A supervising task is alive right now (the only axis that proves ticks can be scheduled)")
+    can_run: bool = Field(..., description="master_enabled and configured_enabled and running")
+    disabled_reason: str = Field(default="", description="Why this loop cannot run; empty exactly when can_run is true")
+
+
+class AutonomyLoopWiring(BaseModel):
+    """One row per registered loop, plus the counts an operator scans first.
+
+    ``counts["reported"]`` is ``0`` when the supervisor could not be read at all.
+    That is a different fact from ``registered: 0``, and an operator debugging a
+    loop that never ticks needs to tell them apart — an empty ``loops`` map on
+    its own reads as "this deployment registers nothing".
+    """
+
+    master_enabled: bool = False
+    started_at: float = 0.0
+    loops: dict[str, LoopWiring] = Field(default_factory=dict)
+    counts: dict[str, int] = Field(default_factory=dict)
+
+
 class IntegrationHealthResponse(BaseModel):
     manifest_found: bool = Field(..., description="Whether the generated manifest was readable")
     manifest_version: str = ""
     coverage: dict[str, ClassCoverage] = Field(default_factory=dict)
     autonomy: dict[str, Any] = Field(default_factory=dict, description="Live AutonomySupervisor status")
+    autonomy_loops: AutonomyLoopWiring = Field(default_factory=AutonomyLoopWiring, description="Per-loop can-it-run projection; a registered loop that cannot run is named here with its reason")
+    unrunnable_loops: list[str] = Field(default_factory=list, description="Registered loop ids that cannot run right now, with the reason on each row of autonomy_loops")
     event_bus: dict[str, Any] = Field(default_factory=dict, description="Live event-bus status")
     capabilities: dict[str, Any] = Field(default_factory=dict, description="Per-capability opt-in status from alpha.capabilities.catalog")
     peer_network: dict[str, Any] = Field(default_factory=dict, description="Live Alpha-to-Alpha peer network status")
@@ -82,13 +117,22 @@ async def integration_health(request: Any = None) -> IntegrationHealthResponse:
                     unwired.append(f"{section}:{entry.get('id', '?')}")
 
     autonomy: dict[str, Any] = {}
+    autonomy_loops: dict[str, Any] = {}
+    autonomy_loops_reported = False
     event_bus: dict[str, Any] = {}
     try:  # late imports keep this endpoint usable even before full runtime init
         from app.gateway.autonomy.supervisor import get_autonomy_supervisor
 
-        autonomy = get_autonomy_supervisor().status()
+        supervisor = get_autonomy_supervisor()
+        autonomy = supervisor.status()
+        autonomy_loops = supervisor.wiring()
+        autonomy_loops_reported = True
     except Exception:
-        logger.debug("Autonomy status unavailable", exc_info=True)
+        # Warned, not debugged: the endpoint still answers, but it now answers
+        # with a degraded projection (see `counts.reported`), and a reader
+        # trusting that as a full picture deserves a log line saying why.
+        logger.warning("Autonomy status unavailable", exc_info=True)
+    unrunnable_loops = sorted(loop_id for loop_id, row in (autonomy_loops.get("loops") or {}).items() if not row.get("can_run"))
     try:
         from alpha.events.bus import get_event_bus
 
@@ -118,6 +162,13 @@ async def integration_health(request: Any = None) -> IntegrationHealthResponse:
         manifest_version=str(manifest.get("version", "")),
         coverage=coverage,
         autonomy=autonomy,
+        autonomy_loops=AutonomyLoopWiring(
+            master_enabled=bool(autonomy_loops.get("master_enabled", False)),
+            started_at=float(autonomy_loops.get("started_at", 0.0) or 0.0),
+            loops=autonomy_loops.get("loops") or {},
+            counts={**dict(autonomy_loops.get("counts") or {}), "reported": int(autonomy_loops_reported)},
+        ),
+        unrunnable_loops=unrunnable_loops,
         event_bus=event_bus,
         capabilities=capabilities,
         peer_network=peer_network,

@@ -38,11 +38,15 @@ def get_default_catalog_entries():
         ("/goal prioritize", CommandCategory.MISSION, "Reorders goals based on impact and dependency", "/goal prioritize", False),
         ("/goal constraints", CommandCategory.MISSION, "Shows or edits hard/soft mission constraints", "/goal constraints", False),
         ("/goal budget", CommandCategory.MISSION, "Shows or modifies mission resource limits", "/goal budget", False),
-        # Continuous loop aliases backed by the concrete goal-loop handlers
-        ("/loop start", CommandCategory.AUTONOMOUS_OPS, "Starts a durable continuous goal loop", "/loop start <objective>", True),
-        ("/loop status", CommandCategory.AUTONOMOUS_OPS, "Shows active continuous loops and milestones", "/loop status", True),
+        # Continuous loop aliases backed by the concrete goal-loop handlers.
+        # `start` records a goal; it does not dispatch one, so the description
+        # says "record" rather than "start" — the catalog is what a caller reads
+        # before deciding whether a command does the thing its name suggests.
+        ("/loop start", CommandCategory.AUTONOMOUS_OPS, "Records a durable goal (no dispatcher: this does not run anything)", "/loop start <objective>", True),
+        ("/loop status", CommandCategory.AUTONOMOUS_OPS, "Shows goal records and milestones, and how many are not running", "/loop status [goal_id]", True),
         ("/loop pause", CommandCategory.AUTONOMOUS_OPS, "Pauses one continuous loop; specify its id when several are active", "/loop pause [goal_id]", True),
-        ("/loop resume", CommandCategory.AUTONOMOUS_OPS, "Resumes one paused continuous loop; specify its id when several are paused", "/loop resume [goal_id]", True),
+        ("/loop resume", CommandCategory.AUTONOMOUS_OPS, "Marks one paused goal executing (nothing dispatches it; use the agent run for real work)", "/loop resume [goal_id]", True),
+        ("/loop orphans", CommandCategory.AUTONOMOUS_OPS, "Lists goal records claiming to be in flight with no executor; deletes nothing", "/loop orphans [page_size]", True),
         # 3. Planning Commands
         ("/plan", CommandCategory.PLANNING, "Creates execution plan without immediately acting", "/plan <objective>", True),
         ("/plan show", CommandCategory.PLANNING, "Displays current execution plan", "/plan show", False),

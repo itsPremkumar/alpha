@@ -221,15 +221,44 @@ def collect_middlewares() -> list[dict[str, object]]:
     return entries
 
 
+def _top_level_defs(tree: ast.AST) -> set[str]:
+    """Names defined at module scope (functions, classes, assignments)."""
+    names: set[str] = set()
+    for node in getattr(tree, "body", []):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names.update(target.id for target in node.targets if isinstance(target, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
 def collect_loops() -> list[dict[str, object]]:
-    """Loop ids owned by AutonomySupervisor.register_default_loops()."""
+    """Loop ids owned by AutonomySupervisor.register_default_loops().
+
+    The tick is read from the registry tuple itself (``loop_adapters.<name>``)
+    instead of being reconstructed from the loop id, and that name is then
+    checked against the functions ``app/gateway/autonomy/loops.py`` actually
+    defines.
+
+    The previous shape fabricated both halves: it wrote
+    ``module: "app.gateway.autonomy.loops:<id>_tick"`` (a name it never looked
+    up) and asserted ``wired: True`` without reading either file. So renaming an
+    adapter, or emptying ``loops.py``, still produced a manifest claiming every
+    loop was wired - and the only test that checked it,
+    ``test_declared_modules_exist``, split on ``:`` and imported just the module
+    half, so the adapter symbol was never resolved at all. A loop the supervisor
+    would raise ``AttributeError`` on was reported as wired.
+    """
     supervisor_py = APP / "gateway" / "autonomy" / "supervisor.py"
+    loops_py = APP / "gateway" / "autonomy" / "loops.py"
     tree = ast.parse(read(supervisor_py))
     registry = next(
         (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "register_default_loops"),
         None,
     )
-    ids: set[str] = set()
+    adapters: dict[str, str] = {}
     if registry is not None:
         for node in ast.walk(registry):
             if not isinstance(node, ast.Assign) or not any(isinstance(target, ast.Name) and target.id == "defaults" for target in node.targets):
@@ -237,19 +266,34 @@ def collect_loops() -> list[dict[str, object]]:
             if not isinstance(node.value, (ast.Tuple, ast.List)):
                 continue
             for entry in node.value.elts:
-                if isinstance(entry, ast.Tuple) and entry.elts and isinstance(entry.elts[0], ast.Constant) and isinstance(entry.elts[0].value, str):
-                    ids.add(entry.elts[0].value)
+                if not (isinstance(entry, ast.Tuple) and entry.elts and isinstance(entry.elts[0], ast.Constant) and isinstance(entry.elts[0].value, str)):
+                    continue
+                loop_id = str(entry.elts[0].value)
+                tick = entry.elts[2] if len(entry.elts) > 2 else None
+                if not isinstance(tick, ast.Attribute):
+                    raise SystemExit(f"autonomy loop {loop_id!r} does not name its tick as an adapter attribute (loop_adapters.<name>); the generator cannot verify it, so fix the registry rather than the manifest")
+                adapters[loop_id] = tick.attr
             break
-    return [
-        {
-            "id": loop_id,
-            "module": f"app.gateway.autonomy.loops:{loop_id}_tick",
-            "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
-            "wired": True,
-            "state": "wired",
-        }
-        for loop_id in sorted(ids)
-    ]
+    if registry is None:
+        raise SystemExit(f"AutonomySupervisor.register_default_loops() not found in {supervisor_py} — the loop inventory would be empty while looking complete")
+
+    defined = _top_level_defs(ast.parse(read(loops_py))) if loops_py.exists() else set()
+    entries: list[dict[str, object]] = []
+    for loop_id in sorted(adapters):
+        adapter = adapters[loop_id]
+        wired = adapter in defined
+        entries.append(
+            {
+                "id": loop_id,
+                "module": f"app.gateway.autonomy.loops:{adapter}",
+                "symbol": adapter,
+                "wiring_point": "app.gateway.autonomy.supervisor:register_default_loops",
+                "wired": wired,
+                "state": "wired" if wired else "intentionally_unwired",
+                **({} if wired else {"reason": f"{adapter} is registered as {loop_id}'s tick but {loops_py.name} defines no such callable"}),
+            }
+        )
+    return entries
 
 
 def collect_engines() -> list[dict[str, object]]:

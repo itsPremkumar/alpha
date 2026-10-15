@@ -46,6 +46,7 @@ from alpha.arena.rubric import RUBRIC_TEXT
 from alpha.arena.runner import ArenaAgentRunner, ArenaJob, ArenaJobResult
 from alpha.arena.store import ArenaStore
 from alpha.arena.task_rubrics import HardGate, apply_gates, pair_order
+from alpha.arena.tournament import assemble_tournament_report
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +110,82 @@ class ArenaExecutor:
             for action, job, result in zip(actions, jobs, results):
                 self._record(state, action, job, result)
             self._charge(state, results)
+            # Per-wave persistence is load-bearing, not a convenience: it is what
+            # bounds a crash to one lost wave. It stays INSIDE the loop — moving
+            # it out would let a multi-round tournament lose every round but the
+            # last, which is the opposite of the resumability this executor sells.
             self._store.save(state)
-        self._emit("arena.run.completed", {"run_id": state["run_id"], "status": state["status"]})
+        await self._finish(state)
         return state
+
+    async def _finish(self, state: dict[str, Any]) -> None:
+        """Assemble the tournament report, persist, and publish — off the loop.
+
+        The report reads every competitor's solution file, so it is a blocking
+        read and must not run inline on the request loop: an arena run is driven
+        from a Gateway route, and a synchronous read of N 40 KB files there
+        stalls every other run in the process. The event publishes stay on the
+        loop because ``ArenaService._on_event`` creates a task on the current
+        one, which a worker thread does not have.
+        """
+        state["tournament"] = await asyncio.to_thread(self._build_report_block, state)
+        self._store.save(state)
+        self._emit("arena.tournament.completed", {"run_id": state.get("run_id"), "assembled": bool(state["tournament"].get("assembled")), **_report_summary(state["tournament"])})
+        self._emit("arena.run.completed", {"run_id": state["run_id"], "status": state["status"], "tournament": _report_summary(state.get("tournament"))})
+
+    def _build_report_block(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Build the ``tournament`` block, or say why it could not be built.
+
+        This is the call that makes a live run cite the advanced primitives:
+        ``task_contract`` / ``candidate`` / ``evidence`` / ``synthesis`` were
+        pure modules no tournament ever called, so a completed run produced no
+        coverage number, no evidence verdict and no synthesis to read.
+
+        Runs on a worker thread. **Never raises** — a failure here is reported
+        *in* the block (``assembled: false`` plus the real reason) because the
+        tournament has already completed, and reporting nothing would leave a
+        reader to assume "assembled, and found nothing". Three properties keep
+        the block from becoming a new source of false claims:
+
+        * a **non-terminal bracket reports nothing** — there is no champion and
+          no final verdict, so the block says that instead of carrying an empty
+          measurement set that reads as "nothing was left uncovered";
+        * it is **idempotent and cheap** — one bounded read per competitor, no
+          model call, no budget, so a resume re-derives the same block;
+        * a failure **degrades the block, not the run**.
+        """
+        if not bracket.is_done(state):
+            # An absent key would be indistinguishable from a run that predates
+            # the report, which is the one reading this must never produce.
+            return {
+                "assembled": False,
+                "reason": f"the bracket did not finish (run status {state.get('status')!r}, stop_reason {state.get('stop_reason')!r})",
+                "note": "no requirement coverage, evidence ledger or synthesis exists for this run because the tournament never reached a champion; a champion-less run must not be reported as a completed comparison",
+            }
+        try:
+            return assemble_tournament_report(state, lambda agent_id: self._work_path(state, f"{agent_id}-solution.md"))
+        except Exception as exc:  # noqa: BLE001 - a report failure must not fail a completed run
+            logger.warning("arena tournament report for run '%s' could not be assembled: %s", state.get("run_id"), exc, exc_info=True)
+            return {
+                "assembled": False,
+                "reason": f"{type(exc).__name__}: {exc}",
+                "note": "the tournament itself completed; only the coverage/evidence/synthesis report is missing, so no coverage number or evidence verdict may be quoted for this run",
+            }
+
+    def _assemble_report(self, state: dict[str, Any]) -> None:
+        """Attach the report to ``state`` and announce it.
+
+        The synchronous wrapper around :meth:`_build_report_block`, kept for
+        callers that re-derive a block for an already-finished run.
+        ``execute()`` does not use it: it awaits the builder on a worker thread
+        instead, so a report that reads every competitor's solution file never
+        blocks the request loop.
+        """
+        state["tournament"] = self._build_report_block(state)
+        self._emit(
+            "arena.tournament.completed",
+            {"run_id": state.get("run_id"), "assembled": bool((state.get("tournament") or {}).get("assembled")), **_report_summary(state.get("tournament"))},
+        )
 
     # ------------------------------------------------------------------ jobs
 
@@ -594,6 +668,29 @@ class ArenaExecutor:
                 self._on_event(name, payload)
             except Exception:  # an event must never break a run
                 logger.exception("arena event handler failed for '%s'", name)
+
+
+def _report_summary(report: dict[str, Any] | None) -> dict[str, Any]:
+    """The bounded half of the tournament report, for an event payload.
+
+    Events travel to subscribers that have not loaded the run document, so only
+    the counters travel here. ``evidence.gate_tripped`` is included because an
+    event consumer must be able to see that a contradicted claim was found
+    without opening the run — and ``tournament_assembled`` travels beside it so a
+    missing report never reads as a clean one.
+    """
+    if not isinstance(report, dict):
+        return {"tournament_assembled": False}
+    evidence = report.get("evidence") if isinstance(report.get("evidence"), dict) else {}
+    synthesis = report.get("synthesis") if isinstance(report.get("synthesis"), dict) else {}
+    return {
+        "tournament_assembled": bool(report.get("assembled")),
+        "candidate_count": report.get("candidate_count", 0),
+        "gaps": list(report.get("gaps") or []),
+        "evidence_counts": evidence.get("counts", {}),
+        "evidence_gate_tripped": bool(evidence.get("gate_tripped")),
+        "synthesis_executed": bool(synthesis.get("executed")),
+    }
 
 
 def _match_number(match_id: Any) -> int:

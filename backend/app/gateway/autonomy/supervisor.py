@@ -481,6 +481,58 @@ class AutonomySupervisor:
             state.running = False
 
     # -- telemetry ---------------------------------------------------------------
+    def wiring(self) -> dict[str, Any]:
+        """Per-loop answer to "can this loop actually run right now?".
+
+        ``status()`` reports counters plus a single ``enabled`` flag copied from
+        the per-loop config block. That flag is true for every loop an operator
+        has named in ``config.yaml -> autonomy.loops``, even when the master
+        switch is off, no task was ever created, and the loop therefore cannot
+        execute a single tick. An operator reading ``enabled: true`` next to
+        ``runs: 0`` has to guess which of the two facts explains it.
+
+        This projection separates the three axes instead of collapsing them:
+
+        * ``configured_enabled`` - the operator named this id and enabled it;
+        * ``master_enabled`` - ``autonomy.enabled`` gates *every* loop;
+        * ``running`` - a supervising task is alive right now, which is the only
+          axis that proves ticks can be scheduled.
+
+        ``disabled_reason`` names the missing step for any loop that cannot run,
+        so "registered but inert" is never rendered as healthy.
+        """
+        master = bool(self._config.enabled)
+        loops: dict[str, Any] = {}
+        for loop_id, spec in self._specs.items():
+            configured = bool(self._config.loop_config(loop_id).enabled)
+            running = loop_id in self._tasks and not self._tasks[loop_id].done()
+            reason = ""
+            if not master:
+                reason = "autonomy.enabled is false; no loop runs"
+            elif not configured:
+                reason = "absent (or disabled) in config.yaml -> autonomy.loops; an absent id resolves to a disabled default"
+            elif not running:
+                reason = "enabled but not started: the supervisor created no task (start() has not run, or stop() already ran)"
+            loops[loop_id] = {
+                "description": spec.description,
+                "configured_enabled": configured,
+                "master_enabled": master,
+                "running": running,
+                "can_run": bool(master and configured and running),
+                "disabled_reason": reason,
+            }
+        return {
+            "master_enabled": master,
+            "started_at": self._started_at,
+            "loops": loops,
+            "counts": {
+                "registered": len(loops),
+                "configured": sum(1 for row in loops.values() if row["configured_enabled"]),
+                "running": sum(1 for row in loops.values() if row["running"]),
+                "can_run": sum(1 for row in loops.values() if row["can_run"]),
+            },
+        }
+
     def status(self) -> dict[str, Any]:
         """Full supervisor status: per-loop counters plus task liveness."""
         return {
