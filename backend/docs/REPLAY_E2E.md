@@ -17,10 +17,12 @@ so contract drift turns the build red instead.
   through the real FastAPI gateway with `ReplayChatModel` and asserts the streamed
   SSE event sequence equals a committed golden. Fast, no browser. Guards protocol
   *shape*.
-- **Layer 2 — full-stack render** (`frontend/tests/e2e-real-backend/`): real
-  Next.js + real gateway (replay model) + Chromium; asserts the replayed
-  auto-title and a follow-up suggestion render in the browser. Guards semantic
-  *render*. (Complementary to Layer 1 — neither subsumes the other.)
+- **Layer 2 — full-stack browser render** (`frontend/tests/e2e-real-backend/`):
+  real Next.js + real Gateway + Chromium. The multi-run-order browser scenario
+  seeds message events through the replay Gateway's test-only route, then checks
+  that the actual chat transcript renders two runs in chronological order. It
+  guards the cross-stack history reconstruction path; it does not invoke the
+  replay model. (Complementary to Layer 1 — neither subsumes the other.)
 
 Layer 2 also hosts **cross-stack contract scenarios** — the dangerous class
 where a backend change silently breaks a frontend assumption and *both sides'
@@ -127,9 +129,19 @@ results changed upstream of the extension.
 ## Run (no key)
 
 ```bash
-cd backend  && PYTHONPATH=. uv run pytest tests/test_replay_golden.py          # Layer 1
-cd frontend && pnpm exec playwright test -c playwright.real-backend.config.ts  # Layer 2
+# Install backend/frontend dependencies first.
+cd backend && PYTHONPATH=. uv run pytest tests/test_replay_golden.py
+cd ../frontend && pnpm exec playwright install chromium && pnpm exec playwright test -c playwright.real-backend.config.ts
 ```
+
+The Playwright config starts a hermetic replay Gateway on `127.0.0.1:8011` and
+Next.js dev server on `127.0.0.1:3011`.
+It enables `ALPHA_AUTH_DISABLED=1` and the test-only run seeder only on that
+Gateway process. The seeder is not mounted by the production app. The browser
+test creates an isolated thread and asserts the rendered human/assistant
+messages remain chronological across two runs. A test failure keeps a trace,
+screenshot, and video under `frontend/test-results/`; the HTML report is written
+to `frontend/playwright-report/`.
 
 ## CI
 
