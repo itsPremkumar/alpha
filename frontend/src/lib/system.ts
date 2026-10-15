@@ -13,7 +13,12 @@ export interface Probe {
   key: string;
   label: string;
   blurb: string;
-  ok: boolean | null; // null = not checked yet
+  /**
+   * `true` measured-healthy · `false` measured-unhealthy with `detail` naming
+   * the cause · `null` asked-and-not-answered, which every surface draws gray
+   * with the reason rather than red.
+   */
+  ok: boolean | null;
   detail: string;
   ms: number;
 }
@@ -34,6 +39,9 @@ async function runProbe<T>(key: string, label: string, blurb: string, fn: () => 
     // ApiClientError's `detail` — which is where a 404 body like "No active
     // organizations found. Bootstrap a company first." actually lives — instead
     // of replacing it with a word like "Unavailable" that names no cause.
+    if (e instanceof Unreported) {
+      return { key, label, blurb, ok: null, detail: e.message, ms: Date.now() - started };
+    }
     return {
       key,
       label,
@@ -45,18 +53,56 @@ async function runProbe<T>(key: string, label: string, blurb: string, fn: () => 
   }
 }
 
+/**
+ * A capability the Gateway reported as on, as off, or did not report at all.
+ *
+ * `null` is the third state, not decoration. The old `Boolean(...)` collapsed
+ * it into `false`, and the agents probe then read any falsy value as a
+ * diagnosis — "Switched off (agents_api.enabled=false)" — so an *unanswered*
+ * `GET /api/features` (Gateway down, proxy error, payload without the block)
+ * rendered the exact configuration instruction an operator would follow for a
+ * switch the server never said was off. Only the server may call a capability
+ * off; an unanswered question is "not reported".
+ */
+type Flag = boolean | null;
+
+/** Read one capability block's boolean fields; nothing reported is `null`. */
+function flag(block: unknown, keys: string[]): Flag {
+  if (typeof block !== "object" || block === null) return null;
+  const record = block as Record<string, unknown>;
+  const values = keys
+    .map((key) => record[key])
+    .filter((value): value is boolean => typeof value === "boolean");
+  if (values.length === 0) return null;
+  // Same truth table as the old `worker_running || enabled`: either field
+  // reporting true is enough, and every reported field must be false.
+  return values.some(Boolean);
+}
+
+/**
+ * The Gateway was asked and did not answer this question.
+ *
+ * Thrown instead of a plain `Error` so `runProbe` can render `ok: null` — a
+ * gray row carrying the reason — rather than `ok: false`, which every surface
+ * draws as red "Offline"/"not ready". Unmeasured is neither healthy nor
+ * failed, and a red row saying "not reported" would contradict itself.
+ */
+class Unreported extends Error {}
+
+/** One sentence for "the answer to this question never arrived". */
+function notReported(field: string): Unreported {
+  return new Unreported(`not reported — GET /api/features did not answer ${field}`);
+}
+
 /** Live-check every subsystem so the UI can activate only what the server offers. */
 export async function probeAll(): Promise<Probe[]> {
   // Raw fetch (no swallowed errors): the Gateway probe must fail honestly when offline.
   const feats = await get<Record<string, unknown>>("/features")
     .then((d) => ({
-      agentsApi: Boolean((d.agents_api as Record<string, unknown>)?.enabled),
-      browserControl: Boolean((d.browser_control as Record<string, unknown>)?.enabled),
-      mcpTasks: Boolean((d.mcp_tasks as Record<string, unknown>)?.enabled),
-      subagentBatches: Boolean(
-        ((d.subagent_batches as Record<string, unknown>) || {}).worker_running ||
-          ((d.subagent_batches as Record<string, unknown>) || {}).enabled
-      ),
+      agentsApi: flag(d.agents_api, ["enabled"]),
+      browserControl: flag(d.browser_control, ["enabled"]),
+      mcpTasks: flag(d.mcp_tasks, ["enabled"]),
+      subagentBatches: flag(d.subagent_batches, ["worker_running", "enabled"]),
     }))
     .catch(() => null);
   return Promise.all([
@@ -65,11 +111,15 @@ export async function probeAll(): Promise<Probe[]> {
       return true;
     }, () => "online"),
     runProbe("agentsApi", "Custom agents API", "Agent builder endpoints", async () => {
-      if (!feats || !feats.agentsApi) throw new Error("Switched off (agents_api.enabled=false)");
+      if (!feats) throw notReported("agents_api.enabled");
+      if (feats.agentsApi === null) throw notReported("agents_api.enabled");
+      if (!feats.agentsApi) throw new Error("Switched off (agents_api.enabled=false)");
       return true;
     }, () => "enabled"),
     runProbe("browser", "Live browser", "Agent drives a real browser tab", async () => {
-      if (!feats || !feats.browserControl) throw new Error("No browser capability on server");
+      if (!feats) throw notReported("browser_control.enabled");
+      if (feats.browserControl === null) throw notReported("browser_control.enabled");
+      if (!feats.browserControl) throw new Error("browser_control.enabled=false — no live browser routes on this Gateway");
       return true;
     }, () => "available"),
     runProbe("database", "History & usage", "SQL-backed runs, tokens, cost", async () => fetchConsoleStats(), (s) => `${s.runs} runs • ${s.threads} chats`),

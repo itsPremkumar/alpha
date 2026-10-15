@@ -113,7 +113,7 @@ in this repository:
 
 ### 2.4 Collapsible depth
 
-The README keeps exhaustive catalogs - 123 engines, 24 skills, the full
+The README keeps exhaustive catalogs - 127 engines, 24 skills, the full
 architecture — inside `<details>` blocks, so the answer-first content dominates the
 first screen while the reference depth stays one click away. This serves humans and
 retrieval-based agents equally.
@@ -138,10 +138,20 @@ registries and enforced by CI:
 python backend/scripts/generate_feature_manifest.py   # -> contracts/feature_manifest.json
 ```
 
-`contracts/feature_manifest.json` pins 139 tools, 72 routers, 46 middlewares, and 13
-supervisor loops, and the generated-drift gate fails the build if the docs and the
-registries disagree. A reader (or an LLM) can therefore verify any number in the
-README in one command. That verifiability *is* the authority signal.
+`contracts/feature_manifest.json` pins 139 tools, 74 routers, 46 middlewares, and 13
+supervisor loops, and the generated-drift gate fails the build if the *generated
+artifact* and a fresh regeneration disagree. That gate byte-compares
+`contracts/feature_manifest.json` against its own generator's output
+(`scripts/check_generated_drift.py`); it does **not** read Markdown, so a prose
+count can still rot while CI stays green — the numbers below were corrected by
+hand for exactly that reason. Verify a count against the manifest with:
+
+```bash
+python -c "import json;d=json.load(open('contracts/feature_manifest.json'));print({k:len(d[k]) for k in ('tools','routers','middlewares','loops','engines')})"
+```
+
+A reader (or an LLM) can therefore re-derive any registry count in the README in
+one command. That verifiability *is* the authority signal.
 
 ### 3.2 Explicit citation contract applied to ourselves
 
@@ -260,7 +270,7 @@ GEO failure.
 | Am I being cited by ChatGPT / Perplexity / Gemini? | A recurring prompt set: "what is Alpha", "Alpha vs LangGraph", "best open source multi-agent OS", "self-hosted AI agent platform". Run monthly and record verbatim answers plus citations. |
 | Is the off-site profile coherent? | Audit the canonical name, description, and URL across every launch/listing/profile |
 | Are my docs being read? | GitHub content traffic per file; `llms.txt` fetches from bots in web logs |
-| Are the numbers still true? | `python backend/scripts/generate_feature_manifest.py` and the generated-drift gate |
+| Are the numbers still true? | Regenerate the manifest (`python backend/scripts/generate_feature_manifest.py`) and diff it against `contracts/feature_manifest.json`; the drift gate covers **generated artifacts only**, so compare any prose count by hand against the manifest |
 
 **Prompt-set discipline.** A fixed, versioned set of test prompts is the only way to
 detect citation change over time, because answer engines vary output run to run.

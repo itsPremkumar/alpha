@@ -618,7 +618,14 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
 # ALPHA_MULTI_AGENT_GRAPH_ORCHESTRATION_IMPLEMENTATION_PLAN.md — so indexing it
 # twice (with a percent-encoded link no reader can follow) would be noise, not
 # coverage.
-SKIP_DIRECTORY_NAMES = frozenset({"node_modules", ".git", "__pycache__"})
+#
+# ``evidence`` is the gitignored ``docs/evidence/`` tree (``/docs/evidence/`` in
+# ``.gitignore``): local audit and capture artifacts that are deliberately not
+# tracked.  Skipping it keeps ``docs/INDEX.md`` byte-identical whether or not a
+# machine happens to hold one, which matters because a classified-but-untracked
+# entry would be written into the index and then fail to match the next
+# regeneration on a clean checkout.
+SKIP_DIRECTORY_NAMES = frozenset({"node_modules", ".git", "__pycache__", "evidence"})
 SKIP_FILE_PATTERNS = ("*.tmp.md", "* (1).md")
 SKIP_FILE_NAMES = frozenset({"INDEX.md"})
 

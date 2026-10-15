@@ -1290,7 +1290,7 @@ export function SettingsSection({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-foreground">{p.label}</span>
                     <Badge tone={p.ok ? "green" : p.ok === null ? "gray" : "red"}>
-                      {p.ok ? "Healthy" : p.ok === null ? "Checking" : "Offline"}
+                      {p.ok ? "Healthy" : p.ok === null ? "Not reported" : "Offline"}
                     </Badge>
                   </div>
                   <p className="text-[11px] text-muted-foreground line-clamp-2">{p.blurb}</p>
