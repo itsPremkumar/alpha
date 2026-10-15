@@ -882,12 +882,22 @@ export default function ChatView({
   const [botsTab, setBotsTab] = useState<"profiles" | "ops">("profiles");
   const [inspectedBot, setInspectedBot] = useState<BotProfile | null>(null);
 
-  // Platform state
+  // Platform state.
+  //
+  // Every flag starts `null` — "not reported yet" — because `false` is a
+  // server fact and the server has not been asked at this point in the
+  // lifecycle. Seeding `false` made the first render assert diagnoses the
+  // Gateway had never made: `AgentsSection` read `false` as "Agent management
+  // is switched off / set agents_api.enabled=true" and System's header showed
+  // "needs browser capability", both for as long as the bootstrap
+  // `fetchFeatures()` call took to come back (or to fail). `fetchFeatures`
+  // itself maps an unreachable Gateway to `null`, so `null` is also the value
+  // the loader settles on when no answer ever arrives.
   const [features, setFeatures] = useState<FeatureFlags>({
-    agentsApi: false,
-    browserControl: false,
-    mcpTasks: false,
-    subagentBatches: false,
+    agentsApi: null,
+    browserControl: null,
+    mcpTasks: null,
+    subagentBatches: null,
   });
 
   // Conversation helpers

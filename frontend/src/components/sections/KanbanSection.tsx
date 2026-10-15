@@ -26,6 +26,7 @@ import {
   Section,
   EmptyState,
   ErrorBox,
+  Notice,
   Btn,
   Badge,
   Field,
@@ -33,7 +34,7 @@ import {
   Modal,
 } from "@/components/ui";
 import { errMsg } from "@/lib/http";
-import { isNoCompanyConfigured, serverReason, NO_COMPANY_CONFIGURED_VIEW } from "@/lib/server-reasons";
+import { isNoCompanyConfigured, serverReason } from "@/lib/server-reasons";
 import {
   Plus,
   Search,
@@ -97,14 +98,17 @@ export function KanbanSection(props: {
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [serverBoardError, setServerBoardError] = useState<string | null>(null);
   /**
-   * The server board is absent because no company was bootstrapped.
+   * The Gateway *answered* the board read with its documented
+   * "no organization bootstrapped" 404.
    *
-   * The Gateway answers the legacy board route with 404 "No active
-   * organizations found." — a setup fact, not a failed read. Rendering it as
-   * the generic "board unavailable" banner sends the operator hunting for a
-   * network problem instead of the bootstrap step the server named.
+   * That is a configured-empty state, not a failed read, and folding it into
+   * `serverBoardError` painted a healthy Gateway red with
+   * "Server board unavailable — showing local cards only" on every default
+   * install. The server's own sentence still travels; only the framing changes,
+   * because the two states send an operator to different places (set up a
+   * company vs. debug the Gateway).
    */
-  const [boardNotConfigured, setBoardNotConfigured] = useState(false);
+  const [serverBoardNotConfigured, setServerBoardNotConfigured] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [botFilter, setBotFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
@@ -120,7 +124,7 @@ export function KanbanSection(props: {
     setError(null);
     setProjectsError(null);
     setServerBoardError(null);
-    setBoardNotConfigured(false);
+    setServerBoardNotConfigured(null);
     try {
       const local = loadCards();
       listProjects()
@@ -142,8 +146,17 @@ export function KanbanSection(props: {
         // intentionally turns some common HTTP statuses into generic copy,
         // which would hide actionable setup failures such as a missing active
         // organization behind a vague "board unavailable" banner.
-        setBoardNotConfigured(isNoCompanyConfigured(e));
-        setServerBoardError(serverReason(e));
+        const message = serverReason(e);
+        // …and the missing-organization 404 is not a banner of any kind: the
+        // route answered. `backend/app/gateway/routers/company.py` raises it
+        // whenever this owner has no company, which is the normal state of a
+        // fresh install, so it gets the "not configured" state instead of the
+        // load-failure one.
+        if (isNoCompanyConfigured(e)) {
+          setServerBoardNotConfigured(message);
+        } else {
+          setServerBoardError(message);
+        }
       }
     } catch (e) {
       setError(errMsg(e));
@@ -341,15 +354,17 @@ export function KanbanSection(props: {
           onRetry={load}
         />
       )}
-      {serverBoardError &&
-        (boardNotConfigured ? (
-          <EmptyState title={NO_COMPANY_CONFIGURED_VIEW.title} hint={NO_COMPANY_CONFIGURED_VIEW.hint} />
-        ) : (
-          <ErrorBox
-            message={`Server board unavailable — showing local cards only. Server-synced tasks may be missing. ${serverBoardError}`}
-            onRetry={load}
-          />
-        ))}
+      {serverBoardError && (
+        <ErrorBox
+          message={`Server board unavailable — showing local cards only. Server-synced tasks may be missing. ${serverBoardError}`}
+          onRetry={load}
+        />
+      )}
+      {serverBoardNotConfigured && (
+        <Notice
+          message={`Server board not configured — ${serverBoardNotConfigured} Cards you create here stay in this browser until an organization exists.`}
+        />
+      )}
 
       <div className="flex flex-col lg:flex-row gap-2">
         <div className="relative flex-1">
@@ -454,10 +469,18 @@ export function KanbanSection(props: {
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={cards.length === 0 ? "Board is empty" : "No cards match"}
+          title={
+            cards.length === 0
+              ? serverBoardNotConfigured
+                ? "No company bootstrapped yet"
+                : "Board is empty"
+              : "No cards match"
+          }
           hint={
             cards.length === 0
-              ? "Create the first task above — backlog it, assign a bot, move it across as work happens."
+              ? serverBoardNotConfigured
+                ? `The Gateway answered: ${serverBoardNotConfigured} Setting up an organization is what fills this board; cards you create here stay in this browser until then.`
+                : "Create the first task above — backlog it, assign a bot, move it across as work happens."
               : "Loosen the filters."
           }
           action={

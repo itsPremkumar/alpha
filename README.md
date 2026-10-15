@@ -281,7 +281,7 @@ none of it is hypothetical.
 | Area | Status | Evidence |
 | :--- | :--- | :--- |
 | **Autonomous code → PR → merge** | ❌ Not operational. `sandbox/worktrees.py` is 338 lines of correct, hardened code with **no tool, route, or caller**. The one production use drops the model's diff text into a `.patch` and never applies it. Nothing commits, reviews, or merges; the prompts tell the LLM to call `gh pr create` itself. | `swarm/worker.py:397-447`; no `git commit` in the codebase |
-| **Emergency stop (ESTOP)** | ❌ Advertised to the model as pausing "all background tasks and subagents"; in fact it gates **only** the RSI cycle. Nothing in the run worker, run manager, admission controller, or the 8 autonomy loops reads it. The tool returns *"Fleet execution paused."* | `rsi/switchboard.py:51` is the sole consumer; the repo's own test is named `test_estop_engagement_refuses_cycle` |
+| **Emergency stop (ESTOP)** | ❌ Advertised to the model as pausing "all background tasks and subagents"; in fact it gates **only** the RSI cycle. Nothing in the run worker, run manager, admission controller, or the 13 supervisor loops reads it. The tool returns *"Fleet execution paused."* | `rsi/switchboard.py:51` is the sole consumer; the repo's own test is named `test_estop_engagement_refuses_cycle` |
 | **PR checklist** | ❌ **Fixed** for the checklist. It printed `- [x] Automated unit and regression test suite passed` for every PR having run nothing; boxes are now derived from real evidence receipts, and required-but-missing evidence produces an explicit "this PR is not verified / must not be merged" callout. ⚠️ The *signatures* behind it are still a dict literal and three regexes. | `65464c1`; `projects/pr_synthesizer.py` |
 | **Concurrent subagent writes** | ❌ All subagents in a thread share one workspace directory. A per-path lock serialises writes but there is no shared version counter, so the second writer silently overwrites the first — and both report success. | `subagents/executor.py:1360-1363`; `file_operation_lock.py:20-27` |
 | **Goal hierarchy** | ⚠️ The run loop's goal is one flat objective string with no children. The versioned plan store that *does* model this has no run-loop caller. | `agents/goal_state.py:22-31`; `goals/` unimported by `runtime/` |
@@ -1084,7 +1084,7 @@ it sees that.
 | [docs/USE_CASES.md](docs/USE_CASES.md) | End-to-end jobs and the subsystem behind each |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Runtime planes, middleware chain, engine map |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every setting, resolved order, env vars |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 72 Gateway routers, SSE events, auth |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 74 Gateway routers, SSE events, auth |
 | [docs/SECURITY.md](docs/SECURITY.md) | Enclave, approvals, sandbox boundaries, threat model |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, Helm, Nginx, Windows installer |
 | [docs/PRODUCTION.md](docs/PRODUCTION.md) | Runbook, probes, `/api/ops/*`, disaster recovery |
@@ -1160,7 +1160,10 @@ Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
   pins all 139 tools, 74 routers, 46 middlewares, and 13 supervisor loops. CI fails
-  on drift, so the documented capability counts cannot silently rot.
+  on drift **of that generated artifact** (`scripts/check_generated_drift.py`
+  byte-compares it against a fresh regeneration), so the manifest cannot silently
+  rot. The gate does not read Markdown: a prose count elsewhere is still checked
+  by hand against the manifest — see `docs/DISCOVERABILITY.md` §3.1.
 - **Tool runtime injection** — any `@tool` needing runtime access must declare
   `runtime: Runtime` as a bare required first parameter. Writing
   `Runtime | None = None` makes pydantic schema-generate `ToolRuntime`'s
