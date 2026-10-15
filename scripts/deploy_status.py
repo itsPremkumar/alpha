@@ -69,9 +69,7 @@ DEFAULT_HOST = "127.0.0.1"
 
 #: Statuses ``start.ps1``/``start.sh`` may write. Anything else means the file
 #: was produced by something we do not understand, which is itself a defect.
-LAUNCHER_STATUSES = frozenset(
-    {"starting", "healthy", "degraded", "recovering", "failed", "stopped", "stale"}
-)
+LAUNCHER_STATUSES = frozenset({"starting", "healthy", "degraded", "recovering", "failed", "stopped", "stale"})
 #: Statuses that mean "this launcher is not (or no longer) serving".
 TERMINAL_LAUNCHER_STATUSES = frozenset({"failed", "stopped", "stale"})
 
@@ -305,8 +303,7 @@ def verify_status_file(
     age = max(age, 0.0)
     if age > max_age_seconds:
         return _bad(
-            f"STALE status file: launcher PID {pid} heartbeat is {age:.0f}s old (limit {max_age_seconds:.0f}s), "
-            f"last status={status!r}",
+            f"STALE status file: launcher PID {pid} heartbeat is {age:.0f}s old (limit {max_age_seconds:.0f}s), last status={status!r}",
             detail,
         )
     return _good(f"launcher PID {pid} is live and reported status={status!r} {age:.0f}s ago", detail)

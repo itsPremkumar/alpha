@@ -17,7 +17,7 @@ guides that own the depth.
 User-facing and agent-facing content is a first-class deliverable. Strategy and
 checklist: **[docs/DISCOVERABILITY.md](docs/DISCOVERABILITY.md)** — read it before
 adding or restructuring user-facing content. Enforced constraints: `README.md` is
-**answer-first** (catalogs such as the 123 engines and 24 skills live inside
+**answer-first** (catalogs such as the 127 engines and 24 skills live inside
 `<details>`); `/llms.txt`, `/llms-full.txt`, and `docs/llms.txt` follow the
 [llmstxt.org](https://llmstxt.org/) shape with absolute
 `https://github.com/itsPremkumar/alpha/blob/main/...` URLs, updated together when
@@ -73,6 +73,7 @@ alpha/
 ├── extensions_config.example.json  # Template → extensions_config.json (gitignored): MCP servers + skills
 ├── backend/                        # Python backend — see backend/AGENTS.md for its own tree and depth
 ├── frontend/                       # Next.js frontend (pnpm) — see frontend/AGENTS.md
+├── docs-site/                      # Docusaurus documentation site (docs.alpha.itsPremkumar.com); build + typecheck in CI
 ├── recovery/                       # Windows self-healing: watchdog, autostart, tray, recovery checks
 ├── docker/, scripts/, tests/, docs/ # Compose/nginx/provisioner; orchestration scripts; root tests; cross-cutting docs
 ├── skills/                         # public/ (committed) + custom/ (gitignored) agent skills; packs at .alpha/integrations/skills/{provider}/
@@ -186,12 +187,13 @@ two glowing eyes. `FACE_MAX_SIZE` in the generator is that boundary — change i
 there, never in an output file.
 
 **The outputs are tracked, not built.** They live in `electron/assets/`
-(`alpha.ico` at 16/24/32/48/64/128/256, `alpha-mark.png` at 512) and
+(`alpha.ico` at 16/24/32/48/64/128/256, `alpha-mark.png` at 512),
 `frontend/public/` (`favicon.ico`, `favicon-16x16.png`, `favicon-32x32.png`,
 `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`,
-`icon-maskable-512.png`) because `electron/build/` is gitignored: a package-time
-icon would be invisible to review and a fresh clone could ship a placeholder.
-Regenerate **and commit** them together when the poster changes.
+`icon-maskable-512.png`) and `docs-site/static/img/` (`favicon.ico` at
+16/32/48, `logo.png` at 128) because `electron/build/` is gitignored: a
+package-time icon would be invisible to review and a fresh clone could ship a
+placeholder. Regenerate **and commit** them together when the poster changes.
 
 **Naming a path is a two-sided edit.** `frontend/src/lib/branding.ts` -> `icons`
 is the only place a browser icon path is written; `app/layout.tsx` /
@@ -205,7 +207,8 @@ bookmarks, PWA/Android install, Apple touch icon, Windows executable, Start Menu
 and desktop shortcuts (`installer/create-shortcuts.ps1`), taskbar and window icons
 (`electron/main.js` sets `icon` on **both** splash and main window, and
 `electron-builder.yml` must keep `assets/**` in `files`), splash screen
-(`electron/splash.html`).
+(`electron/splash.html`), and the documentation site (`docs-site/static/img/`
+serves the navbar logo, social-card image and browser-tab favicon).
 
 ## Nested groups
 

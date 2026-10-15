@@ -2,7 +2,23 @@ import { get, send, asList, pick } from "./http";
 
 export interface ThreadGoal {
   goal: string | null;
-  updated_at?: string | null;
+  status: string | null;
+  updated_at: string | null;
+  continuation_count: number | null;
+  max_continuations: number | null;
+  no_progress_count: number | null;
+  max_no_progress_continuations: number | null;
+  last_evaluation: ThreadGoalEvaluation | null;
+}
+
+export interface ThreadGoalEvaluation {
+  satisfied: boolean | null;
+  blocker: string | null;
+  reason: string | null;
+  evidence_summary: string | null;
+  run_id: string | null;
+  evaluated_at: string | null;
+  stand_down_reason: string | null;
 }
 
 /** Title from a ThreadResponse record: metadata.title, then values.title, else fallback. */
@@ -92,29 +108,79 @@ export async function moveThread(threadId: string, projectId: string | null): Pr
   await send(`/threads/${encodeURIComponent(threadId)}/move`, "POST", { project_id: projectId });
 }
 
-export async function fetchGoal(threadId: string): Promise<ThreadGoal> {
-  try {
-    // GET /goal returns {goal: {objective, status, ...} | null} — the goal is
-    // a state dict, not a plain string.
-    const d = await get<Record<string, unknown>>(`/threads/${encodeURIComponent(threadId)}/goal`);
-    const g = d.goal;
-    if (g && typeof g === "object") {
-      const rec = g as Record<string, unknown>;
-      const objective = rec.objective ?? rec.text ?? rec.goal ?? null;
-      return {
-        goal: typeof objective === "string" && objective ? objective : null,
-        updated_at: (rec.updated_at as string) ?? null,
-      };
-    }
-    return { goal: typeof g === "string" && g ? g : null };
-  } catch {
-    return { goal: null };
+function threadGoalFromResponse(value: unknown): ThreadGoal {
+  if (!value || typeof value !== "object" || !("goal" in value)) {
+    throw new Error("Gateway returned a malformed goal response.");
   }
+  const raw = (value as Record<string, unknown>).goal;
+  if (raw === null) {
+    return {
+      goal: null,
+      status: null,
+      updated_at: null,
+      continuation_count: null,
+      max_continuations: null,
+      no_progress_count: null,
+      max_no_progress_continuations: null,
+      last_evaluation: null,
+    };
+  }
+  // Older Gateway builds returned the objective directly as a string.
+  if (typeof raw === "string") {
+    return {
+      goal: raw || null,
+      status: null,
+      updated_at: null,
+      continuation_count: null,
+      max_continuations: null,
+      no_progress_count: null,
+      max_no_progress_continuations: null,
+      last_evaluation: null,
+    };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Gateway returned a malformed goal response.");
+  }
+  const record = raw as Record<string, unknown>;
+  const objective = record.objective ?? record.text ?? record.goal;
+  const evaluation = record.last_evaluation;
+  const lastEvaluation = evaluation && typeof evaluation === "object" && !Array.isArray(evaluation)
+    ? evaluation as Record<string, unknown>
+    : null;
+  const finiteNumber = (field: unknown): number | null =>
+    typeof field === "number" && Number.isFinite(field) ? field : null;
+  const text = (field: unknown): string | null => typeof field === "string" ? field : null;
+  return {
+    goal: typeof objective === "string" && objective ? objective : null,
+    status: text(record.status),
+    updated_at: text(record.updated_at),
+    continuation_count: finiteNumber(record.continuation_count),
+    max_continuations: finiteNumber(record.max_continuations),
+    no_progress_count: finiteNumber(record.no_progress_count),
+    max_no_progress_continuations: finiteNumber(record.max_no_progress_continuations),
+    last_evaluation: lastEvaluation ? {
+      satisfied: typeof lastEvaluation.satisfied === "boolean" ? lastEvaluation.satisfied : null,
+      blocker: text(lastEvaluation.blocker),
+      reason: text(lastEvaluation.reason),
+      evidence_summary: text(lastEvaluation.evidence_summary),
+      run_id: text(lastEvaluation.run_id),
+      evaluated_at: text(lastEvaluation.evaluated_at),
+      stand_down_reason: text(lastEvaluation.stand_down_reason),
+    } : null,
+  };
 }
 
-export async function setGoal(threadId: string, goal: string): Promise<void> {
+export async function fetchGoal(threadId: string): Promise<ThreadGoal> {
+  // A failed read must remain a failure. Returning {goal:null} made an
+  // unavailable Gateway indistinguishable from a server-confirmed cleared goal.
+  const d = await get<unknown>(`/threads/${encodeURIComponent(threadId)}/goal`);
+  return threadGoalFromResponse(d);
+}
+
+export async function setGoal(threadId: string, goal: string): Promise<ThreadGoal> {
   // PUT /goal requires {objective} — {goal} is rejected with 422.
-  await send(`/threads/${encodeURIComponent(threadId)}/goal`, "PUT", { objective: goal });
+  const response = await send<unknown>(`/threads/${encodeURIComponent(threadId)}/goal`, "PUT", { objective: goal });
+  return threadGoalFromResponse(response);
 }
 
 export async function clearGoal(threadId: string): Promise<void> {

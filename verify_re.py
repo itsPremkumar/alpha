@@ -17,8 +17,6 @@ print("match MULTILINE", bool(re.match(r"^[a-z0-9-]+$", "skill\r", re.MULTILINE)
 
 # The sandbox tools.py line 1177 check
 cmd = "cd $(goto C:\\)\\x"
-print("sandbox tools.py 1177 match for cd in $(...) with non-path token:",
-      bool(re.search(r"\$\([^)]*\b(?:cd|pushd)\b", cmd)))
+print("sandbox tools.py 1177 match for cd in $(...) with non-path token:", bool(re.search(r"\$\([^)]*\b(?:cd|pushd)\b", cmd)))
 cmd2 = "cd $(pwd)"
-print("sandbox tools.py 1177 match for cd in $(...) with path-ish token:",
-      bool(re.search(r"\$\([^)]*\b(?:cd|pushd)\b", cmd2)))
+print("sandbox tools.py 1177 match for cd in $(...) with path-ish token:", bool(re.search(r"\$\([^)]*\b(?:cd|pushd)\b", cmd2)))

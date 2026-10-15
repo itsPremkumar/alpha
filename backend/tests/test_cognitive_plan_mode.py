@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 import alpha.swarm.coordinator as coord_mod
-from alpha.planning.bridge import AutonomousDispatchBridge
+from alpha.planning.bridge import AutonomousDispatchBridge, DispatchResult
 from alpha.planning.meta_planner import (
     CognitiveMetaPlanner,
     ExecutionParadigm,
@@ -379,8 +379,21 @@ def test_cognitive_plan_builtin_tool():
 
 # 8. Gateway REST Endpoints
 @pytest.mark.asyncio
-async def test_gateway_plan_mode_router():
+async def test_gateway_plan_mode_router(monkeypatch):
     from app.gateway.routers import plan_mode
+
+    async def fake_dispatch_async(plan):
+        return DispatchResult(
+            dispatch_id="test-dispatch",
+            plan_id=plan.plan_id,
+            paradigm=plan.decision.paradigm.value,
+            status="dispatched",
+            execution_id="test-execution",
+            assigned_agents=["test-bot"],
+            summary="accepted for asynchronous execution",
+        )
+
+    monkeypatch.setattr(AutonomousDispatchBridge, "dispatch_async", fake_dispatch_async)
 
     admin_req = SimpleNamespace(state=SimpleNamespace(user=SimpleNamespace(system_role="admin")))
 

@@ -73,6 +73,19 @@ RALPH_HARD_MAX_ROUNDS = 8
 _RALPH_POLL_INTERVAL_SECONDS = 5.0
 
 
+def _caller_allows_subagents(runtime: Runtime | None) -> bool:
+    """Resolve the run-level delegation switch, failing closed when absent."""
+    if runtime is None:
+        return False
+    config = getattr(runtime, "config", None)
+    configurable = config.get("configurable") if isinstance(config, dict) else None
+    enabled = configurable.get("subagent_enabled") if isinstance(configurable, dict) else None
+    if enabled is None:
+        context = getattr(runtime, "context", None)
+        enabled = context.get("subagent_enabled") if isinstance(context, dict) else None
+    return enabled is True
+
+
 def _round_prompt(task: str, promise: str, round_no: int, previous_shortfall: str | None, *, hints: str | None = None) -> str:
     """Build the round prompt. Later rounds carry only the shortfall, never a full retry."""
     base = f"{task}\n\nCompletion promise (the run is done only when this holds): {promise}\nAddress the promise point by point in your final report."
@@ -223,6 +236,12 @@ async def ralph_loop_tool(
             tool_call_id=tool_call_id,
             status="failed",
             error=f"max_rounds must be an integer in 1..{RALPH_HARD_MAX_ROUNDS} (got {max_rounds!r}).",
+        )
+    if not _caller_allows_subagents(runtime):
+        return _ralph_result_command(
+            tool_call_id=tool_call_id,
+            status="failed",
+            error="ralph_loop is disabled because subagent delegation is off for this run.",
         )
 
     runtime_app_config = _get_runtime_app_config(runtime)

@@ -164,7 +164,18 @@ test("no summary at all leaves every counter null", () => {
     assert.equal(normalized.summary[key], null, `${key} must stay null`);
   }
   assert.deepEqual(normalized.bots, []);
-  assert.deepEqual(normalized.stalled_workers, []);
+  assert.equal(normalized.stalled_workers, null, "an omitted worker list is not an empty list");
+});
+
+test("an explicitly empty stalled-worker list stays distinct from an omitted list", () => {
+  assert.deepEqual(
+    status.normalizeHealthOverview({ stalled_workers: [] }).stalled_workers,
+    [],
+  );
+  assert.equal(
+    status.normalizeHealthOverview({}).stalled_workers,
+    null,
+  );
 });
 
 test("a non-finite or wrongly typed value is not a measurement", () => {

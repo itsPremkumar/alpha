@@ -796,6 +796,7 @@ def _describe(verdict: deploy_status.Verdict) -> str:
         return f"{verdict.reason}: {verdict.detail}"
     return verdict.reason
 
+
 def check_launcher_status_file(project_root: Path) -> CheckResult:
     """Is the launcher status file currently telling the truth?"""
     verdict = deploy_status.audit_status_file(deploy_status.default_logs_dir(project_root))
@@ -1049,9 +1050,10 @@ def check_provider_reachable(config_path: Path) -> list[CheckResult]:
         # Same load-bearing import order as ``check_models_construct``: the
         # factory submodule must be resolved before ``alpha.config.app_config``
         # pulls in the partially-initialised ``alpha.models`` package.
+        from langchain_core.messages import HumanMessage
+
         import alpha.models.factory as model_factory
         from alpha.config.app_config import AppConfig
-        from langchain_core.messages import HumanMessage
     except Exception as exc:
         return [CheckResult("provider reachable", "fail", str(exc))]
 

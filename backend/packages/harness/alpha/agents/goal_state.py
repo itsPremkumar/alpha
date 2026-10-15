@@ -21,7 +21,7 @@ class GoalEvaluation(TypedDict):
 
 class GoalState(TypedDict):
     objective: str
-    status: Literal["active"]
+    status: Literal["active", "completed"]
     created_at: str
     updated_at: str
     continuation_count: int

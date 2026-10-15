@@ -74,46 +74,24 @@ def _bound(mod, rank: int, live: int = 4) -> object:
 # ==========================================================================
 
 
-def test_mutation_removing_the_grant_check_breaks_the_over_privilege_refusal(tmp_path):
-    real = __import__("alpha.bots.dynamic_profiles", fromlist=["x"])
+def test_mutation_removing_the_grant_check_breaks_the_over_privilege_refusal():
+    real = __import__("alpha.bots.authority_ceiling", fromlist=["x"])
     m = mutated_module(
         "authority_ceiling.py",
         (
-            "    if violations:\n        raise AuthorityViolation(",
-            "    if False:\n        raise AuthorityViolation(",
+            "    if escalated:\n        violations.append(",
+            "    if False:\n        violations.append(",
         ),
     )
-    # (1) The shipped guarantee: an over-ceiling request is REFUSED.
-    with pytest.raises(m.AuthorityViolation):
-        m.enforce_grant(["grant_authority"], creator_grant=["observe"], subject="x", ceiling=_bound(m, 50))
-    # (2) With the guard removed, the SAME request is granted. The test bites.
-    mutated_dyn = mutated_module(
-        "dynamic_profiles.py",
-        (
-            "    if violations:\n        raise AuthorityViolation(",
-            "    if False:\n        raise AuthorityViolation(",
-        ),
-    )
-    # dynamic_profiles imports enforce_grant by name, so mutate its own copy too
-    # by re-binding it to the neutered ceiling module's function.
-    mutated_dyn.enforce_grant = m.enforce_grant
-    store = mutated_dyn.DynamicProfileStore(
-        tmp_path / "p.json",
-        ceiling=_bound(mutated_dyn, 50),
-        approval_gate=lambda p: True,
-    )
-    proposal = mutated_dyn.ProfileProposal(
-        profile_name="root-bot",
-        requested_capabilities=["observe", "grant_authority"],
-        creator="alpha",
-        creator_grant=["observe", "grant_authority", "repository_mutate", "process_exec"],
-        rationale="r",
-    )
-    store.propose_profile(proposal)
-    store.approve_proposal("root-bot")
-    created = store.install_approved("root-bot")
-    assert "grant_authority" in created.granted_capabilities, "a profile above the ceiling was created: the refusal test does not bite"
-    assert real.AuthorityCeiling is not m.AuthorityCeiling
+    # (1) The shipped guarantee: a creator cannot grant a capability it does not
+    #     hold — the child never outranks its creator.
+    with pytest.raises(real.AuthorityViolation):
+        real.enforce_grant(["process_exec"], creator_grant=["observe"], subject="x", ceiling=_bound(real, 50))
+    # (2) With the escalation check removed the SAME request is granted. The
+    #     ceiling itself is untouched here (``process_exec`` sits exactly at it),
+    #     so what fails open is precisely the "child may not exceed creator" rule.
+    granted = m.enforce_grant(["process_exec"], creator_grant=["observe"], subject="x", ceiling=_bound(m, 50))
+    assert "process_exec" in granted, "the escalation check did not bite: the request should have been refused without it"
 
 
 # ==========================================================================
@@ -121,20 +99,25 @@ def test_mutation_removing_the_grant_check_breaks_the_over_privilege_refusal(tmp
 # ==========================================================================
 
 
-def test_mutation_removing_the_population_check_allows_unbounded_hiring(tmp_path):
+def test_mutation_removing_the_population_check_allows_unbounded_hiring():
+    real = __import__("alpha.bots.authority_ceiling", fromlist=["x"])
     m = mutated_module(
         "authority_ceiling.py",
         (
             "        if live >= self.max_live_profiles:",
-            "        if False and live >= self.max_live_profiles:",
+            "        if False:",
         ),
     )
-    bound = _bound(m, 50, live=3)
-    # (1) The shipped guarantee.
-    with pytest.raises(m.AuthorityViolation):
+    # (1) The shipped guarantee: hiring at the live ceiling is REFUSED.
+    bound = real.AuthorityCeiling(max_capability_rank=50, max_live_profiles=3, max_total_profiles=12)
+    with pytest.raises(real.AuthorityViolation):
         bound.assert_population_within_ceiling(live=3, total=3, subject="x")
-    # (2) Mutated: unlimited growth.
-    bound.assert_population_within_ceiling(live=10_000, total=10_000, subject="x")
+    # (2) Mutated: the live ceiling no longer refuses, so the population grows
+    #     without bound. Total is held below its own (separate) ceiling so this
+    #     asserts the LIVE check specifically.
+    mutated = m.AuthorityCeiling(max_capability_rank=50, max_live_profiles=3, max_total_profiles=12)
+    for live in (5, 9, 50, 10_000):
+        mutated.assert_population_within_ceiling(live=live, total=3, subject="x")
 
 
 # ==========================================================================
@@ -149,6 +132,10 @@ def test_mutation_removing_the_protected_check_makes_the_ceiling_editable(tmp_pa
             "    if any(_normalise(component) in needle for component in PROTECTED_COMPONENTS):\n        return True",
             "    if False:\n        return True",
         ),
+        (
+            "    return any(stem in segments for stem in PROTECTED_MODULE_STEMS)",
+            "    return False",
+        ),
     )
     real = __import__("alpha.bots.authority_ceiling", fromlist=["x"])
     # (1) The shipped guarantee: the ceiling and its enforcers are untouchable.
@@ -159,7 +146,8 @@ def test_mutation_removing_the_protected_check_makes_the_ceiling_editable(tmp_pa
         "config/update-policy.json",
     ):
         assert real.is_protected_component(target), target
-    # (2) Mutated: they are ordinary targets.
+    # (2) Mutated: BOTH routes are gone — the substring list AND the bare-stem
+    #     segment match — so the protected set no longer recognises anything.
     assert not m.is_protected_component("alpha/bots/authority_ceiling.py")
     assert not m.is_protected_component("config/update-policy.json")
 
@@ -181,28 +169,27 @@ def test_mutation_removing_segment_matching_lets_a_bare_name_through():
     assert m.is_protected_component("alpha/bots/authority_ceiling.py") is True
 
 
-def test_mutation_opening_the_blast_radius_lets_the_sentinel_edit_the_ceiling(tmp_path):
+def test_mutation_opening_the_blast_radius_lets_protected_docs_be_edited(tmp_path):
     m = mutated_module(
         "self_modification.py",
         (
-            "    if is_protected_component(normalised) or any(",
-            "    if False or any(",
+            "    if is_protected_component(normalised) or any(item.lower() in normalised.lower() for item in PERMANENTLY_OFF_LIMITS):\n        return False",
+            "    if False:\n        return False",
         ),
     )
     real = __import__("alpha.bots.self_modification", fromlist=["x"])
-    # (1) The shipped guarantee.
-    for target in (
-        "alpha/bots/authority_ceiling.py",
-        "alpha/projects/approval_queue.py",
-        "alpha/safety/net_policy.py",
-        "config/update-policy.json",
-    ):
-        assert not real.is_self_modifiable(target, repo_root=tmp_path), target
-    # (2) Mutated: the blast radius no longer protects the enforcers.
-    m.PERMANENTLY_OFF_LIMITS = ()
-    m.is_protected_component = lambda target: False
-    assert m.is_self_modifiable("alpha/bots/authority_ceiling.py", repo_root=tmp_path)
-    assert m.is_self_modifiable("config/update-policy.json", repo_root=tmp_path)
+    # (1) The shipped guarantee: a protected doc path is refused even though the
+    #     glob list would otherwise admit it — ``docs/**/*.md`` matches, but the
+    #     ``safety`` protected-stem makes it off-limits.
+    assert not real.is_self_modifiable("docs/safety/plan.md", repo_root=tmp_path)
+    assert not real.is_self_modifiable("alpha/bots/authority_ceiling.py", repo_root=tmp_path)
+    # (2) Mutated: the protected/off-limits guard is gone, so the same doc path
+    #     falls through to the glob list and becomes editable.
+    assert m.is_self_modifiable("docs/safety/plan.md", repo_root=tmp_path)
+    # The second layer still holds and is why the title of this test changed:
+    # SELF_MODIFIABLE_GLOBS never contained code, so even with the guard opened
+    # the sentinel still cannot reach the enforcers themselves.
+    assert not m.is_self_modifiable("alpha/bots/authority_ceiling.py", repo_root=tmp_path)
 
 
 # ==========================================================================
@@ -289,7 +276,7 @@ def test_mutation_removing_the_ceiling_filter_hands_out_dangerous_tools():
 # ==========================================================================
 
 
-def test_mutation_of_the_failure_states_makes_failures_look_successful():
+def test_mutation_of_the_failure_states_hides_which_descendant_failed():
     m = mutated_module(
         "autonomy_guard.py",
         (
@@ -298,21 +285,29 @@ def test_mutation_of_the_failure_states_makes_failures_look_successful():
         ),
     )
     real = __import__("alpha.bots.autonomy_guard", fromlist=["x"])
-    failed_child = [{"task_id": "a", "state": "completed"}, {"task_id": "b", "state": "failed"}]
-    # (1) The shipped guarantee: a child failure is FAILED at the parent.
+    failed_child = [{"task_id": "a", "state": "completed"}, {"task_id": "b", "state": "failed", "error": "boom"}]
+    # (1) The shipped guarantee: a child failure is FAILED at the parent, AND it
+    #     is named — the parent resolves what actually failed and why.
     result = real.aggregate_descendants(failed_child)
     assert result.succeeded is False
     assert result.state == "failed"
     assert result.failed == 1
-    # (2) Mutated: the failure state is no longer a failure, so the parent
-    #     reports success. This is the exact bug the codebase shipped twice.
+    assert result.failures == [{"task_id": "b", "state": "failed", "error": "boom", "detail": ""}]
+    # (2) Mutated: the failure state is no longer a failure. It cannot read as
+    #     SUCCESS — the aggregator grants success only on an explicit
+    #     "completed", which is the stronger guard — but the record silently
+    #     degrades into an unnamed "unresolved": the error text is dropped, so
+    #     the parent can no longer tell WHAT failed. That is exactly how a
+    #     failure stops being actionable.
     mutated = m.aggregate_descendants(failed_child)
-    assert mutated.succeeded is True
-    assert mutated.state == "completed"
+    assert mutated.succeeded is False
+    assert mutated.state == "unresolved"
     assert mutated.failed == 0
+    assert mutated.failures == []
+    assert mutated.unresolved_ids == ["b"]
 
 
-def test_mutation_treating_unresolved_as_terminal_completes_tasks_early():
+def test_mutation_weakening_the_terminal_set_flips_the_classifier_not_the_aggregate():
     m = mutated_module(
         "autonomy_guard.py",
         (
@@ -322,18 +317,25 @@ def test_mutation_treating_unresolved_as_terminal_completes_tasks_early():
     )
     real = __import__("alpha.bots.autonomy_guard", fromlist=["x"])
     still_running = [{"task_id": "a", "state": "completed"}, {"task_id": "b", "state": "running"}]
-    # (1) The shipped guarantee: a task is not complete while a descendant runs.
-    assert real.aggregate_descendants(still_running).succeeded is False
-    assert real.aggregate_descendants(still_running).state == "unresolved"
-    # (2) Mutated: the running descendant stops blocking completion.
+    # (1) The shipped guarantee: a running descendant is NOT terminal, and a
+    #     task is not complete while a descendant runs.
+    assert real.DescendantRecord(task_id="b", state="running").is_terminal is False
+    result = real.aggregate_descendants(still_running)
+    assert result.succeeded is False
+    assert result.state == "unresolved"
+    assert result.unresolved == 1
+    # (2) Mutated: the vocabulary now calls "running" terminal, so any consumer
+    #     that trusts the exported classifier is fooled.
+    assert m.DescendantRecord(task_id="b", state="running").is_terminal is True
+    # ...but the aggregate itself never consults the declared terminal set: it
+    # requires an explicit "completed" for success. That stronger guard is what
+    # makes the silent-early-completion bug unreachable through this mutation,
+    # so the honest broken property here is the classifier, pinned above — and
+    # this assertion pins the aggregate's immunity beside it.
     mutated = m.aggregate_descendants(still_running)
-    assert mutated.unresolved == 0
-    assert "running" in m.TERMINAL_STATES
-    # The running record is now counted as neither failure nor completion, so the
-    # aggregate can no longer distinguish it: exactly the silent-early-completion
-    # bug.
-    assert mutated.completed == 1
-    assert mutated.total == 2
+    assert mutated.succeeded is False
+    assert mutated.state == "unresolved"
+    assert mutated.unresolved == 1
 
 
 def test_mutation_dropping_malformed_records_hides_failures():
@@ -406,15 +408,20 @@ def test_mutation_removing_the_approver_gate_writes_with_nobody_in_the_loop(tmp_
             "        if self._approver is None:",
             "        if False:",
         ),
+        (
+            "        if not bool(self._approver(proposal)):",
+            "        if False:",
+        ),
     )
-    monkeypatch.delenv(m.KILL_SWITCH_ENV, raising=False)
+    real = __import__("alpha.bots.self_modification", fromlist=["x"])
+    monkeypatch.delenv(real.KILL_SWITCH_ENV, raising=False)
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "notes.md").write_text("original\n", encoding="utf-8")
     # (1) The shipped guarantee: no approver means refusal, file untouched.
-    guard = m.SelfModificationGuard(repo)
+    guard = real.SelfModificationGuard(repo)
     outcome = guard.propose(
-        m.SelfModificationProposal(
+        real.SelfModificationProposal(
             title="t",
             targets=["notes.md"],
             rationale="r",
@@ -424,9 +431,10 @@ def test_mutation_removing_the_approver_gate_writes_with_nobody_in_the_loop(tmp_
     )
     assert outcome.verdict == "refused"
     assert (repo / "notes.md").read_text(encoding="utf-8") == "original\n"
-    # (2) Mutated: the write lands with nobody in the loop.
-    guard._build_loop = lambda root, fix_fn: suite._no_commit_loop(root, fix_fn)
-    unattended = m.SelfModificationGuard(repo)
+    # (2) Mutated: both approver gates are gone, so the write lands with nobody
+    #     in the loop. Injecting the loop factory is the only way to exercise
+    #     the full propose() path without a repository (no git writes here).
+    unattended = m.SelfModificationGuard(repo, loop_factory=lambda root, fix_fn: suite._no_commit_loop(root, fix_fn))
     result = unattended.propose(
         m.SelfModificationProposal(
             title="t",
@@ -447,19 +455,12 @@ def test_mutation_removing_the_approver_gate_writes_with_nobody_in_the_loop(tmp_
 
 
 def test_mutation_removing_the_revert_leaves_the_broken_change(tmp_path, monkeypatch):
-    """The revert lives in the shipped Sentinel; neuter it and the change sticks."""
+    """The revert lives in the shipped Sentinel; neuter it in memory and the change sticks."""
     sys.path.insert(0, str(Path(__file__).parent))
     import test_self_extending_leader as suite
 
-    m = mutated_module(
-        "self_modification.py",
-        (
-            "    if is_protected_component(normalised) or any(\n        item.lower() in normalised.lower() for item in PERMANENTLY_OFF_LIMITS\n    ):\n        return False",
-            "    if False:\n        return False",
-        ),
-        prelude=("def _always_true(target, repo_root=None):\n    return True\n"),
-    )
-    monkeypatch.delenv(m.KILL_SWITCH_ENV, raising=False)
+    real_sm = __import__("alpha.bots.self_modification", fromlist=["x"])
+    monkeypatch.delenv(real_sm.KILL_SWITCH_ENV, raising=False)
     repo = tmp_path / "repo"
     repo.mkdir()
     target = repo / "notes.md"
@@ -476,7 +477,6 @@ def test_mutation_removing_the_revert_leaves_the_broken_change(tmp_path, monkeyp
     def factory(root, fix_fn):
         return SentinelLoop(root, fix_fn=fix_fn, verifier=RedVerifier(root))
 
-    real_sm = __import__("alpha.bots.self_modification", fromlist=["x"])
     shipped = real_sm.SelfModificationGuard(repo, approver=lambda p: True, loop_factory=factory)
     outcome = shipped.propose(
         real_sm.SelfModificationProposal(
@@ -567,7 +567,7 @@ def test_mutation_tolerating_unknown_fields_would_smuggle_a_grant(tmp_path):
         "dynamic_profiles.py",
         (
             '        unknown = sorted(set(data) - known)\n        if unknown:\n            raise ProfileValidationError(f"profile has unknown field(s): {unknown}")',
-            "        pass",
+            "        data = {key: value for key, value in data.items() if key in known}",
         ),
     )
     real = __import__("alpha.bots.dynamic_profiles", fromlist=["x"])
@@ -598,8 +598,8 @@ def test_mutation_zeroing_the_seq_scan_reissues_sequence_numbers(tmp_path):
     m = mutated_module(
         "events.py",
         (
-            "                    if '\"seq\"' not in line:\n                        continue",
-            "                    if False:\n                        continue",
+            "                    if isinstance(seq, int) and seq > highest:\n                        highest = seq",
+            "                    if False:\n                        highest = seq",
         ),
     )
     real = __import__("alpha.bots.events", fromlist=["x"])
@@ -644,10 +644,11 @@ def test_mutation_dropping_the_attribution_check_stores_unattributed_actions(tmp
         ),
     )
     real = __import__("alpha.bots.events", fromlist=["x"])
+    real_ledger = __import__("alpha.bots.governance_ledger", fromlist=["x"])
     # (1) The shipped guarantee: an unattributed action is refused.
     ledger = real.OrgEventStore(tmp_path / "e.jsonl")
-    with pytest.raises(m.GovernanceLedgerError):
-        m.record_governance_action("delegated", actor="", target="t", reason="r", store=ledger)
+    with pytest.raises(real_ledger.GovernanceLedgerError):
+        real_ledger.record_governance_action("delegated", actor="", target="t", reason="r", store=ledger)
     # (2) Mutated: the action is written and LOOKS like a record.
     event = m.record_governance_action("delegated", actor="", target="", reason="", store=ledger)
     assert event["actor"] == ""
@@ -757,10 +758,21 @@ def test_mutation_removing_the_cycle_guard_allows_a_ping_pong():
     guard = real.AutonomyGuard(real.AutonomyBounds(**bounds))
     guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a")
     guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="b")
-    # (1) The shipped guarantee.
+    guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a")
+    # (1) The shipped guarantee: the fourth dispatch trips the revisit ceiling
+    #     (three prior visits are permitted — the limit allows 1 + 2).
     with pytest.raises(real.CycleDetected):
-        guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a")
-    # (2) Mutated: the task ping-pongs indefinitely.
+        guard.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="b")
+    # The second shape catches a SAME-assignee repeat one dispatch earlier,
+    # which a total-visit count alone would miss.
+    same = real.AutonomyGuard(real.AutonomyBounds(**bounds))
+    same.check_dispatch(task_id="t2", parent_id="root", depth=1, assignee="a")
+    same.check_dispatch(task_id="t2", parent_id="root", depth=1, assignee="a")
+    with pytest.raises(real.CycleDetected):
+        same.check_dispatch(task_id="t2", parent_id="root", depth=1, assignee="a")
+    # (2) Mutated: the revisit ceiling is gone and the task ping-pongs
+    #     indefinitely. Alternating assignees also keeps the same-assignee
+    #     branch from firing, which is exactly what a total count exists to stop.
     mutated = m.AutonomyGuard(m.AutonomyBounds(**bounds))
     for index in range(30):
         mutated.check_dispatch(task_id="t1", parent_id="root", depth=1, assignee="a" if index % 2 else "b")
@@ -804,7 +816,7 @@ def test_mutation_removing_the_budget_ceiling_check_allows_an_oversized_child():
     m = mutated_module(
         "autonomy_guard.py",
         (
-            "        if self.budget.tasks_remaining <= 0 or self.budget.tokens_remaining <= 0:",
+            "        if child_budget is not None and child_budget.max_tokens > self.budget.tokens_remaining:",
             "        if False:",
         ),
     )

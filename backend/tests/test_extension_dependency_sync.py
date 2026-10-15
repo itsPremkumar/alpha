@@ -310,12 +310,12 @@ def test_docker_image_builds_from_the_lock_and_never_syncs_at_runtime() -> None:
     production_compose = (REPO_ROOT / "docker" / "docker-compose.yaml").read_text(encoding="utf-8")
 
     assert "uv sync --locked --extra redis" in dockerfile
-    assert "ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11.1" in dockerfile
+    assert "ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11.21" in dockerfile
     assert dockerfile.count("uv run --no-sync uvicorn app.gateway.app:app") == 2
     assert "uv run --no-sync uvicorn app.gateway.app:app" in production_compose
     for compose_name in ("docker-compose.yaml", "docker-compose-dev.yaml"):
         compose = (REPO_ROOT / "docker" / compose_name).read_text(encoding="utf-8")
-        assert "ghcr.io/astral-sh/uv:0.11.1" in compose
+        assert "ghcr.io/astral-sh/uv:0.11.21" in compose
 
 
 def test_docker_context_keeps_every_managed_extension_artifact() -> None:

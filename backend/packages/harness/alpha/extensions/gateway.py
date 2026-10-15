@@ -40,6 +40,9 @@ _HOST_PUBLIC_PATH_PREFIXES = (
     "/openapi.json",
     "/api/v1/auth/oauth/",
     "/api/v1/auth/callback/",
+    # Reserve the full webhook namespace from extensions. The mounted
+    # provider route is exact-public, but extension routes here must never
+    # inherit that trust boundary by sharing its namespace.
     "/api/webhooks/",
 )
 _HOST_PUBLIC_EXACT_PATHS = frozenset(
@@ -50,9 +53,26 @@ _HOST_PUBLIC_EXACT_PATHS = frozenset(
         "/api/v1/auth/setup-status",
         "/api/v1/auth/initialize",
         "/api/v1/auth/providers",
+        "/api/webhooks/github",
+        "/.well-known/agent-card.json",
+        "/.well-known/agent.json",
+        "/api/peer-network/card",
+        "/api/peer-network/remote/pair",
+        "/api/peer-network/inbound/messages",
     }
 )
-_HOST_CSRF_EXEMPT_EXACT_PATHS = frozenset({"/api/v1/auth/me"})
+_HOST_CSRF_EXEMPT_EXACT_PATHS = frozenset(
+    {
+        # Reserved host route even though it is not CSRF-exempt: do not let a
+        # contributed state-changing route shadow the host's session endpoint.
+        "/api/v1/auth/me",
+        "/.well-known/agent-card.json",
+        "/api/peer-network/card",
+        "/api/peer-network/remote/pair",
+        "/api/peer-network/inbound/messages",
+        "/api/webhooks/github",
+    }
+)
 _CSRF_STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
 _STANDARD_CONVERTOR_REGEXES = {
     "str": "[^/]+",

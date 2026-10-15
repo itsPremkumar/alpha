@@ -6,7 +6,10 @@ drift apart on the semantics the provider depends on.
 
 Redis coverage is opt-in and self-skipping, mirroring the stream-bridge
 integration tier: point at a server with ``ALPHA_TEST_REDIS_URL`` (defaults
-to redis://localhost:6379/15 — DB 15 to avoid clobbering real data). There is no
+to redis://127.0.0.1:6379/15 — DB 15 to avoid clobbering real data; the IPv4
+loopback literal, because a host that refuses its IPv6 loopback slowly pays
+that refusal on every new connection and the lease windows here are
+sub-second). There is no
 fake-redis tier on purpose — the redis backend's exclusion lives in Lua scripts
 that a hand-rolled fake would not execute, so a fake would pin the mock rather
 than the script. When no server is reachable these skip and the memory backend

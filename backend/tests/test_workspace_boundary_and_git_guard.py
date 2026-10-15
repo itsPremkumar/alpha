@@ -92,7 +92,13 @@ def test_detected_command_still_runs_without_a_shell(monkeypatch, tmp_path):
 
 
 def test_gated_command_still_executes_when_the_operator_opted_in(monkeypatch, tmp_path):
-    """Opting in restores the capability. The fix gates; it does not delete."""
+    """Opting in restores the capability. The fix gates; it does not delete.
+
+    The capability restored is *execution*, not shell interpolation: even opted
+    in, a caller-supplied command runs as a shell-free argv. Handing the model a
+    host shell was the hole this gate closed, so the opt-in restores the act
+    while its risk stays bounded by argv semantics.
+    """
     monkeypatch.setattr("alpha.sandbox.security.is_host_bash_allowed", lambda: True)
     (tmp_path / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
     seen: dict = {}
@@ -112,8 +118,10 @@ def test_gated_command_still_executes_when_the_operator_opted_in(monkeypatch, tm
 
     data = json.loads(auto_test_and_repair.invoke({"test_command": "pytest -x", "root_path": str(tmp_path)}))
     assert data["status"] == "passed"
-    assert data["execution"] == "shell"
-    assert seen["shell"] is True
+    assert data["execution"] == "argv"
+    assert seen["shell"] is False
+    # An argv, not a string: opting in must not restore shell interpolation.
+    assert isinstance(seen["cmd"], list)
 
 
 def test_unresolved_root_is_an_error_not_a_crash(monkeypatch, tmp_path):

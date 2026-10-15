@@ -40,6 +40,7 @@ class ContinuousGoalRunner:
         max_iterations: int = 100,
     ) -> Goal:
         """Initialize and validate a goal, automatically provisioning initial milestones if needed."""
+        self._require_running_fleet()
         # 1. Ethical & Safety Guardrails Check
         safety_decision = self.safety.evaluate_goal(f"{title}: {description}")
         if not safety_decision.allowed:
@@ -89,6 +90,10 @@ class ContinuousGoalRunner:
         executor_fn: Callable[[Milestone], tuple[bool, str, str]] | None = None,
     ) -> dict[str, Any]:
         """Execute a single autonomous progress turn on the goal."""
+        try:
+            self._require_running_fleet()
+        except Exception as exc:
+            return {"status": "fleet_stopped", "success": False, "verified": False, "reason": str(exc), "message": str(exc)}
         goal = self.store.get_goal(goal_id)
         if not goal:
             return {"status": "error", "error": f"Goal '{goal_id}' not found."}
@@ -193,6 +198,15 @@ class ContinuousGoalRunner:
             "success": success,
         }
 
+    @staticmethod
+    def _require_running_fleet() -> None:
+        from alpha.runtime.control import FleetStopped, read_state
+        from alpha.runtime.fleet_stop import fleet_stop_reason, is_fleet_stopped
+
+        if is_fleet_stopped():
+            state = read_state()
+            raise FleetStopped(f"FLEET_STOPPED: {fleet_stop_reason()}", mode=state.mode, phase="goal execution")
+
     def run_until_complete(
         self,
         goal_id: str,
@@ -202,7 +216,7 @@ class ContinuousGoalRunner:
         """Run continuous autonomous loop until goal is achieved or steps exhausted."""
         for _ in range(max_steps):
             res = self.step(goal_id, executor_fn=executor_fn)
-            if res.get("status") in ("achieved", "blocked", "paused", "error", "awaiting_executor"):
+            if res.get("status") in ("achieved", "blocked", "paused", "error", "awaiting_executor", "fleet_stopped"):
                 break
         return self.store.get_goal(goal_id)  # type: ignore[return-value]
 

@@ -85,8 +85,8 @@ async def _schema(engine):
 
 async def test_occurrence_revision_is_single_head():
     # Head moves forward as revisions land; this pins a single linear head
-    # (currently 0024_feedback_category — update the literal on the next bump).
-    assert _get_head_revision() == "0024_feedback_category"
+    # (currently 0029_network_waits_terminal_at — update the literal on the next bump).
+    assert _get_head_revision() == "0029_network_waits_terminal_at"
 
 
 async def test_upgrade_preserves_legacy_rows_and_allocates_from_one(migration_database):

@@ -75,6 +75,7 @@ def test_block_entry_denies_with_governance_code() -> None:
                 "risk_class": "destructive",
                 "reversibility": "irreversible",
                 "confirmation": "block",
+                "verification_method": "existence",
             }
         }
     )
@@ -89,14 +90,14 @@ def test_block_entry_denies_with_governance_code() -> None:
 
 
 def test_ask_entry_denies_without_internal_approval() -> None:
-    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask"}})
+    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask", "reversibility": "reversible", "verification_method": "none"}})
     decision = provider.evaluate(_request("bash", is_internal=False))
     assert decision.allow is False
     assert decision.reasons[0].code == "governance.requires_confirmation"
 
 
 def test_ask_entry_allows_internal_dispatch() -> None:
-    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask"}})
+    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask", "reversibility": "reversible", "verification_method": "none"}})
     decision = provider.evaluate(_request("bash", is_internal=True))
     assert decision.allow is True
     assert decision.metadata["approved_by"] == "internal_dispatch"
@@ -104,7 +105,7 @@ def test_ask_entry_allows_internal_dispatch() -> None:
 
 def test_ask_allows_everyone_when_operator_opts_out_of_strict_rule() -> None:
     provider = GovernanceGuardrailProvider(
-        tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask"}},
+        tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask", "reversibility": "reversible", "verification_method": "none"}},
         ask_requires_internal=False,
     )
     assert provider.evaluate(_request("bash", is_internal=False)).allow is True
@@ -117,6 +118,8 @@ def test_auto_entry_allows_and_records_the_governed_class() -> None:
                 "risk_class": "external",
                 "side_effects": ["http_request"],
                 "confirmation": "auto",
+                "reversibility": "reversible",
+                "verification_method": "none",
             }
         }
     )
@@ -128,7 +131,7 @@ def test_auto_entry_allows_and_records_the_governed_class() -> None:
 
 
 def test_aevaluate_matches_evaluate() -> None:
-    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask"}})
+    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask", "reversibility": "reversible", "verification_method": "none"}})
     request = _request("bash")
     sync_decision = provider.evaluate(request)
     async_decision = asyncio.run(provider.aevaluate(request))
@@ -138,8 +141,8 @@ def test_aevaluate_matches_evaluate() -> None:
 
 def test_spec_overrides_the_top_level_section_per_tool() -> None:
     provider = GovernanceGuardrailProvider(
-        tool_governance={"bash": {"risk_class": "execute", "confirmation": "auto"}},
-        spec={"bash": {"risk_class": "execute", "confirmation": "block"}},
+        tool_governance={"bash": {"risk_class": "execute", "confirmation": "auto", "reversibility": "reversible", "verification_method": "none"}},
+        spec={"bash": {"risk_class": "execute", "confirmation": "block", "reversibility": "reversible", "verification_method": "none"}},
     )
     assert provider.evaluate(_request("bash")).allow is False
 
@@ -151,14 +154,22 @@ def test_provider_accepts_the_framework_hint() -> None:
 
 def test_malformed_policy_fails_at_construction() -> None:
     with pytest.raises(GovernanceError):
-        GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "nope", "confirmation": "ask"}})
+        GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "nope", "confirmation": "ask", "reversibility": "reversible", "verification_method": "none"}})
+
+
+def test_partial_policy_fails_at_construction() -> None:
+    # A partial operator entry is refused at construction, not at call time:
+    # a policy that silently defaults a security-relevant key is an
+    # unreadable audit, never a lax default.
+    with pytest.raises(GovernanceError, match="verification_method"):
+        GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask", "reversibility": "reversible"}})
 
 
 def test_release_policy_parameters_declares_the_governed_surface() -> None:
     provider = GovernanceGuardrailProvider(
         tool_governance={
-            "bash": {"risk_class": "execute", "confirmation": "ask"},
-            "rm_tool": {"risk_class": "destructive", "confirmation": "block"},
+            "bash": {"risk_class": "execute", "confirmation": "ask", "reversibility": "reversible", "verification_method": "none"},
+            "rm_tool": {"risk_class": "destructive", "confirmation": "block", "reversibility": "irreversible", "verification_method": "existence"},
         }
     )
     parameters = provider.release_policy_parameters()
@@ -177,7 +188,7 @@ def _handler(request: MagicMock) -> str:
 
 
 def test_middleware_denies_a_blocked_call_with_an_error_tool_message() -> None:
-    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "block"}})
+    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "block", "reversibility": "reversible", "verification_method": "none"}})
     middleware = GuardrailMiddleware(provider, fail_closed=True)
     request = _make_tool_call_request("bash", {"command": "ls"})
     result = middleware.wrap_tool_call(request, _handler)
@@ -194,7 +205,7 @@ def test_middleware_allows_an_unclassified_call_through_to_the_handler() -> None
 
 
 def test_middleware_denies_ask_calls_from_a_model_run() -> None:
-    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask"}})
+    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask", "reversibility": "reversible", "verification_method": "none"}})
     middleware = GuardrailMiddleware(provider, fail_closed=True)
     # A model-initiated call carries no internal flag in its context.
     request = _make_tool_call_request("bash", {"command": "ls"}, context={})
@@ -204,7 +215,7 @@ def test_middleware_denies_ask_calls_from_a_model_run() -> None:
 
 
 def test_middleware_async_path_matches() -> None:
-    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "block"}})
+    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "block", "reversibility": "reversible", "verification_method": "none"}})
     middleware = GuardrailMiddleware(provider, fail_closed=True)
     request = _make_tool_call_request("bash", {"command": "ls"})
 
@@ -225,7 +236,7 @@ def test_middleware_publishes_the_authorization_outcome() -> None:
         AuthorizationOutcome,
     )
 
-    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "block"}})
+    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "block", "reversibility": "reversible", "verification_method": "none"}})
     middleware = GuardrailMiddleware(provider, fail_closed=True)
     context: dict[str, Any] = {}
     request = _make_tool_call_request("bash", context=context)
@@ -244,7 +255,7 @@ def test_middleware_records_the_guardrail_journal_event() -> None:
         def record_middleware(self, **kwargs: Any) -> None:
             self.calls.append(kwargs)
 
-    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "block"}})
+    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "block", "reversibility": "reversible", "verification_method": "none"}})
     middleware = GuardrailMiddleware(provider, fail_closed=True)
     journal = _Journal()
     context: dict[str, Any] = {"__run_journal": journal}
@@ -257,7 +268,7 @@ def test_middleware_records_the_guardrail_journal_event() -> None:
 
 
 def test_middleware_allows_internal_dispatch_for_ask_tools() -> None:
-    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask"}})
+    provider = GovernanceGuardrailProvider(tool_governance={"bash": {"risk_class": "execute", "confirmation": "ask", "reversibility": "reversible", "verification_method": "none"}})
     middleware = GuardrailMiddleware(provider, fail_closed=True)
     context: dict[str, Any] = {"is_internal": True}
     request = _make_tool_call_request("bash", context=context)
@@ -291,7 +302,7 @@ def test_assembly_hands_the_top_level_section_to_the_provider() -> None:
     )
     from alpha.guardrails.middleware import GuardrailMiddleware
 
-    config = _assembly_config({"bash": {"risk_class": "execute", "confirmation": "block"}})
+    config = _assembly_config({"bash": {"risk_class": "execute", "confirmation": "block", "reversibility": "reversible", "verification_method": "none"}})
     middlewares = build_lead_runtime_middlewares(app_config=config)
     guardrails = [m for m in middlewares if isinstance(m, GuardrailMiddleware)]
     assert len(guardrails) == 1
@@ -310,6 +321,6 @@ def test_malformed_top_level_section_fails_agent_assembly() -> None:
         build_lead_runtime_middlewares,
     )
 
-    config = _assembly_config({"bash": {"risk_class": "nope", "confirmation": "ask"}})
+    config = _assembly_config({"bash": {"risk_class": "nope", "confirmation": "ask", "reversibility": "reversible", "verification_method": "none"}})
     with pytest.raises(GovernanceError):
         build_lead_runtime_middlewares(app_config=config)

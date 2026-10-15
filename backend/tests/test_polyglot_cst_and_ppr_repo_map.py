@@ -202,8 +202,13 @@ class Service{i}:
     assert len(repo_map) <= 1800
 
 
-def test_generate_personalized_repo_map_tool():
+def test_generate_personalized_repo_map_tool(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp_dir:
+        # The tool resolves `root_path` against the workspace boundary, which
+        # allows `project_root()` plus operator-declared roots. Declare this
+        # temp workspace through the source the boundary documents for a
+        # process with no readable config — i.e. tests.
+        monkeypatch.setenv("ALPHA_WORKSPACE_ROOTS", tmp_dir)
         tmp_path = Path(tmp_dir)
         (tmp_path / "calc.py").write_text("class Calc:\n    def add(self, a, b):\n        return a + b\n", encoding="utf-8")
         (tmp_path / "main.py").write_text("from calc import Calc\ndef run():\n    c = Calc()\n", encoding="utf-8")

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from alpha.tools.builtins.code_agentic_core import (
     create_shadow_checkpoint,
     get_all_checkpoints,
@@ -11,6 +13,19 @@ from alpha.tools.builtins.code_agentic_core import (
     manage_code_checkpoint,
     rollback_to_checkpoint,
 )
+
+
+@pytest.fixture(autouse=True)
+def _workspace_root_allowed(tmp_path, monkeypatch):
+    """Declare the pytest tmp dir as a workspace root the documented way.
+
+    ``alpha.sandbox.workspace_boundary`` allows ``project_root()`` plus
+    operator-declared roots and refuses anything else, so a tool exercised
+    against a pytest tmp dir needs the dir opted in. ``ALPHA_WORKSPACE_ROOTS``
+    is the documented source for a process with no readable config — i.e.
+    tests — which keeps the boundary itself untouched.
+    """
+    monkeypatch.setenv("ALPHA_WORKSPACE_ROOTS", str(tmp_path))
 
 
 def test_create_and_list_checkpoints(tmp_path):

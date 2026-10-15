@@ -29,4 +29,7 @@ def test_loop_generator_reads_only_the_default_registry() -> None:
         "company_operations",
         "self_update",
         "apex",
+        "memory_upkeep",
+        "mission",
+        "workflow_triggers",
     }

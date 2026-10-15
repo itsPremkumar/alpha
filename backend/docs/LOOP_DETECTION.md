@@ -36,3 +36,11 @@ decays within the batch must not leave a stale suppression mark.
 
 `backend/tests/test_loop_detection_middleware.py` covers mixed-tool batches,
 window decay, overrides, and sync/async compiled-graph execution.
+
+When a hard limit is reached, the middleware strips the pending calls and raw
+provider call metadata before routing back to the model once with an empty tool
+list. A request-only instruction asks it to summarize completed evidence and
+identify what remains unverified. If that synthesis response still contains a
+tool call, the middleware strips it and ends the loop without another retry.
+This prevents an unsafe tool execution while still allowing the model to give a
+useful bounded answer from results that already completed.

@@ -45,7 +45,7 @@ Use the [feature request template](https://github.com/itsPremkumar/alpha/issues/
 
 ## Contributing
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for detailed guidelines.
+See [CONTRIBUTING.md](https://github.com/itsPremkumar/alpha/blob/main/CONTRIBUTING.md) for detailed guidelines.
 
 ### Ways to Contribute
 
@@ -58,7 +58,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for detailed guidelines.
 ### Recognition
 
 All contributors are recognized in:
-- [CONTRIBUTORS.md](../CONTRIBUTORS.md)
+- [CONTRIBUTORS.md](https://github.com/itsPremkumar/alpha/blob/main/CONTRIBUTORS.md)
 - GitHub Contributors graph
 - Release notes
 
@@ -82,7 +82,7 @@ Check [GitHub Discussions](https://github.com/itsPremkumar/alpha/discussions/cat
 
 ## Code of Conduct
 
-All community members must follow our [Code of Conduct](../CODE_OF_CONDUCT.md).
+All community members must follow our [Code of Conduct](https://github.com/itsPremkumar/alpha/blob/main/CODE_OF_CONDUCT.md).
 
 ### Reporting
 
@@ -97,8 +97,7 @@ All community members must follow our [Code of Conduct](../CODE_OF_CONDUCT.md).
 ### Learning
 
 - [Getting Started](/getting-started/quick-start)
-- [Tutorials](/tutorials)
-- [Guides](/guides)
+- [Guides](/guides/agents/overview)
 - [API Reference](/api)
 
 ### Tools

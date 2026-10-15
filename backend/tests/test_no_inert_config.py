@@ -772,17 +772,26 @@ def test_the_root_config_openness_exempts_no_declared_field() -> None:
 
     The root's openness is about keys no model declares. Every section it *does*
     declare is a real, shipped, operator-settable section, and that is exactly where
-    an inert declaration lives: ``evolution_evidence`` is a declared section that
-    nothing reads. If the root's ``extra="allow"`` exempted its fields, Gate A would
-    lose the ability to catch a new inert top-level section, which is the single most
-    valuable thing it can catch.
+    an inert declaration lives: ``evolution_evidence`` is a declared section whose
+    only reader (alpha.evolution.promotion_route) sits outside the production import
+    closure, so it is inert in the running product. If the root's ``extra="allow"``
+    exempted its fields, Gate A would lose the ability to catch a new inert top-level
+    section, which is the single most valuable thing it can catch.
     """
     top_level = {path for path in declared_fields() if "." not in path}
     exempt_top_level = top_level & kwarg_bag_paths()
     assert not exempt_top_level, f'the root config\'s extra="allow" is exempting declared sections {sorted(exempt_top_level)}. Its openness concerns undeclared keys only; remove the root from the kwarg-bag exemption.'
     assert "evolution_evidence" in top_level, "the walk lost a top-level section, which is the case the root exemption must never cover"
-    assert "evolution_evidence" in declaration_only_keys() or "evolution_evidence" in {e["target"] for e in allowlist()["declaration_only_keys"]}, (
-        "evolution_evidence stopped being detectable as an unread top-level section; the root exemption is leaking"
+    # Gate A no longer reports the section: promotion_route reads it (outside the live
+    # closure) and live modules name it as a string value, so both channels see a
+    # reference. The record therefore lives in known_blind_spots, and this assertion is
+    # what stops it from being deleted without a production reader inside the import
+    # closure taking its place -- the shape a leaking root exemption would produce.
+    recorded = {entry["target"] for section in ("declaration_only_keys", "unreachable_flags", "known_blind_spots") for entry in allowlist()[section]}
+    assert "evolution_evidence" in declaration_only_keys() or "evolution_evidence.enabled" in recorded, (
+        "evolution_evidence stopped being recorded as an inert declaration anywhere in the allowlist. Gate A reports it only "
+        "while no reader exists outside its declaring module, so the record belongs in known_blind_spots; delete it only when "
+        "a production reader inside the import closure reaches the section."
     )
 
 

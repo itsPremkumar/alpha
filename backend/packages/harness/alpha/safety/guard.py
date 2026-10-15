@@ -102,8 +102,24 @@ class SafetyGuard:
         return SafetyDecision(allowed=True, reason="File access permitted.", risk_level="low")
 
 
-_global_safety_guard = SafetyGuard()
+_global_safety_guard: SafetyGuard | None = None
 
 
 def get_safety_guard() -> SafetyGuard:
+    """The process-wide guard, built on first use.
+
+    Construction resolves the default allowed roots from ``Path.cwd()``, so
+    building it at import time made *importing* this module blocking IO.
+    ``alpha.safety`` is reached through lazy imports on event-loop paths
+    (``alpha.sandbox.tools`` imports it for the syntax guard, and
+    ``subagents.acceptance_checks`` imports ``alpha.sandbox.tools``), so an
+    import triggered while the loop is running both performs the blocking
+    syscall and trips the strict Blockbuster gate — an import-time failure no
+    caller can catch or offload. Deferring construction to first access keeps
+    the module import pure; the guard itself still binds one process-wide
+    instance so every caller reads the same allowed roots.
+    """
+    global _global_safety_guard
+    if _global_safety_guard is None:
+        _global_safety_guard = SafetyGuard()
     return _global_safety_guard

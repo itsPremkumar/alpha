@@ -66,9 +66,9 @@ async def migration_database(request, tmp_path):
 
 
 async def test_fts_revision_is_single_head():
-    # Tracks the chain head (0024 landed after this revision; the 0024 suite
-    # pins the exact head — this asserts the chain is still linear).
-    assert _get_head_revision() == "0024_feedback_category"
+    # Tracks the chain head (later revisions landed after this one; the newest
+    # suite pins the exact head — this asserts the chain is still linear).
+    assert _get_head_revision() == "0029_network_waits_terminal_at"
 
 
 async def test_upgrade_indexes_legacy_messages_only(migration_database):

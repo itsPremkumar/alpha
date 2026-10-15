@@ -39,23 +39,15 @@ def _fleet_admits_tick(loop_id: str) -> bool:
     fails open is not a stop mechanism.
     """
     try:
-        from alpha.runtime.control import assert_admissible, read_state
-        from alpha.runtime.estop import get_estop_manager
+        from alpha.runtime.control import assert_admissible
+        from alpha.runtime.fleet_stop import fleet_stop_reason, is_fleet_stopped
 
-        # The pre-existing sentinel is honoured as well, so an operator who
-        # engaged either mechanism gets the same fleet-wide effect. Two sources
-        # because `alpha.bots.kill_switch` is in-memory and this sentinel is
-        # durable; both are consulted rather than one subsuming the other, and
-        # neither is removed.
-        if get_estop_manager().is_engaged():
-            logger.warning("Fleet ESTOP engaged; skipping autonomy loop tick %s", loop_id)
+        if is_fleet_stopped():
+            logger.warning("Fleet stop refused autonomy loop %s: %s", loop_id, fleet_stop_reason())
             return False
-
-        state = read_state()
-        if state.mode.value != "run":
-            logger.warning("Fleet control is %s; skipping autonomy loop tick %s", state.mode.value, loop_id)
-            return False
-
+        # Re-read the generation-fenced control state immediately before
+        # admitting this tick, closing the state-file race after the shared
+        # predicate check.
         assert_admissible(f"autonomy loop {loop_id}")
         return True
     except Exception as exc:
@@ -332,15 +324,9 @@ class AutonomySupervisor:
     async def _tick_once(self, loop_id: str, cfg: AutonomyLoopConfig, tick: Callable[[], Any], state: _LoopState) -> None:
         if state.running or state.parked:
             return
-        # Fleet control is checked here because this is the single choke point all
-        # registered loops pass through — nine of them, per `register_default_loops`
-        # below. The count is written as a word and not a numeral on purpose: it was
-        # "eight" here while nine were registered, and a numeral in a comment about a
-        # registry is a claim nothing checks. A tick that starts while the operator
-        # has engaged ESTOP must not run, and a tick admitted before the stop must
-        # not act on a superseded generation. This loop previously had no stop
-        # mechanism at all: `autonomy.loops.*` flags decide whether a loop is
-        # *registered*, not whether it is *allowed to run right now*.
+        # Every registered loop passes this single admission gate. Configuration
+        # decides whether a loop is registered; the shared fleet-stop predicate
+        # decides whether it may start work right now.
         if not _fleet_admits_tick(loop_id):
             return
         # A missing or broken policy kernel must not allow autonomous work to

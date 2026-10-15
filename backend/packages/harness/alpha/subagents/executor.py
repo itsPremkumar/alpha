@@ -52,6 +52,12 @@ from alpha.subagents.report_contract import (
 )
 from alpha.subagents.step_events import capture_new_step_messages
 from alpha.subagents.token_collector import SubagentTokenCollector
+from alpha.subagents.workspace_version import (
+    ConflictError,
+    WorkspaceVersionStore,
+    harvest_workspace_access,
+    validate_and_commit_writes,
+)
 from alpha.trace_context import ALPHA_TRACE_METADATA_KEY, ensure_trace_context, resolve_trace_id
 from alpha.tracing import build_tracing_callbacks, inject_langfuse_metadata
 from alpha.utils.messages import message_content_to_text
@@ -164,8 +170,8 @@ class SubagentResult:
             ``tests_passed:<command>`` acceptance leaf to a specific recorded
             execution. Each entry also carries ``status_marker`` — the exit
             marker text the recorded status was derived from, when one was
-            seen — so the leaf detail can report what was actually observed
-            — and ``shell_persistent``, the producing sandbox's
+            seen — so the leaf detail can report what was actually observed —
+            and ``shell_persistent``, the producing sandbox's
             ``persistent_shell_sessions`` flag resolved from the state that
             carried the evidence (``None`` when unidentifiable — the matcher
             fails closed on it).
@@ -174,6 +180,14 @@ class SubagentResult:
             execution. ``None`` when the delegation carried no acceptance
             criteria, the run ended before streaming, or harvesting failed;
             an empty list means the stream carried no bash-family tool calls.
+        workspace_conflict: Set when this run's writes lost the workspace version
+            race — another writer committed against the same workspace between
+            this subagent's read snapshot and its commit (RFC: Workspace Version
+            Protocol). Advisory only: the status and result still describe the run
+            that actually happened, because the files are already on disk and
+            discarding a finished deliverable would lose real work. The lead reads
+            this to know the output may be built on a stale view and should be
+            re-verified rather than trusted as current.
     """
 
     task_id: str
@@ -191,6 +205,10 @@ class SubagentResult:
     admission_failure: bool = False
     tool_receipts: list[dict[str, Any]] | None = field(default=None, kw_only=True)
     bash_executions: list[dict[str, Any]] | None = field(default=None, kw_only=True)
+    #: See the class docstring: advisory "your writes raced somebody" flag.
+    #: Never used as a failure signal — the run's status and result still
+    #: describe the execution that actually happened.
+    workspace_conflict: bool = field(default=False, kw_only=True)
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
     _state_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
@@ -478,6 +496,95 @@ _BASH_EXIT_CODE_MARKER_RE = re.compile(r"Exit Code: (-?\d+)\s*$")
 #: a successful command that merely prints the phrase while exercising an
 #: error path is not misrecorded as failed.
 _BASH_EXITED_WITH_CODE_RE = re.compile(r"Command exited with code (-?\d+)")
+
+
+def _resolve_workspace_root(thread_data: ThreadDataState | None) -> str | None:
+    """Pick the workspace root this run's version protocol guards.
+
+    The thread's ``workspace_path`` is the directory the subagent's file tools
+    actually target, so it is the only root whose races matter. When it is
+    absent there is no shared directory to guard and the protocol is skipped
+    entirely rather than defaulted to the process cwd — a cwd default would
+    point two unrelated delegations at one counter and manufacture conflicts
+    between writers that never touched the same tree.
+    """
+    if not isinstance(thread_data, Mapping):
+        return None
+    root = thread_data.get("workspace_path")
+    if not isinstance(root, str) or not root.strip():
+        return None
+    return root.strip()
+
+
+def _finalize_workspace_version(
+    result: SubagentResult,
+    *,
+    subagent_id: str,
+    store: WorkspaceVersionStore | None,
+    final_state: Any,
+) -> None:
+    """Commit (or report the race for) this run's workspace writes.
+
+    Runs once the run is terminal and the terminal message stream is in hand.
+    The paths the subagent touched are harvested from that stream rather than
+    instrumented into every file tool: the tool *calls* are already recorded
+    there, so the same evidence that backs receipts and bash execution logs
+    backs this too — one source, no per-tool hook to drift.
+
+    ``subagent_id`` must be the same id the caller pinned its base version
+    under (``acquire_read_snapshot``) before streaming. Re-deriving it here —
+    or letting ``record_write`` start tracking late — would snapshot the
+    *post-run* version, making every run look conflict-free and detecting
+    nothing.
+
+    Advisory by design (see ``SubagentResult.workspace_conflict``): a lost race
+    sets the flag and logs, it never changes the status. The files are on disk;
+    the lead decides whether to re-verify.
+
+    Failure-isolated end to end: an error here cannot change the run's outcome,
+    because by the time this runs the result is already terminal.
+    """
+    if store is None:
+        return
+    try:
+        reads, writes = harvest_workspace_access((final_state or {}).get("messages") or [])
+        for path in sorted(reads):
+            store.record_read(subagent_id, path)
+        for path in sorted(writes):
+            store.record_write(subagent_id, path)
+        validate_and_commit_writes(store, store.get_base_version(subagent_id), sorted(writes))
+    except ConflictError as exc:
+        # The run's real result still stands; this records that its writes were
+        # built on a view another writer moved underneath.
+        with result._state_lock:
+            result.workspace_conflict = True
+        logger.warning(
+            "[trace=%s] Subagent %s workspace writes raced another writer: read at v%s, workspace at v%s, paths=%s",
+            result.trace_id,
+            result.task_id,
+            exc.read_version,
+            exc.current_version,
+            exc.conflicting_paths,
+        )
+    except Exception:
+        logger.warning(
+            "[trace=%s] Workspace version bookkeeping failed for subagent %s",
+            result.trace_id,
+            result.task_id,
+            exc_info=True,
+        )
+    finally:
+        # The tracking entry describes a finished execution; keeping it would
+        # leak one entry per historical run in a long-lived process.
+        try:
+            store.clear_subagent(subagent_id)
+        except Exception:
+            logger.debug(
+                "[trace=%s] Could not clear workspace version tracking for subagent %s",
+                result.trace_id,
+                result.task_id,
+                exc_info=True,
+            )
 
 
 def _bash_evidence_status(content: str, meta_status: str) -> tuple[str, str | None]:
@@ -1463,6 +1570,35 @@ class SubagentExecutor:
         if ai_messages is None:
             ai_messages = []
             result.ai_messages = ai_messages
+        # Workspace version protocol (RFC: Workspace Version Protocol). Built
+        # BEFORE streaming so the base version is snapshotted at the start of
+        # the run, not at its end: a writer that commits while this subagent is
+        # mid-flight must be visible as a conflict. ``None`` when the run has
+        # no shared workspace root to guard (see ``_resolve_workspace_root``).
+        workspace_root = _resolve_workspace_root(self.thread_data)
+        workspace_version_store: WorkspaceVersionStore | None = None
+        workspace_subagent_id = f"subagent:{result.task_id}"
+        if workspace_root is not None:
+            try:
+                workspace_version_store = WorkspaceVersionStore(workspace_root)
+                # Pin the base version NOW, before any tool call. This is the
+                # whole point of the protocol: a writer that commits while this
+                # subagent is mid-flight must be visible as a conflict at commit
+                # time. Deferring the snapshot to the finalizer would read the
+                # post-run version, every run would look conflict-free, and the
+                # counter would detect nothing.
+                workspace_version_store.acquire_read_snapshot(workspace_subagent_id)
+            except Exception:
+                # A store that cannot be constructed must not take the run
+                # down: the protocol is advisory, the delegation is not.
+                workspace_version_store = None
+                logger.warning(
+                    "[trace=%s] Could not open workspace version store for subagent %s at %s",
+                    self.trace_id,
+                    self.config.name,
+                    workspace_root,
+                    exc_info=True,
+                )
         # O(1) duplicate detection for streamed AI messages. ``stream_mode="values"``
         # re-yields the full state every super-step, so the same trailing message is
         # re-examined on each chunk; an id-keyed set keeps that check O(1) instead of
@@ -1798,6 +1934,16 @@ class SubagentExecutor:
                         self.config.name,
                         exc_info=True,
                     )
+            # Last: the run's writes are committed against the workspace
+            # version counter (or reported as a lost race). After every other
+            # finalizer so the counter reflects a fully-finished run, and
+            # failure-isolated so it can never change the outcome.
+            _finalize_workspace_version(
+                result,
+                subagent_id=workspace_subagent_id,
+                store=workspace_version_store,
+                final_state=final_state,
+            )
 
         return result
 

@@ -6,8 +6,10 @@ Synthesized from frontier reference architectures (Aider, Claude Code, NVIDIA AV
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import logging
+import os
 import shlex
 import shutil
 import subprocess
@@ -176,10 +178,19 @@ class TestFailureDetail:
 def _detect_test_command(root: Path) -> str | None:
     """Auto-detect the appropriate test command for the workspace."""
     if (root / "pytest.ini").exists() or (root / "pyproject.toml").exists() or (root / "tests").is_dir():
-        if shutil.which("pytest") or (root / ".venv" / "Scripts" / "pytest.exe").exists():
-            return "pytest"
-        if shutil.which("uv"):
+        local_pytest = root / ".venv" / ("Scripts/pytest.exe" if os.name == "nt" else "bin/pytest")
+        if local_pytest.is_file():
+            return f'"{local_pytest}"'
+        if (root / "uv.lock").is_file() and shutil.which("uv"):
             return "uv run pytest"
+        # The agent may run in its own virtualenv while the host PATH exposes a
+        # different global pytest launcher. Prefer the active interpreter when
+        # the project has no local environment, so auto-run uses the libraries
+        # Alpha actually imported rather than an unrelated Python installation.
+        if importlib.util.find_spec("pytest") is not None:
+            return f'"{sys.executable}" -m pytest'
+        if shutil.which("pytest"):
+            return "pytest"
         return f'"{sys.executable}" -m pytest'
 
     pkg_json = root / "package.json"

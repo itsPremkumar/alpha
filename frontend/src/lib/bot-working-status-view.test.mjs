@@ -376,6 +376,16 @@ test("reported counters print, and omitted ones print a dash with words", () => 
   assert.match(markup, /data-working-count="1"/);
 });
 
+test("a measured stalled count with an omitted detail list says names were not reported", () => {
+  const markup = render(livenessStrip.BotLivenessStrip, {
+    state: "ok",
+    overview: { ...overview, stalled_workers: null },
+  });
+  assert.match(markup, /Stalled/);
+  assert.match(markup, /stalled worker names not reported/);
+  assert.doesNotMatch(markup, /stalled: coder/);
+});
+
 test("the working count renders a state word, never a zero, when it cannot be read", () => {
   const still = render(livenessStrip.BotLivenessStrip, {
     state: "ok",

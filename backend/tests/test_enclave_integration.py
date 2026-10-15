@@ -3,7 +3,14 @@ import json
 from alpha.tools.builtins import enterprise_security_manage
 
 
-def test_enterprise_security_tool_actions():
+def test_enterprise_security_tool_actions(monkeypatch):
+    import alpha.tools.builtins.enclave_security_tool as enclave_tool
+
+    # Encryption has no built-in key by design. Isolate a deterministic
+    # test-only key and reset the module singleton so local config is irrelevant.
+    monkeypatch.setenv("ALPHA_CHECKPOINT_KEY", "test-only-checkpoint-key-not-for-production")
+    monkeypatch.setattr(enclave_tool, "_CRYPTO", None)
+
     # 1. Action: check_path
     res1 = json.loads(
         enterprise_security_manage.invoke(

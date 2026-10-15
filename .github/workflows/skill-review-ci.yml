@@ -5,6 +5,7 @@ on:
     branches: ["main", "2.0.x-dev"]
     paths:
       - "skills/public/**"
+      - "tests/skills/**"
       - "backend/packages/harness/alpha/skills/review/**"
       - "contracts/skill_review/**"
       - "scripts/review_changed_public_skills.py"
@@ -17,6 +18,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "skills/public/**"
+      - "tests/skills/**"
       - "backend/packages/harness/alpha/skills/review/**"
       - "contracts/skill_review/**"
       - "scripts/review_changed_public_skills.py"
@@ -59,6 +61,13 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: uv sync --group dev
+
+      # skills/public/*/scripts/generate.py are standalone executables, not
+      # part of the backend pytest roots, so their suite is run explicitly.
+      # The same command is exposed locally as `make test-skills`.
+      - name: Run skill generation tests
+        working-directory: backend
+        run: uv run pytest ../tests/skills -q
 
       - name: Review changed public skills (pull request)
         if: github.event_name == 'pull_request'

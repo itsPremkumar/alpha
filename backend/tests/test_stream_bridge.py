@@ -1262,13 +1262,16 @@ async def test_make_stream_bridge_passes_redis_options(monkeypatch):
 #
 # Opt-in and self-skipping: when no Redis is reachable these are skipped so
 # `make test` stays green without Redis. Point at a server with
-# ALPHA_TEST_REDIS_URL (defaults to redis://localhost:6379/15 — DB 15 to
-# avoid clobbering real data) and select with `pytest -m integration`. They
+# ALPHA_TEST_REDIS_URL (defaults to redis://127.0.0.1:6379/15 — DB 15 to
+# avoid clobbering real data) and select with `pytest -m integration`. The
+# default names the IPv4 loopback literal rather than `localhost`: on a host
+# that refuses its IPv6 loopback slowly, `localhost` pays that refusal on every
+# new connection, which overruns the time bounds these tests assert. They
 # cover what _FakeRedis only approximates: real XADD/XREAD semantics, live-tail
 # reconnects for malformed Last-Event-ID values, the server <ms>-<seq> ID
 # format, and MAXLEN trimming.
 
-REDIS_TEST_URL = os.environ.get("ALPHA_TEST_REDIS_URL", "redis://localhost:6379/15")
+REDIS_TEST_URL = os.environ.get("ALPHA_TEST_REDIS_URL", "redis://127.0.0.1:6379/15")
 
 
 def _redis_available() -> bool:

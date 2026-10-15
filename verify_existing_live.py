@@ -81,9 +81,7 @@ try:
     from alpha.bots.cloning import BotCloneEngine, CloneMode
 
     cloner = BotCloneEngine()
-    prof = cloner.clone_bot("researcher", mode=CloneMode.SPECIALIST_FORK,
-                            specialist_directive="Focus only on competitor pricing research.",
-                            skills_to_add=["deep-research"])
+    prof = cloner.clone_bot("researcher", mode=CloneMode.SPECIALIST_FORK, specialist_directive="Focus only on competitor pricing research.", skills_to_add=["deep-research"])
     print(f"  cloned 'researcher' -> '{prof.name}'")
     print(f"    role:   {prof.role}")
     print(f"    skills: {prof.skills}")
@@ -102,8 +100,7 @@ try:
     eval_result = eng.router.classify_smart("Compare three database engines and prove which is fastest", user_strategy="auto")
     print(f"  router chose strategy: {eval_result.strategy.value}")
     print(f"  rationale: {eval_result.rationale[:160]}")
-    check("D1  council router classifies a query into a strategy", eval_result.strategy is not None,
-          f"strategy={eval_result.strategy.value}")
+    check("D1  council router classifies a query into a strategy", eval_result.strategy is not None, f"strategy={eval_result.strategy.value}")
 except Exception as e:  # noqa: BLE001
     check("D1  council router classifies a query into a strategy", False, f"{type(e).__name__}: {e}")
 
@@ -120,8 +117,8 @@ if eng is not None:
 section("E — Computer use: module loads (OS backend optional)")
 try:
     from alpha.computer_use import guard  # noqa: F401
-    check("E  computer_use package imports (guard present)", True,
-          "dispatcher performs real OS control when pyautogui/pynput is installed; reports 'unavailable' otherwise")
+
+    check("E  computer_use package imports (guard present)", True, "dispatcher performs real OS control when pyautogui/pynput is installed; reports 'unavailable' otherwise")
 except Exception as e:  # noqa: BLE001
     check("E  computer_use package imports (guard present)", False, f"{type(e).__name__}: {e}")
 

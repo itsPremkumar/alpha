@@ -91,6 +91,15 @@ const TARGETS = [
   // Maskable icons are cropped to a circle by the launcher, so the mark is
   // inset to the safe zone instead of bleeding to the edges.
   { file: "frontend/public/icon-maskable-512.png", size: 512, inset: 0.8 },
+
+  // Docusaurus documentation site. The published site referenced both of
+  // these from `docusaurus.config.ts` (`favicon` and the navbar `logo`) and
+  // neither existed, so the build died on a missing static asset. Generated
+  // here rather than hand-copied so the docs site cannot drift from the one
+  // real poster: `--check` covers it like every other surface.
+  // The navbar renders the logo at ~32px, so 128 gives it retina headroom.
+  { file: "docs-site/static/img/favicon.ico", ico: [16, 32, 48] },
+  { file: "docs-site/static/img/logo.png", size: 128 },
 ];
 
 /**

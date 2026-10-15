@@ -60,6 +60,7 @@ import {
 import { chatSupportId } from "@/lib/chat-support-id";
 import { branding } from "@/lib/branding";
 import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
+import { initialSelectedModel } from "@/lib/model-menu";
 import { currentOperatorIdentity, subscribeOperatorName } from "@/lib/operator";
 import { BrandLogo } from "@/components/BrandLogo";
 import { LionPet, useLionPetActivity } from "@/components/lion-pet";
@@ -111,6 +112,7 @@ import {
   compactThread,
   fetchTokenUsage,
   TokenUsage,
+  type ThreadGoal,
   moveThread,
   deleteThread,
 } from "@/lib/threads-ext";
@@ -902,6 +904,8 @@ export default function ChatView({
 
   // Conversation helpers
   const [goal, setGoalText] = useState<string | null>(null);
+  const [goalDetails, setGoalDetails] = useState<ThreadGoal | null>(null);
+  const [goalReadError, setGoalReadError] = useState<string | null>(null);
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalDraft, setGoalDraft] = useState("");
   const [usage, setUsage] = useState<TokenUsage | null>(null);
@@ -1003,6 +1007,8 @@ export default function ChatView({
   // Free-model catalog status (dynamic, auto-refreshed server-side TTL 300s).
   const [freeNote, setFreeNote] = useState<string | null>(null);
   const [freeRefreshing, setFreeRefreshing] = useState(false);
+  const freeCatalogReadGenerationRef = useRef(0);
+  const freeRefreshInFlightRef = useRef(false);
   /**
    * The per-provider rows behind the header sentence. `Free models: 8/10
    * healthy` is a claim with no evidence attached; `FreeCatalogMenu` renders
@@ -1092,6 +1098,58 @@ export default function ChatView({
     };
   }, [probeGateway]);
 
+  // Provider health can change while this chat remains open. Re-read the
+  // gateway's cached catalog while the tab is foregrounded; this is a read,
+  // not a probe, so only the explicit Refresh action performs live checks.
+  useEffect(() => {
+    let disposed = false;
+    const refreshSnapshot = async () => {
+      if (
+        disposed ||
+        document.visibilityState !== "visible" ||
+        freeRefreshInFlightRef.current
+      )
+        return;
+      const generation = ++freeCatalogReadGenerationRef.current;
+      try {
+        const catalog = await fetchFreeCatalog();
+        if (disposed || generation !== freeCatalogReadGenerationRef.current)
+          return;
+        const { providers, updatedAt } = catalog;
+        const healthy = providers.filter(
+          (provider) => provider.healthy === true,
+        ).length;
+        const eligible = providers.filter((provider) => provider.eligible).length;
+        setFreeProviders(providers);
+        setFreeSelectionMethod(catalog.selectionMethod ?? null);
+        setFreeDisclaimer(catalog.disclaimer ?? null);
+        setFreeReadError(null);
+        setFreeNote(
+          providers.length === 0
+            ? "Free catalog empty — the keyless router has no providers right now."
+            : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`,
+        );
+        setFreeTone(freeCatalogTone(providers));
+      } catch (error) {
+        if (disposed || generation !== freeCatalogReadGenerationRef.current)
+          return;
+        setFreeReadError(errMsg(error));
+        setFreeNote("Free catalog unreachable — keyless router may be down.");
+        setFreeTone("unknown");
+      }
+    };
+    const interval = window.setInterval(() => void refreshSnapshot(), 30_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshSnapshot();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
   const persistLocalHistory = async (
     operation: () => Promise<void>,
     failureMessage: string,
@@ -1175,12 +1233,15 @@ export default function ChatView({
 
   /** Force a live re-discovery of free providers (probe = real health check). */
   const refreshFreeCatalog = async () => {
+    freeRefreshInFlightRef.current = true;
+    const generation = ++freeCatalogReadGenerationRef.current;
     setFreeRefreshing(true);
     try {
       const [catalog, mList] = await Promise.all([
         fetchFreeCatalog({ refresh: true, probe: true }),
         fetchAvailableModels(),
       ]);
+      if (generation !== freeCatalogReadGenerationRef.current) return;
       const { providers, updatedAt } = catalog;
       setModels(mList);
       setFreeProviders(providers);
@@ -1202,6 +1263,7 @@ export default function ChatView({
           : `Free catalog refreshed: ${healthy}/${providers.length} healthy.`,
       );
     } catch (error) {
+      if (generation !== freeCatalogReadGenerationRef.current) return;
       // The server's reason, not a generic failure, and the previous rows stay
       // on screen — replacing them with an empty list here would present a
       // broken read as a catalog that has no providers.
@@ -1210,7 +1272,9 @@ export default function ChatView({
       setFreeTone("unknown");
       flash("Free catalog refresh failed.");
     } finally {
-      setFreeRefreshing(false);
+      freeRefreshInFlightRef.current = false;
+      if (generation === freeCatalogReadGenerationRef.current)
+        setFreeRefreshing(false);
     }
   };
 
@@ -1346,20 +1410,11 @@ export default function ChatView({
         setEffortLadder(effortCatalog.reasoningEffortLevels);
       if (Object.keys(effortCatalog.reasoningEffortLabels).length > 0)
         setEffortLabels(effortCatalog.reasoningEffortLabels);
-      let initialModel = "default";
+      let savedModel: string | null = null;
       try {
-        const savedModel = localStorage.getItem("alpha_selected_model");
-        if (
-          savedModel &&
-          (mList.length === 0 || mList.some((m) => m.id === savedModel))
-        ) {
-          initialModel = savedModel;
-        } else if (mList.length > 0) {
-          initialModel = mList[0].id;
-        }
-      } catch {
-        if (mList.length > 0) initialModel = mList[0].id;
-      }
+        savedModel = localStorage.getItem("alpha_selected_model");
+      } catch {}
+      const initialModel = initialSelectedModel(savedModel, mList);
       setSelectedModel(initialModel);
       // A stored effort is only restored when the model that will serve it
       // actually declares that rung. Restoring it blindly would show a level in
@@ -1440,9 +1495,15 @@ export default function ChatView({
         // them: that is unknown, so the dot stays neutral rather than green.
         setFreeTone(freeCatalogTone(providers));
       };
+      const freeCatalogGeneration = ++freeCatalogReadGenerationRef.current;
       fetchFreeCatalog()
-        .then((catalog) => renderFree(catalog))
+        .then((catalog) => {
+          if (freeCatalogGeneration === freeCatalogReadGenerationRef.current)
+            renderFree(catalog);
+        })
         .catch((error) => {
+          if (freeCatalogGeneration !== freeCatalogReadGenerationRef.current)
+            return;
           setFreeReadError(errMsg(error));
           setFreeNote("Free catalog unreachable — keyless router may be down.");
           // A failed read is not a healthy catalog. The old code left the
@@ -1579,6 +1640,8 @@ export default function ChatView({
       historyLoadGenerationRef.current += 1;
       setMessages([]);
       setGoalText(null);
+      setGoalDetails(null);
+      setGoalReadError(null);
       setUsage(null);
       setSuggestions([]);
       return;
@@ -1587,6 +1650,57 @@ export default function ChatView({
       const generation = historyLoadGenerationRef.current + 1;
       historyLoadGenerationRef.current = generation;
       const threadId = activeThreadId!;
+      setGoalReadError(null);
+      // Never leave a previous conversation's goal and controls attached to
+      // this thread while its history and server goal are still loading.
+      setGoalText(null);
+      setGoalDetails(null);
+
+      // Goal state is small and independent from the potentially paginated
+      // history/archive reads. Start it immediately so a slow history request
+      // cannot leave a reopened conversation displaying only its cached goal.
+      async function loadGoal() {
+        try {
+          const threadGoal = await fetchGoal(threadId);
+          if (historyLoadGenerationRef.current !== generation) return;
+          setGoalReadError(null);
+          setGoalDetails(threadGoal.goal ? threadGoal : null);
+          if (threadGoal.goal) {
+            setGoalText(threadGoal.goal);
+            localThreadMetaRef.current[threadId] = {
+              ...(localThreadMetaRef.current[threadId] || {
+                botName: null,
+                goal: null,
+              }),
+              goal: threadGoal.goal,
+            };
+            void persistLocalHistory(
+              () => setThreadMeta(threadId, { goal: threadGoal.goal! }),
+              "The goal loaded, but its local copy could not be updated.",
+            );
+          } else {
+            // A successful empty response is authoritative: clear a stale local
+            // copy instead of presenting it as the active server goal.
+            setGoalText(null);
+            localThreadMetaRef.current[threadId] = {
+              ...(localThreadMetaRef.current[threadId] || { botName: null, goal: null }),
+              goal: null,
+            };
+            void persistLocalHistory(
+              () => setThreadMeta(threadId, { goal: null }),
+              "The server confirmed that this chat has no goal, but the local copy could not be cleared.",
+            );
+          }
+        } catch (error) {
+          if (historyLoadGenerationRef.current === generation) {
+            setGoalDetails(null);
+            setGoalReadError(errMsg(error));
+            setGoalText(localThreadMetaRef.current[threadId]?.goal || null);
+          }
+        }
+      }
+      void loadGoal();
+
       const history = await fetchThreadHistoryResult(threadId);
       if (historyLoadGenerationRef.current !== generation) return;
 
@@ -1635,30 +1749,6 @@ export default function ChatView({
       }
 
       try {
-        const threadGoal = await fetchGoal(threadId);
-        if (historyLoadGenerationRef.current !== generation) return;
-        if (threadGoal.goal) {
-          setGoalText(threadGoal.goal);
-          localThreadMetaRef.current[threadId] = {
-            ...(localThreadMetaRef.current[threadId] || {
-              botName: null,
-              goal: null,
-            }),
-            goal: threadGoal.goal,
-          };
-          void persistLocalHistory(
-            () => setThreadMeta(threadId, { goal: threadGoal.goal! }),
-            "The goal loaded, but its local copy could not be updated.",
-          );
-        } else {
-          setGoalText(localThreadMetaRef.current[threadId]?.goal || null);
-        }
-      } catch {
-        if (historyLoadGenerationRef.current === generation) {
-          setGoalText(localThreadMetaRef.current[threadId]?.goal || null);
-        }
-      }
-      try {
         const tokenUsage = await fetchTokenUsage(threadId);
         if (historyLoadGenerationRef.current === generation)
           setUsage(tokenUsage);
@@ -1669,6 +1759,52 @@ export default function ChatView({
     }
     void loadMessages();
   }, [activeThreadId]);
+
+  // The Gateway attaches the latest completion verdict to the persisted goal
+  // when a run ends. Refresh that state once per run so the goal bar reports
+  // measured continuation/evaluation data instead of staying at its initial
+  // prompt-only snapshot.
+  const goalRunWasLoadingRef = useRef(false);
+  useEffect(() => {
+    if (isLoading) {
+      goalRunWasLoadingRef.current = true;
+      return;
+    }
+    if (!goalRunWasLoadingRef.current) return;
+    goalRunWasLoadingRef.current = false;
+    if (!activeThreadId) return;
+
+    let cancelled = false;
+    const threadId = activeThreadId;
+    void fetchGoal(threadId).then((threadGoal) => {
+      if (cancelled) return;
+      setGoalReadError(null);
+      setGoalDetails(threadGoal.goal ? threadGoal : null);
+      setGoalText(threadGoal.goal);
+      if (threadGoal.goal) {
+        localThreadMetaRef.current[threadId] = {
+          ...(localThreadMetaRef.current[threadId] || { botName: null, goal: null }),
+          goal: threadGoal.goal,
+        };
+        void persistLocalHistory(
+          () => setThreadMeta(threadId, { goal: threadGoal.goal! }),
+          "The latest goal status loaded, but its local copy could not be updated.",
+        );
+      } else {
+        localThreadMetaRef.current[threadId] = {
+          ...(localThreadMetaRef.current[threadId] || { botName: null, goal: null }),
+          goal: null,
+        };
+        void persistLocalHistory(
+          () => setThreadMeta(threadId, { goal: null }),
+          "The server confirmed that this chat has no active goal, but the local copy could not be cleared.",
+        );
+      }
+    }).catch((error) => {
+      if (!cancelled) setGoalReadError(errMsg(error));
+    });
+    return () => { cancelled = true; };
+  }, [activeThreadId, isLoading]);
 
   // Restore this conversation's specialist bot once bots are known.
   useEffect(() => {
@@ -1830,6 +1966,8 @@ export default function ChatView({
     setActiveThreadId(null);
     setMessages([]);
     setGoalText(null);
+    setGoalDetails(null);
+    setGoalReadError(null);
     setUsage(null);
     setSuggestions([]);
     setRequestError(null);
@@ -1876,6 +2014,8 @@ export default function ChatView({
     setActiveThreadId(null);
     setMessages([]);
     setGoalText(null);
+    setGoalDetails(null);
+    setGoalReadError(null);
     setUsage(null);
     setSuggestions([]);
     setRequestError(null);
@@ -2894,21 +3034,25 @@ export default function ChatView({
   const handleSaveGoal = async () => {
     if (!activeThreadId || !goalDraft.trim()) return;
     try {
-      await setGoal(activeThreadId, goalDraft.trim());
-      setGoalText(goalDraft.trim());
+      const savedGoal = await setGoal(activeThreadId, goalDraft.trim());
+      setGoalDetails(savedGoal.goal ? savedGoal : null);
+      setGoalReadError(null);
+      setGoalText(savedGoal.goal);
       setGoalEditing(false);
       localThreadMetaRef.current[activeThreadId] = {
         ...(localThreadMetaRef.current[activeThreadId] || {
           botName: null,
           goal: null,
         }),
-        goal: goalDraft.trim(),
+        goal: savedGoal.goal,
       };
       await persistLocalHistory(
-        () => setThreadMeta(activeThreadId, { goal: goalDraft.trim() }),
+        () => setThreadMeta(activeThreadId, { goal: savedGoal.goal }),
         "The goal is saved on the server, but its local copy could not be updated.",
       );
-      flash("Goal set — the agent works toward it until done.");
+      flash(savedGoal.goal
+        ? "Goal set — the agent works toward it until done."
+        : "The Gateway accepted the request but reported no active goal; no goal is shown.");
     } catch (error) {
       flash(`Couldn't save the goal: ${errMsg(error)}`);
     }
@@ -2919,6 +3063,8 @@ export default function ChatView({
     try {
       await clearGoal(activeThreadId);
       setGoalText(null);
+      setGoalDetails(null);
+      setGoalReadError(null);
       setGoalEditing(false);
       localThreadMetaRef.current[activeThreadId] = {
         ...(localThreadMetaRef.current[activeThreadId] || {
@@ -2931,8 +3077,8 @@ export default function ChatView({
         () => setThreadMeta(activeThreadId, { goal: null }),
         "The goal was cleared on the server, but its local copy could not be updated.",
       );
-    } catch {
-      flash("Couldn't clear the goal.");
+    } catch (error) {
+      flash(`Couldn't clear the goal: ${errMsg(error)}`);
     }
   };
 
@@ -3762,28 +3908,57 @@ export default function ChatView({
                             </button>
                           </div>
                         ) : goal ? (
-                          <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
-                            <Target className="size-3.5 text-primary shrink-0" />
-                            <span className="flex-1 truncate">
-                              <strong>Goal:</strong> {goal}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setGoalDraft(goal);
-                                setGoalEditing(true);
-                              }}
-                              className="text-[11px] text-muted-foreground hover:text-foreground"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleClearGoal}
-                              className="text-[11px] text-muted-foreground hover:text-destructive"
-                            >
-                              Clear
-                            </button>
+                          <div className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                            <div className="flex items-center gap-2">
+                              <Target className="size-3.5 text-primary shrink-0" />
+                              <span className="flex-1 truncate">
+                                <strong>{goalDetails?.status === "completed" ? "Completed goal:" : "Goal:"}</strong> {goal}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setGoalDraft(goal);
+                                  setGoalEditing(true);
+                                }}
+                                className="text-[11px] text-muted-foreground hover:text-foreground"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleClearGoal}
+                                className="text-[11px] text-muted-foreground hover:text-destructive"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                            {goalDetails && (
+                              <div aria-live="polite" aria-atomic="true" className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 border-t border-primary/15 pt-1.5 text-[11px] text-muted-foreground">
+                                <span>Status: {goalDetails.status ?? "not reported"}</span>
+                                <span>
+                                  Automatic turns: {Number.isFinite(goalDetails.continuation_count) && Number.isFinite(goalDetails.max_continuations)
+                                    ? `${goalDetails.continuation_count}/${goalDetails.max_continuations}`
+                                    : "budget not reported"}
+                                </span>
+                                {Number.isFinite(goalDetails.no_progress_count) && Number.isFinite(goalDetails.max_no_progress_continuations) && (
+                                  <span>No-progress turns: {goalDetails.no_progress_count}/{goalDetails.max_no_progress_continuations}</span>
+                                )}
+                                {goalDetails.last_evaluation ? (
+                                  <span className="basis-full">
+                                    Last completion check: {goalDetails.last_evaluation.satisfied === true
+                                      ? "satisfied"
+                                      : goalDetails.last_evaluation.satisfied === false
+                                        ? `not satisfied${goalDetails.last_evaluation.blocker ? ` (${goalDetails.last_evaluation.blocker})` : ""}`
+                                        : "outcome not reported"}
+                                    {goalDetails.last_evaluation.reason ? ` — ${goalDetails.last_evaluation.reason}` : ""}
+                                    {goalDetails.last_evaluation.evidence_summary ? ` Evidence: ${goalDetails.last_evaluation.evidence_summary}` : ""}
+                                    {goalDetails.last_evaluation.stand_down_reason ? ` · Stopped: ${goalDetails.last_evaluation.stand_down_reason}` : ""}
+                                  </span>
+                                ) : (
+                                  <span className="basis-full">Last completion check: not reported yet</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : activeThreadId ? (
                           <button
@@ -3798,6 +3973,11 @@ export default function ChatView({
                             conversation
                           </button>
                         ) : null}
+                        {goalReadError && (
+                          <p role="status" className="mt-1 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-[11px] text-destructive">
+                            Live goal status is unavailable: {goalReadError}. Any displayed goal text is a saved local copy; Gateway status is unknown.
+                          </p>
+                        )}
                       </div>
                     </div>
 

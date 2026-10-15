@@ -446,14 +446,18 @@ tool_governance:
   bash:
     risk_class: execute
     side_effects: [filesystem_read, shell_exec]
-    reversibility: partial
+    reversibility: unknown
+    verification_method: status
     confirmation: ask
   web_fetch:
     risk_class: external
+    reversibility: reversible
+    verification_method: status
     confirmation: auto
   rm_tool:
     risk_class: destructive
     reversibility: irreversible
+    verification_method: existence
     confirmation: block
 ```
 
@@ -480,7 +484,12 @@ assembly time (the same `framework`-hint mechanism), so one declaration
 drives both the discovery catalog's risk level and the call-time decision.
 `guardrails.provider.config.spec` entries win per tool name. A malformed
 declaration raises `GovernanceError` at agent assembly — a typo in policy is
-a startup error, never a mid-run surprise.
+a startup error, never a mid-run surprise. Each entry must declare
+`risk_class`, `confirmation`, `reversibility` and `verification_method`; a
+partial entry is refused at assembly, because a policy that silently defaults
+one of those keys is an unreadable audit rather than a lax default. The
+remaining keys (`permissions`, `side_effects`, `timeout_seconds`, `retry`,
+`notes`) fall back to their documented defaults.
 
 ## Implementing a Provider
 

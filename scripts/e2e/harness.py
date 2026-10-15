@@ -81,7 +81,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -896,7 +896,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     _install_signal_handlers()
 
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     wall_start = time.monotonic()
     steps: list[Step] = []
     errors: list[dict[str, Any]] = []
@@ -921,7 +921,6 @@ def main(argv: list[str] | None = None) -> int:
             teardown_all()
 
         if args.start_frontend:
-            fe_ok, fe_health = request(frontend_base, timeout=15.0).status < 400, {}
             fe_ok2, fe_health = wait_for_frontend(frontend_base, 10.0)
             if not fe_ok2:
                 fe_health = start_frontend(frontend_base, boot_timeout=args.boot_timeout)
@@ -1092,7 +1091,7 @@ def _finish(
 
     result = {
         "schema": "alpha-e2e-driver/v1",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "started_at": started_at.isoformat(),
         "wall_clock_s": wall_s,
         "verdict": verdict,
@@ -1126,7 +1125,10 @@ def _finish(
         print(f"answer  : {answer[:200] if answer else '(none)'}", flush=True)
     if tokens:
         cs = tokens.get("client_side") or {}
-        print(f"tokens  : client-side {cs.get('total_tokens')} (in {cs.get('input_tokens')} / out {cs.get('output_tokens')}) · server-reported {tokens.get('server_reported') if tokens.get('server_reported') is not None else 'NOT REPORTED'}", flush=True)
+        print(
+            f"tokens  : client-side {cs.get('total_tokens')} (in {cs.get('input_tokens')} / out {cs.get('output_tokens')}) · server-reported {tokens.get('server_reported') if tokens.get('server_reported') is not None else 'NOT REPORTED'}",
+            flush=True,
+        )
     print(f"result  : {result['artifacts']['result_json']}", flush=True)
 
     return 0 if verdict == "pass" else 1

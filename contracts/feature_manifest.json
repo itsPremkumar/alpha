@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-15T02:36:50Z",
+ "generated_at": "2026-10-15T14:10:02Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1775,6 +1775,13 @@
    "state": "wired"
   },
   {
+   "id": "alpha.agents.middlewares.fleet_stop_middleware",
+   "module": "alpha.agents.middlewares.fleet_stop_middleware",
+   "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "alpha.agents.middlewares.grounding_middleware",
    "module": "alpha.agents.middlewares.grounding_middleware",
    "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
@@ -2011,6 +2018,13 @@
    "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
    "wired": true,
    "state": "wired"
+  },
+  {
+   "id": "alpha.agents.middlewares.trajectory_middleware",
+   "module": "alpha.agents.middlewares.trajectory_middleware",
+   "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
+   "wired": false,
+   "state": "intentionally_unwired"
   },
   {
    "id": "alpha.agents.middlewares.uploads_middleware",

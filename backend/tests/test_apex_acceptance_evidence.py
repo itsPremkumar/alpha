@@ -11,7 +11,7 @@ The rules each test pins:
   unreadable or malformed source is never guessed into a verdict.
 - A criterion with no record stays ``UNVERIFIED``; the report is not a pass and
   ``assert_acceptance_passed`` refuses with its own reason.
-- Two records for one criterion â€” including two that contradict each other â€”
+- Two records for one criterion — including two that contradict each other —
   decide nothing. Picking one would let a duplicate silently win.
 - A record for a criterion nobody declared is a note, not coverage.
 - ``measured`` must be a real ``bool``; a truthy string is refused at

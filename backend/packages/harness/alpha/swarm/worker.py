@@ -14,6 +14,7 @@ tests replace to stay offline (``test_swarm_worker_execution.py`` and the
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol
@@ -401,15 +402,85 @@ class EphemeralSubagentWorker:
 
 
 class CodingWorktreeWorker:
-    """Executes code modification tasks in an isolated Git worktree."""
+    """Executes code modification tasks in an isolated Git worktree.
 
-    def __init__(self, repo_root: Path | str, branch_name: str):
-        self.manager = WorktreeManager(repo_root=repo_root)
+    This worker used to stop at "worktree created, patch file written" and
+    report ``success`` — nothing was applied, committed, or merge-checked, so a
+    completed coding task left a branch with zero commits and a diff that had
+    never been seen by git. It now does the whole job, and reports only what
+    git actually did:
+
+    * the model's diff is written to ``<task>.patch`` and applied with
+      ``git apply`` **inside the worktree** — a diff git rejects raises, so an
+      unappliable patch is an honest task failure rather than a silent success;
+    * the patch file is removed before staging, so the artifact that carried
+      the change is never itself committed onto the branch;
+    * ``auto_commit`` stages and commits the applied change on the worktree's
+      branch with an inline committer identity (this repository's git config
+      is not the agent's to assume), reporting the real commit SHA;
+    * ``simulate_merge`` judges the branch against the base in a detached
+      throwaway worktree and reports the measured outcome — ``clean``,
+      ``conflicted`` (with the files git named), or ``failed`` — and never
+      labels a clean textual merge as correct, tested, or safe.
+
+    ``base_worktree_dir`` places the worktree in runtime-owned state rather
+    than inside the repository tree, matching how every other worktree caller
+    in this package scopes its directory.
+    """
+
+    #: Committer identity used for the inline ``-c`` flags on ``git commit``.
+    #: The agent must not depend on (or mutate) the operator's git config.
+    _COMMIT_NAME = "Alpha Swarm Worker"
+    _COMMIT_EMAIL = "swarm@alpha.local"
+
+    def __init__(
+        self,
+        repo_root: Path | str,
+        branch_name: str,
+        *,
+        base_worktree_dir: Path | str | None = None,
+        auto_commit: bool = False,
+        simulate_merge: bool = False,
+    ):
+        self.manager = WorktreeManager(repo_root=repo_root, base_worktree_dir=base_worktree_dir)
         self.branch_name = branch_name
+        self.auto_commit = bool(auto_commit)
+        self.simulate_merge = bool(simulate_merge)
         self.context: object = None
 
     def set_context(self, context: object) -> None:
         self.context = context
+
+    def _apply_patch(self, worktree_path: Path, patch_file: Path) -> None:
+        """Apply the authored diff inside the worktree, or fail loudly."""
+        proc = self.manager.run_in_worktree(
+            worktree_path,
+            ["apply", "--", patch_file.name],
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"git apply failed in worktree {self.branch_name!r} for {patch_file.name} (exit {proc.returncode}): {(proc.stderr or proc.stdout).strip() or 'no git output'}")
+
+    def _commit(self, worktree_path: Path, task: SwarmTaskNode) -> str:
+        """Stage and commit everything the apply produced; return the SHA."""
+        self.manager.run_in_worktree(worktree_path, ["add", "-A"], check=True)
+        message = f"swarm({task.task_id}): apply task changes on {self.branch_name}"
+        commit = self.manager.run_in_worktree(
+            worktree_path,
+            [
+                "-c",
+                f"user.name={self._COMMIT_NAME}",
+                "-c",
+                f"user.email={self._COMMIT_EMAIL}",
+                "commit",
+                "-m",
+                message,
+            ],
+            check=False,
+        )
+        if commit.returncode != 0:
+            raise RuntimeError(f"git commit failed in worktree {self.branch_name!r} (exit {commit.returncode}): {(commit.stderr or commit.stdout).strip() or 'no git output'}")
+        return self.manager.run_in_worktree(worktree_path, ["rev-parse", "HEAD"], check=True).stdout.strip()
 
     def execute_task(self, task: SwarmTaskNode, plan: SwarmPlan) -> dict[str, Any]:
         label = "worktree coder"
@@ -429,25 +500,121 @@ class CodingWorktreeWorker:
             worker_label=label,
             context=getattr(self, "context", None),
         )
+        model_label = _model_label(model, None)
+
+        if diff_text.strip() == "NO_CHANGES":
+            # The model said the objective needs no edit. Creating a worktree
+            # for a task that writes nothing would manufacture side effects to
+            # justify a "coding" run that produced no code.
+            return {
+                "status": "success",
+                "summary": f"No file changes required for: {task.objective}",
+                "evidence": [
+                    {
+                        "source": "worktree",
+                        "branch": self.branch_name,
+                        "changes_authored": False,
+                        "model": model_label,
+                    }
+                ],
+                "artifacts": list(task.output_artifacts),
+                "usage": usage,
+                "tool_calls": 1,
+                "model": model_label,
+                "result_payload": {"branch": self.branch_name, "changes_authored": False},
+            }
 
         worktree = self.manager.create_worktree(branch_name=self.branch_name)
-        patch_file = Path(worktree.path) / f"{task.task_id}.patch"
-        patch_file.write_text(diff_text, encoding="utf-8")
+        worktree_path = Path(worktree.path)
+        patch_file = worktree_path / f"{task.task_id}.patch"
+        # A unified diff is an LF format. Writing it with the platform default
+        # on Windows produces CRLF, which `git apply` then rejects against a
+        # repository whose checkout is line-ending-normalised — the worker
+        # would fail every task on Windows for a reason the model never caused.
+        patch_file.write_text(diff_text, encoding="utf-8", newline="\n")
+
+        applied = False
+        commit_sha: str | None = None
+        simulation: dict[str, Any] | None = None
+        try:
+            self._apply_patch(worktree_path, patch_file)
+            applied = True
+            # The patch file carried the change; it is not part of it, and
+            # committing it would put a stale diff on the branch.
+            patch_file.unlink(missing_ok=True)
+            if self.auto_commit:
+                commit_sha = self._commit(worktree_path, task)
+            if self.simulate_merge:
+                safe_task_id = re.sub(r"[^A-Za-z0-9._-]", "-", task.task_id).strip("-.") or "task"
+                simulation = self.manager.simulate_merge(
+                    base_ref="HEAD",
+                    head_ref=self.branch_name,
+                    name=f"sim-{safe_task_id}"[:100],
+                )
+                simulation = {
+                    **simulation.to_dict(),
+                    # ``to_dict`` deliberately omits the operator-facing
+                    # statement; a swarm evidence record must carry it, or the
+                    # "clean means mergeable, not correct" caveat never reaches
+                    # the operator reading the task result.
+                    "disclosure": simulation.disclosure(),
+                }
+        except Exception:
+            # An apply that failed leaves the patch on disk: it is the only
+            # record of what was attempted, and the worktree is recoverable.
+            if applied:
+                patch_file.unlink(missing_ok=True)
+            raise
+
+        summary = f"Authored patch {patch_file.name} in worktree {worktree_path.name} ({self.branch_name}) for: {task.objective}; applied via git apply"
+        if commit_sha:
+            summary += f"; committed {commit_sha[:12]} on {self.branch_name}"
+        if simulation is not None:
+            summary += f"; merge simulation into HEAD: {simulation['outcome']}"
+
+        evidence: list[dict[str, Any]] = [
+            {
+                "source": "worktree",
+                "branch": self.branch_name,
+                "patch_file": str(patch_file),
+                "applied": applied,
+                "committed": commit_sha is not None,
+                "commit_sha": commit_sha,
+                "model": model_label,
+            }
+        ]
+        if simulation is not None:
+            evidence.append(
+                {
+                    "source": "merge_simulation",
+                    "base_ref": simulation["base_ref"],
+                    "head_ref": self.branch_name,
+                    "outcome": simulation["outcome"],
+                    "is_mergeable": simulation["is_mergeable"],
+                    "conflicted_files": simulation["conflicted_files"],
+                    "disclosure": simulation["disclosure"],
+                }
+            )
+
+        artifacts = list(task.output_artifacts)
+        if patch_file.exists():
+            artifacts.append(str(patch_file))
+        if commit_sha:
+            artifacts.append(f"refs/heads/{self.branch_name}@{commit_sha}")
 
         return {
             "status": "success",
-            "summary": (f"Authored patch {patch_file.name} in worktree {Path(worktree.path).name} ({self.branch_name}) for: {task.objective}"),
-            "worktree_path": str(worktree.path),
-            "evidence": [
-                {
-                    "source": "worktree",
-                    "branch": self.branch_name,
-                    "patch_file": str(patch_file),
-                    "model": _model_label(model, None),
-                }
-            ],
-            "artifacts": list(task.output_artifacts) + [str(patch_file)],
+            "summary": summary,
+            "worktree_path": str(worktree_path),
+            "evidence": evidence,
+            "artifacts": artifacts,
             "usage": usage,
             "tool_calls": 1,
-            "model": _model_label(model, None),
+            "model": model_label,
+            "result_payload": {
+                "branch": self.branch_name,
+                "applied": applied,
+                "commit_sha": commit_sha,
+                "merge_simulation": simulation,
+            },
         }

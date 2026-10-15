@@ -98,6 +98,9 @@ def test_thread_token_usage_serializes_context_percentage(monkeypatch: pytest.Mo
         "token_count": 350,
         "max_context_tokens": 1000,
         "percentage": 35.0,
+        # No ``context_window`` policy in this app: the API reports the block's
+        # absence as an explicit ``null``, never a default band.
+        "pressure": None,
     }
 
 
@@ -161,6 +164,9 @@ async def test_build_context_usage_counts_materialized_messages(monkeypatch: pyt
         "token_count": 250,
         "max_context_tokens": 1000,
         "percentage": 25.0,
+        # The app config in this test has no ``context_window`` section, so the
+        # pressure block reports its own absence rather than a default band.
+        "pressure": None,
     }
 
 

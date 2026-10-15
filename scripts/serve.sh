@@ -131,6 +131,33 @@ _is_alpha_pid() {
         return 0
     fi
 
+    # Git Bash cannot reliably use /proc or lsof to identify the Windows
+    # process that owns a Node/uv listener. Ask CIM for its executable and
+    # command line, and accept it only when a path is inside a registered
+    # Alpha worktree (with a separator boundary, so `alpha-scratch` cannot
+    # match `alpha`).
+    if command -v powershell.exe >/dev/null 2>&1 &&
+        ALPHA_PID="$pid" ALPHA_ROOTS="$ALPHA_ROOTS" powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '
+$ErrorActionPreference = "SilentlyContinue"
+$process = Get-CimInstance -ClassName Win32_Process -Filter ("ProcessId={0}" -f [int]$env:ALPHA_PID)
+for ($depth = 0; $null -ne $process -and $depth -lt 8; $depth++) {
+    $identity = (([string]$process.ExecutablePath) + "`n" + [string]$process.CommandLine).Replace("/", "\")
+    foreach ($root in ($env:ALPHA_ROOTS -split "`n")) {
+        $root = ([string]$root).Trim().Replace("/", "\").TrimEnd("\")
+        if (-not $root) { continue }
+        if ($identity.IndexOf($root + "\", [StringComparison]::OrdinalIgnoreCase) -ge 0) { exit 0 }
+    }
+    $parentId = [int]$process.ParentProcessId
+    if (-not $parentId -or $parentId -eq [int]$process.ProcessId) { break }
+    $parent = Get-CimInstance -ClassName Win32_Process -Filter ("ProcessId={0}" -f $parentId)
+    if ($null -eq $parent -or $parent.CreationDate -gt $process.CreationDate) { break }
+    $process = $parent
+}
+exit 1
+' >/dev/null 2>&1; then
+        return 0
+    fi
+
     files=$(lsof -b -w -p "$pid" 2>/dev/null) || return 1
     while IFS= read -r root; do
         [ -n "$root" ] || continue
@@ -140,23 +167,35 @@ _is_alpha_pid() {
     done <<< "$ALPHA_ROOTS"
     return 1
 }
-_is_alpha_pid() { _is_alpha_pid "$@"; }
+
+_port_listener_pids() {
+    local port=$1
+    if command -v powershell.exe >/dev/null 2>&1; then
+        ALPHA_PORT="$port" powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '
+$ErrorActionPreference = "SilentlyContinue"
+Get-NetTCPConnection -LocalPort ([int]$env:ALPHA_PORT) -State Listen |
+    Select-Object -ExpandProperty OwningProcess -Unique
+' 2>/dev/null | tr -d '\r'
+        return
+    fi
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true
+}
 
 # Report ports about to be reclaimed from a *different* worktree, so stopping
 # (or starting, which stops first) isn't silently killing someone else's run.
 _report_reclaimed_ports() {
     local port pid files root owner
     for port in 8001 3000 2026; do
-        for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null); do
+        for pid in $(_port_listener_pids "$port"); do
             _is_alpha_pid "$pid" || continue
-            files=$(lsof -b -w -p "$pid" 2>/dev/null)
+            files=$(lsof -b -w -p "$pid" 2>/dev/null || true)
             case "$files" in *"$REPO_ROOT"/*) continue ;; esac  # this worktree — normal
             owner=""
             while IFS= read -r root; do
                 [ -n "$root" ] || continue
                 case "$files" in *"$root"/*) owner="$root"; break ;; esac
             done <<< "$ALPHA_ROOTS"
-            echo "  ↻ Reclaiming port $port from another worktree: ${owner:-?}"
+            echo "  ↻ Reclaiming port $port from another worktree: ${owner:-Alpha worktree PID $pid}"
             break
         done
     done
@@ -193,15 +232,31 @@ _kill_repo_port() {
                 *) pids="$pids $pid" ;;
             esac
         fi
-    done < <(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+    done < <(_port_listener_pids "$port")
 
     if [ -n "$pids" ]; then
-        kill -9 $pids 2>/dev/null || true
+        if command -v taskkill.exe >/dev/null 2>&1; then
+            for pid in $pids; do
+                taskkill.exe /F /T /PID "$pid" >/dev/null 2>&1 || true
+            done
+        else
+            kill -9 $pids 2>/dev/null || true
+        fi
     fi
 }
 
 _is_port_listening() {
     local port=$1
+
+    if command -v powershell.exe >/dev/null 2>&1; then
+        if ALPHA_PORT="$port" powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '
+$ErrorActionPreference = "SilentlyContinue"
+if (Get-NetTCPConnection -LocalPort ([int]$env:ALPHA_PORT) -State Listen) { exit 0 }
+exit 1
+' >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
 
     if command -v lsof >/dev/null 2>&1; then
         if lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1; then

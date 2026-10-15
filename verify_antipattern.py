@@ -8,9 +8,14 @@ name_blank = "skill \r\n"
 pat = re.compile(r"^[a-z0-9-]+$")
 
 cases = [
-    name_cr, name_lf, name_blank,
-    "alpha\r", "alpha\n", "alpha \r\n",
-    "valid-skill", "skill\\r",
+    name_cr,
+    name_lf,
+    name_blank,
+    "alpha\r",
+    "alpha\n",
+    "alpha \r\n",
+    "valid-skill",
+    "skill\\r",
 ]
 print("== re.match(r'^[a-z0-9-]+$', name) on stripped-vs-crlf ==")
 for s in cases:

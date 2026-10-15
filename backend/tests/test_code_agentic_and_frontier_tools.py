@@ -3,11 +3,15 @@
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from alpha.tools.builtins.astra_security_tool import astra_security_manage
 from alpha.tools.builtins.code_agentic_core import (
+    _detect_test_command,
     auto_test_and_repair,
     generate_repo_map,
     manage_code_checkpoint,
@@ -25,9 +29,25 @@ from alpha.tools.builtins.mission_hierarchy_tool import (
 class TestCodeAgenticAndFrontierTools(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp(prefix="alpha_test_")
+        self._workspace_roots_patch = patch.dict(os.environ, {"ALPHA_WORKSPACE_ROOTS": self.test_dir})
+        self._workspace_roots_patch.start()
 
     def tearDown(self):
+        self._workspace_roots_patch.stop()
         shutil.rmtree(self.test_dir, ignore_errors=True)
+
+    def test_test_discovery_prefers_active_python_to_global_pytest(self):
+        with open(os.path.join(self.test_dir, "pyproject.toml"), "w", encoding="utf-8") as f:
+            f.write("[tool.pytest.ini_options]\n")
+        with (
+            patch("alpha.tools.builtins.code_agentic_core.importlib.util.find_spec", return_value=object()),
+            patch(
+                "alpha.tools.builtins.code_agentic_core.shutil.which",
+                side_effect=lambda name: "global-pytest" if name == "pytest" else None,
+            ),
+        ):
+            command = _detect_test_command(Path(self.test_dir))
+        self.assertEqual(command, f'"{sys.executable}" -m pytest')
 
     def test_generate_repo_map(self):
         pkg_dir = os.path.join(self.test_dir, "sample_pkg")
@@ -158,20 +178,20 @@ class TestCodeAgenticAndFrontierTools(unittest.TestCase):
 
     def test_auto_test_and_repair(self):
         # Create a passing test in test_dir
+        with open(os.path.join(self.test_dir, "pyproject.toml"), "w", encoding="utf-8") as f:
+            f.write("[tool.pytest.ini_options]\n")
         test_py = os.path.join(self.test_dir, "test_sample.py")
         with open(test_py, "w", encoding="utf-8") as f:
             f.write("def test_ok():\n    assert 1 + 1 == 2\n")
 
-        import sys
-
-        res = auto_test_and_repair.invoke(
-            {
-                "root_path": self.test_dir,
-                "test_command": f'"{sys.executable}" -m pytest test_sample.py',
-            }
-        )
+        with patch.dict(os.environ, {"ALPHA_WORKSPACE_ROOTS": self.test_dir}):
+            res = auto_test_and_repair.invoke(
+                {
+                    "root_path": self.test_dir,
+                }
+            )
         data = json.loads(res)
-        self.assertEqual(data.get("status"), "passed")
+        self.assertEqual(data.get("status"), "passed", res)
         self.assertEqual(data.get("failure_count"), 0)
 
 

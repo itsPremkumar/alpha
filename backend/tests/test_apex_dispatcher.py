@@ -428,8 +428,9 @@ async def test_completed_apex_run_auto_verifies_explicit_file_readback(tmp_path:
             )
 
     class ReadbackEventStore:
-        async def list_events(self, thread, run, *, event_types, limit, after_seq):
+        async def list_events(self, thread, run, *, event_types, limit, after_seq, user_id=None):
             assert (thread, run) == (thread_id, "run-apex-readback")
+            assert user_id == owner
             assert after_seq == 0
             return [
                 {"seq": 1, "event_type": "llm.ai.response", "content": {"type": "ai", "tool_calls": [{"id": "write-1", "name": "write_file", "args": {"path": "/workspace/marker.txt", "content": expected}}]}},

@@ -18,9 +18,9 @@ from pathlib import Path
 HARNESS = Path(__file__).resolve().parent / "backend" / "packages" / "harness"
 sys.path.insert(0, str(HARNESS))
 
-from alpha.modes import ModeViolation, WorkMode, assert_allowed, can_escalate, capabilities_for, parse_mode  # noqa: E402
-from alpha.experts import ExpertCatalog, ExpertError, ExpertRegistry  # noqa: E402
 from alpha.automations import Automation, AutomationSchedule, AutomationStore, Frequency, next_run, to_rrule  # noqa: E402
+from alpha.experts import ExpertCatalog, ExpertError, ExpertRegistry  # noqa: E402
+from alpha.modes import ModeViolation, WorkMode, assert_allowed, can_escalate, capabilities_for, parse_mode  # noqa: E402
 
 CHECKS: list[tuple[str, bool]] = []
 
@@ -74,9 +74,7 @@ reg = ExpertRegistry(work / "experts.json")
 reg.install_group("content-creation", enable=True)
 reg.install_expert("data-analyst", enable=True)
 reloaded = ExpertRegistry(work / "experts.json")
-check("2.3  installed experts/groups survive a restart",
-      set(reloaded.enabled_ids()) == {"content-creation", "data-analyst"},
-      f"enabled: {reloaded.enabled_ids()}")
+check("2.3  installed experts/groups survive a restart", set(reloaded.enabled_ids()) == {"content-creation", "data-analyst"}, f"enabled: {reloaded.enabled_ids()}")
 must_raise("2.4  installing an unknown expert is refused", ExpertError, reg.install_expert, "ghost")
 
 # ---------------------------------------------------------------------
@@ -93,19 +91,13 @@ for aid, name, prompt, sched in specs:
     nxt = next_run(sched, now)
     print(f"  {name:16s} next={nxt.isoformat(sep=' ')}  rrule={to_rrule(sched)}")
 
-check("3.1  daily automation fires tomorrow at 08:00",
-      next_run(specs[0][3], now) == datetime(2026, 10, 1, 8, 0))
-check("3.2  weekly automation fires on Friday",
-      next_run(specs[1][3], now) == datetime(2026, 10, 2, 17, 0))
-check("3.3  monthly automation fires on the 1st",
-      next_run(specs[2][3], now) == datetime(2026, 10, 1, 9, 0))
-check("3.4  RRULE emitted for a weekly schedule",
-      to_rrule(specs[1][3]) == "FREQ=WEEKLY;BYDAY=FR;BYHOUR=17;BYMINUTE=0",
-      to_rrule(specs[1][3]))
+check("3.1  daily automation fires tomorrow at 08:00", next_run(specs[0][3], now) == datetime(2026, 10, 1, 8, 0))
+check("3.2  weekly automation fires on Friday", next_run(specs[1][3], now) == datetime(2026, 10, 2, 17, 0))
+check("3.3  monthly automation fires on the 1st", next_run(specs[2][3], now) == datetime(2026, 10, 1, 9, 0))
+check("3.4  RRULE emitted for a weekly schedule", to_rrule(specs[1][3]) == "FREQ=WEEKLY;BYDAY=FR;BYHOUR=17;BYMINUTE=0", to_rrule(specs[1][3]))
 
 reloaded_store = AutomationStore(work / "automations.json")
-check("3.5  automations survive a restart", len(reloaded_store.list()) == 3,
-      f"{[a.name for a in reloaded_store.list()]}")
+check("3.5  automations survive a restart", len(reloaded_store.list()) == 3, f"{[a.name for a in reloaded_store.list()]}")
 reloaded_store.set_enabled("daily-brief", False)
 check("3.6  an automation can be paused", "daily-brief" not in {a.id for a in reloaded_store.enabled()})
 

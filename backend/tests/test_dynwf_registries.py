@@ -1,10 +1,10 @@
 """W-N3 registry wave: discovery-plane descriptors for the dynamic workflow.
 
-Covers the five ``alpha.workflow.registry`` registries (list/describe/health)
+Covers all ``alpha.workflow.registry`` registries (list/describe/health)
 plus the honesty invariants the wave commits to:
 
-- every descriptor validates, carries an allowed ``evidence_kind``, and pins
-  ``version=None`` (no source declares a version today — nothing is invented);
+- every descriptor validates and carries an allowed ``evidence_kind``; only the
+  runtime identity may carry the release version declared by its source;
 - ``availability="unavailable"`` always carries a non-empty ``reason``;
 - no descriptor claims runtime health (``health`` stays ``unverified`` — W-N3
   executes nothing);
@@ -46,14 +46,26 @@ def _assert_descriptor_invariants(descriptor: CapabilityDescriptor) -> None:
     assert descriptor.source, "descriptor source must be non-empty"
     assert descriptor.evidence_kind in _ALLOWED_EVIDENCE
     assert descriptor.health in _ALLOWED_HEALTH, f"W-N3 executes nothing, so no descriptor may claim runtime health: {descriptor.id} health={descriptor.health!r}"
-    assert descriptor.version is None, f"no source declares a version today; W-N3 must not invent one: {descriptor.id} version={descriptor.version!r}"
+    assert descriptor.version is None or descriptor.kind == "runtime_identity", f"only runtime identity declares a version: {descriptor.id} version={descriptor.version!r}"
     if descriptor.availability == "unavailable":
         assert descriptor.reason and descriptor.reason.strip(), f"unavailable descriptor must carry an honest reason: {descriptor.id}"
 
 
-def test_facade_exposes_all_five_registry_kinds() -> None:
+def test_facade_exposes_all_registry_kinds() -> None:
     facade = WorkflowRegistry()
-    assert REGISTRY_KINDS == ("capabilities", "tools", "skills", "mcp", "memory")
+    assert REGISTRY_KINDS == (
+        "identity",
+        "tools",
+        "skills",
+        "mcp",
+        "models",
+        "bots",
+        "commands",
+        "capabilities",
+        "engines",
+        "wiring",
+        "memory",
+    )
     for kind in REGISTRY_KINDS:
         registry = facade.registry(kind)
         assert registry.name == kind

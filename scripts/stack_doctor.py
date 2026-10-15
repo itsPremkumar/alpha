@@ -149,30 +149,20 @@ def diagnose(svc: dict[str, Any], timeout: float) -> Finding:
     elif status is not None:
         state = SERVING_ERROR
         reason = f"HTTP {status} in {elapsed:.2f}s"
-        fix = (
-            "The process is up and answering with an error. Read the body below - "
-            "this is an application fault, not a startup fault."
-        )
+        fix = "The process is up and answering with an error. Read the body below - this is an application fault, not a startup fault."
     elif transport_error and "timed out" in transport_error.lower():
         if not listening:
             state = UNREACHABLE
             reason = f"nothing is listening on {port}; {transport_error}"
-            fix = f"Start it: make dev-daemon (expect ~5 min to be ready)."
+            fix = "Start it: make dev-daemon (expect ~5 min to be ready)."
         else:
             state = STARTING
-            reason = (
-                f"port {port} is bound but no response in {timeout:.0f}s "
-                f"({transport_error}); process alive={alive}"
-            )
-            fix = (
-                "Listening but not answering is a cold compile, not a crash. "
-                "A `next dev` first response is measured at ~880s in this repo. "
-                "Wait, or run `next build` once so the launcher serves the build instead."
-            )
+            reason = f"port {port} is bound but no response in {timeout:.0f}s ({transport_error}); process alive={alive}"
+            fix = "Listening but not answering is a cold compile, not a crash. A `next dev` first response is measured at ~880s in this repo. Wait, or run `next build` once so the launcher serves the build instead."
     elif not listening:
         state = UNREACHABLE
         reason = f"nothing is listening on {port}"
-        fix = f"Start it: make dev-daemon"
+        fix = "Start it: make dev-daemon"
     else:
         state = LISTENING_NO_HTTP
         reason = f"port {port} bound, transport failed: {transport_error}"

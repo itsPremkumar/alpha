@@ -38,7 +38,7 @@ export interface BotLivenessStripProps {
     stalled_workers: Array<{
       bot_name: string | null;
       active_task_id: string | null;
-    }>;
+    }> | null;
   } | null;
   reason?: string;
   onRetry?: () => void;
@@ -122,8 +122,7 @@ export function BotLivenessStrip({
   }
 
   const s = overview.summary;
-  const stalledNames = overview.stalled_workers
-    .map((w) => w.bot_name)
+  const stalledNames = overview.stalled_workers?.map((w) => w.bot_name)
     .filter((n): n is string => typeof n === "string" && n.length > 0);
 
   return (
@@ -181,9 +180,14 @@ export function BotLivenessStrip({
           )}
         </span>
         {overview.timestamp && <span>· measured {overview.timestamp}</span>}
-        {stalledNames.length > 0 && (
+        {stalledNames && stalledNames.length > 0 && (
           <span className="text-destructive">
             · stalled: {stalledNames.join(", ")}
+          </span>
+        )}
+        {overview.stalled_workers === null && s.stalled !== 0 && (
+          <span title="The Gateway did not report the stalled-worker detail list">
+            · stalled worker names not reported
           </span>
         )}
         {/* The run-store reading, in words when it is absent. A bot with a run

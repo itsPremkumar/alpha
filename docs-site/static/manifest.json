@@ -1,0 +1,21 @@
+{
+  "name": "Alpha Documentation",
+  "short_name": "Alpha Docs",
+  "description": "Alpha - an autonomous AI agent framework with sandboxed execution, persistent memory, subagent delegation, and extensible tooling.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060b14",
+  "theme_color": "#091E42",
+  "icons": [
+    {
+      "src": "/img/logo.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    },
+    {
+      "src": "/img/favicon.ico",
+      "sizes": "48x48 32x32 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

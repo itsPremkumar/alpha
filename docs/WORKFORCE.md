@@ -120,6 +120,11 @@ sent.
 - **Health monitoring** - track last active, error rate
 - **Presence** - online/offline/busy status
 
+The Bots liveness strip keeps fleet counts separate from the stalled-worker
+detail list. If the Gateway reports stalled workers but omits their names, the
+UI shows the measured count and says the names were not reported; an omitted
+list is never treated as a confirmed empty list.
+
 ### Creating a specialist with Bot Forge
 
 `bot_roster(action="forge")` transactionally creates the Bot profile, tailored

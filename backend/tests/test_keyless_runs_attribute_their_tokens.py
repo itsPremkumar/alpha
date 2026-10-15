@@ -39,7 +39,7 @@ from alpha.runtime.journal import RunJournal
 class _Result:
     """Stands in for `FreeChatResult` without a live provider."""
 
-    def __init__(self, provider="vireonix", model_id="auto", text="hello", usage=None, latency_ms=12.3):
+    def __init__(self, provider="vireonix", model_id="auto", text="hello", usage=None, latency_ms=12.3, reasoning=None):
         self.provider = provider
         self.model_id = model_id
         self.text = text
@@ -47,6 +47,7 @@ class _Result:
         self.invalid = []
         self.usage = usage or {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
         self.latency_ms = latency_ms
+        self.reasoning = reasoning
 
 
 def _message(result) -> AIMessage:

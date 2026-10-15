@@ -9,7 +9,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from alpha.extensions.registry import ExtensionRegistry
 from alpha.runtime.checkpoint_state import CheckpointStateAccessor, build_state_mutation_graph
-from alpha.runtime.goal import GoalEvaluation, attach_goal_evaluation, build_goal_state, latest_visible_assistant_signature, read_thread_goal, write_thread_goal
+from alpha.runtime.goal import GoalEvaluation, attach_goal_evaluation, build_goal_state, read_thread_goal, visible_conversation_signature, write_thread_goal
 from alpha.runtime.runs import worker
 from alpha.runtime.runs.manager import RunRecord, RunStartOutcome
 from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
@@ -196,13 +196,16 @@ async def test_goal_worker_returns_hidden_continuation_when_goal_is_unmet(monkey
 
 
 @pytest.mark.asyncio
-async def test_goal_worker_clears_goal_when_evaluator_is_satisfied(monkeypatch):
+async def test_goal_worker_persists_completion_receipt_when_evaluator_is_satisfied(monkeypatch):
     checkpointer = InMemorySaver()
     thread_id = "done-goal-thread"
     await _seed_goal_thread(checkpointer, thread_id=thread_id, goal_text="Finish all tests")
     bridge = _CollectingBridge()
+    evaluation_calls = 0
 
     async def fake_evaluate_goal_completion(_goal, _messages, **_kwargs):
+        nonlocal evaluation_calls
+        evaluation_calls += 1
         return GoalEvaluation(
             satisfied=True,
             blocker="none",
@@ -223,7 +226,28 @@ async def test_goal_worker_clears_goal_when_evaluator_is_satisfied(monkeypatch):
     )
 
     assert continuation is None
-    assert await read_thread_goal(checkpointer, thread_id) is None
+    completed_goal = await read_thread_goal(checkpointer, thread_id)
+    assert completed_goal is not None
+    assert completed_goal["status"] == "completed"
+    assert completed_goal["objective"] == "Finish all tests"
+    assert completed_goal["last_evaluation"]["satisfied"] is True
+    assert completed_goal["last_evaluation"]["blocker"] == "none"
+    assert completed_goal["last_evaluation"]["run_id"] == "run-2"
+    assert completed_goal["last_evaluation"]["reason"] == "The visible conversation says the task is done."
+    assert completed_goal["last_evaluation"]["evidence_summary"] == "Done."
+    assert evaluation_calls == 1
+
+    second_continuation = await worker._prepare_goal_continuation_input(
+        accessor=_full_accessor(checkpointer),
+        bridge=bridge,
+        checkpointer=checkpointer,
+        thread_id=thread_id,
+        run_id="run-3",
+        model_name="test-model",
+        app_config=None,
+    )
+    assert second_continuation is None
+    assert evaluation_calls == 1
     assert bridge.events[0][0] == "values"
 
 
@@ -326,7 +350,7 @@ async def test_goal_worker_stands_down_when_no_progress_repeats(monkeypatch):
     # Seed the prior evaluation with the SAME visible assistant evidence the worker
     # will recompute, so the no-progress breaker recognises the stalled turn even
     # though the evaluator may reword its free-text reason.
-    evidence_signature = latest_visible_assistant_signature(messages)
+    evidence_signature = visible_conversation_signature(messages)
     await write_thread_goal(
         checkpointer,
         thread_id,

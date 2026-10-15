@@ -9,6 +9,7 @@ still runs a complete, healthy system.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
 from collections.abc import Callable
@@ -522,7 +523,19 @@ def _projected_dispatch_status(status: str) -> str:
     return _APEX_PROJECTED_RUN_STATUSES.get(status, status)
 
 
-async def _complete_apex_run_event_scan(event_store: Any, *, thread_id: str, run_id: str) -> list[dict[str, Any]] | None:
+async def _list_apex_run_events(event_store: Any, thread_id: str, run_id: str, *, user_id: str, **kwargs: Any) -> list[dict[str, Any]]:
+    """Read run events in an explicit owner scope outside HTTP request context."""
+    list_events = event_store.list_events
+    try:
+        parameters = inspect.signature(list_events).parameters.values()
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("Cannot determine whether the run event store supports owner scoping") from exc
+    if any(parameter.name == "user_id" or parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters):
+        kwargs["user_id"] = user_id
+    return await list_events(thread_id, run_id, **kwargs)
+
+
+async def _complete_apex_run_event_scan(event_store: Any, *, thread_id: str, run_id: str, user_id: str) -> list[dict[str, Any]] | None:
     """Read a bounded, complete run event stream or refuse automatic evidence.
 
     A full final page means the scan may be truncated. Missing, malformed, or
@@ -532,9 +545,11 @@ async def _complete_apex_run_event_scan(event_store: Any, *, thread_id: str, run
     cursor = 0
     rows: list[dict[str, Any]] = []
     for _ in range(20):
-        page = await event_store.list_events(
+        page = await _list_apex_run_events(
+            event_store,
             thread_id,
             run_id,
+            user_id=user_id,
             event_types=["llm.ai.response", "llm.tool.result"],
             limit=500,
             after_seq=cursor,
@@ -649,9 +664,11 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                 if event_store is not None:
                     cursor = int(session.usage.event_cursors.get(session.run_id, 0))
                     for _ in range(20):
-                        events = await event_store.list_events(
+                        events = await _list_apex_run_events(
+                            event_store,
                             session.thread_id,
                             session.run_id,
+                            user_id=session.owner,
                             event_types=["llm.ai.response", "subagent.end"],
                             limit=200,
                             after_seq=cursor,
@@ -790,6 +807,7 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                                 event_store,
                                 thread_id=session.thread_id,
                                 run_id=session.run_id,
+                                user_id=session.owner,
                             )
                             report = evaluate_tool_readback_criteria(latest.acceptance_criteria, run_events or []) if run_events is not None else None
                             if report is not None:

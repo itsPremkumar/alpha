@@ -13,7 +13,8 @@ Detection strategy:
      list, *after* all ToolMessage responses to the previous
      AIMessage(tool_calls).
   4. If it appears >= hard_limit times, strip all tool_calls from the
-     response so the agent is forced to produce a final text answer.
+     response, then make one no-tools synthesis call. A second tool-call
+     attempt is stopped.
 
 Why the warning is injected at ``wrap_model_call`` instead of
 ``after_model``:
@@ -34,8 +35,8 @@ Why the warning is injected at ``wrap_model_call`` instead of
 Queued warnings are intentionally transient. If a run ends before the
 next model request drains a queued warning, ``after_agent`` drops it
 instead of carrying it into a later invocation for the same thread. The
-hard-stop path still forces termination when the configured safety limit
-is reached.
+hard-stop path permits one bounded, tool-free synthesis call after the
+configured safety limit is reached.
 
 Detection histories and warning-suppression state are scoped by
 ``(thread_id, run_id)`` because one compiled graph can serve many runs for
@@ -49,8 +50,8 @@ share one budget within an invocation while a later invocation starts fresh.
 
 Stop-reason surfacing (#3875 Phase 2):
   Like the token-budget guard, the loop hard stop does NOT raise — it
-  strips ``tool_calls`` so the agent loop terminates naturally with a
-  final answer. To let the caller (the subagent executor) distinguish a
+  strips ``tool_calls`` and makes one tool-free model call so the model can
+  synthesize a final answer from completed results. To let the caller (the subagent executor) distinguish a
   loop-capped completion from a clean one, the run that triggered the hard
   stop is recorded in ``_stop_reason`` and exposed via
   :meth:`consume_stop_reason`. The executor collects that reason alongside
@@ -72,9 +73,10 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, override
 
+from alpha_extension_api import ContentKind, provenance_kwargs
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
-from langchain.agents.middleware.types import ModelCallResult, ModelRequest, ModelResponse
+from langchain.agents.middleware.types import ModelCallResult, ModelRequest, ModelResponse, hook_config
 from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 
@@ -198,6 +200,9 @@ _TOOL_FREQ_WARNING_MSG = (
 _HARD_STOP_MSG = "[FORCED STOP] Repeated tool calls exceeded the safety limit. Producing final answer with results collected so far."
 
 _TOOL_FREQ_HARD_STOP_MSG = "[FORCED STOP] Tool {tool_name} called {count} times — exceeded the per-tool safety limit. Producing final answer with results collected so far."
+_FINALIZE_AFTER_HARD_STOP = (
+    "The loop safety limit was reached. Do not call tools. Summarize only work supported by the completed results already in this conversation, and clearly state what remains unverified. If the available evidence is insufficient, say so."
+)
 
 
 @dataclass(frozen=True)
@@ -294,6 +299,10 @@ class LoopDetectionMiddleware(AgentMiddleware[AgentState]):
         self._fallback_run_ids: OrderedDict[int, tuple[object, str]] = OrderedDict()
         self._max_fallback_run_ids = max(1, self.max_tracked_threads * 2)
         self._history: OrderedDict[_RunScopeKey, list[str]] = OrderedDict()
+        # One pending/used tool-free synthesis attempt per run scope after a
+        # hard stop. Bounded with the history so abandoned run ids cannot grow
+        # without limit on a long-lived middleware instance.
+        self._finalization_attempts: OrderedDict[_RunScopeKey, str] = OrderedDict()
         self._warned: dict[_RunScopeKey, set[str]] = defaultdict(set)
         # Windowed per-tool-type frequency: recent tool names per run scope,
         # trimmed to ``window_size`` so the count decays instead of growing
@@ -450,6 +459,7 @@ class LoopDetectionMiddleware(AgentMiddleware[AgentState]):
         """
         while len(self._history) > self.max_tracked_threads:
             evicted_key, _ = self._history.popitem(last=False)
+            self._finalization_attempts.pop(evicted_key, None)
             self._warned.pop(evicted_key, None)
             self._tool_name_history.pop(evicted_key, None)
             self._tool_name_counter.pop(evicted_key, None)
@@ -776,14 +786,21 @@ class LoopDetectionMiddleware(AgentMiddleware[AgentState]):
         if decision.hard_stop:
             # Record the stop reason so the executor can surface
             # ``stop_reason=loop_capped`` after the run returns (#3875 Phase 2).
-            # The hard stop does not raise — it strips tool_calls and lets the
-            # run finish with a forced final answer — so without this the caller
-            # would see a clean ``completed``. See ``consume_stop_reason``.
+            # The hard stop does not raise — it strips tool_calls, then allows
+            # one tool-free synthesis call. Without this the caller would see
+            # a clean ``completed``. See ``consume_stop_reason``.
             # Written under the lock to match ``TokenBudgetMiddleware``: the lead
             # agent's middleware instance is shared across concurrent Gateway
             # threads, so the bounded-dict write needs the same guard.
             thread_id, run_id = self._run_scope_key(runtime)
             with self._lock:
+                scope_key = (thread_id, run_id)
+                already_finalized = self._finalization_attempts.get(scope_key) == "used"
+                if not already_finalized:
+                    self._finalization_attempts[scope_key] = "pending"
+                    self._finalization_attempts.move_to_end(scope_key)
+                    while len(self._finalization_attempts) > self.max_tracked_threads:
+                        self._finalization_attempts.popitem(last=False)
                 self._stop_reason[run_id] = "loop_capped"
                 self._stop_reason_thread_id[run_id] = thread_id
             # Also write to runtime.context so the lead worker can read it
@@ -791,15 +808,19 @@ class LoopDetectionMiddleware(AgentMiddleware[AgentState]):
             ctx = getattr(runtime, "context", None)
             if isinstance(ctx, dict):
                 ctx["stop_reason"] = "loop_capped"
-            # Strip tool_calls from the last AIMessage to force text output.
-            # Once tool_calls are stripped, the AIMessage no longer requires
-            # matching ToolMessage responses, so mutating it in place here
-            # is safe for OpenAI/Moonshot pairing validators.
+            # Strip tool_calls and their raw provider metadata before the
+            # bounded synthesis retry. This avoids leaving an unmatched call
+            # id in history when the current batch has not run yet.
             messages = state.get("messages", [])
             last_msg = messages[-1]
             content = self._append_text(last_msg.content, warning or _HARD_STOP_MSG)
             stripped_msg = last_msg.model_copy(update=self._build_hard_stop_update(last_msg, content))
-            return {"messages": [stripped_msg]}
+            update = {"messages": [stripped_msg]}
+            if not already_finalized:
+                # Only the first hard stop can retry. _augment_request removes
+                # all tools for that call; a second attempt terminates here.
+                update["jump_to"] = "model"
+            return update
 
         if decision.action == "warn":
             # Defer injection to the next model call. We must NOT alter the
@@ -838,10 +859,12 @@ class LoopDetectionMiddleware(AgentMiddleware[AgentState]):
         # Async topology must mirror the sync hook above.
         return None
 
+    @hook_config(can_jump_to=["model"])
     @override
     def after_model(self, state: AgentState, runtime: Runtime) -> dict | None:
         return self._apply(state, runtime)
 
+    @hook_config(can_jump_to=["model"])
     @override
     async def aafter_model(self, state: AgentState, runtime: Runtime) -> dict | None:
         return self._apply(state, runtime)
@@ -877,13 +900,37 @@ class LoopDetectionMiddleware(AgentMiddleware[AgentState]):
         AIMessage.
         """
         warnings = self._drain_pending_warnings(request.runtime)
-        if not warnings:
-            return request
-        new_messages = [
-            *request.messages,
-            HumanMessage(content=self._format_warning_message(warnings), name="loop_warning"),
-        ]
-        return request.override(messages=new_messages)
+        new_messages = list(request.messages)
+        if warnings:
+            new_messages.append(
+                HumanMessage(
+                    content=self._format_warning_message(warnings),
+                    name="loop_warning",
+                    additional_kwargs=provenance_kwargs(ContentKind.MIDDLEWARE_INJECTION, "loop_detection"),
+                )
+            )
+
+        scope_key = self._run_scope_key(request.runtime)
+        with self._lock:
+            finalization_pending = self._finalization_attempts.get(scope_key) == "pending"
+            if finalization_pending:
+                self._finalization_attempts[scope_key] = "used"
+                self._finalization_attempts.move_to_end(scope_key)
+        if finalization_pending:
+            new_messages.append(
+                HumanMessage(
+                    content=_FINALIZE_AFTER_HARD_STOP,
+                    name="loop_detection_finalization",
+                    additional_kwargs={
+                        "hide_from_ui": True,
+                        **provenance_kwargs(ContentKind.MIDDLEWARE_INJECTION, "loop_detection"),
+                    },
+                )
+            )
+            return request.override(messages=new_messages, tools=[], tool_choice=None)
+        if new_messages != request.messages:
+            return request.override(messages=new_messages)
+        return request
 
     @override
     def wrap_model_call(
@@ -907,6 +954,7 @@ class LoopDetectionMiddleware(AgentMiddleware[AgentState]):
             if thread_id:
                 for mapping in (
                     self._history,
+                    self._finalization_attempts,
                     self._warned,
                     self._tool_name_history,
                     self._tool_name_counter,
@@ -925,6 +973,7 @@ class LoopDetectionMiddleware(AgentMiddleware[AgentState]):
                         self._stop_reason_thread_id.pop(run_id, None)
             else:
                 self._history.clear()
+                self._finalization_attempts.clear()
                 self._warned.clear()
                 self._tool_name_history.clear()
                 self._tool_name_counter.clear()

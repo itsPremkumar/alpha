@@ -9,7 +9,7 @@ default and ``to_dict()`` is ``dataclasses.asdict``, so
 ``GET /api/projects/{id}/events`` was the only project read that emitted a raw
 epoch float while ``/projects``, ``/projects/{id}/threads`` and
 ``/projects/{id}/approvals`` all emit ISO 8601 strings. A client that parses
-``created_at`` as a date â€” which this repo's own frontend does â€” cannot read a
+``created_at`` as a date — which this repo's own frontend does — cannot read a
 float, so the value is dropped and every event renders as undated.
 
 The fix coerces at the API boundary only. The on-disk event log keeps the float

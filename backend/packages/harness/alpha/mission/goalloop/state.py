@@ -32,6 +32,7 @@ from typing import Any, Final
 from alpha.config.runtime_paths import runtime_home
 from alpha.mission.goalloop.contract import CompletionContract
 from alpha.mission.goalloop.gates import QualityGate
+from alpha.mission.goalloop.goal_tree import GoalNode, GoalTree
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,11 @@ class GoalState:
     objective: str = ""
     contract: CompletionContract = field(default_factory=CompletionContract)
     subgoals: list[str] = field(default_factory=list)
+    #: The hierarchical decomposition of ``objective``. Empty means "no tree",
+    #: which is exactly what every pre-tree goal is - the flat ``subgoals``
+    #: path still runs for those. The run loop checks the tree first and falls
+    #: back, so adding this field cannot change how an existing goal behaves.
+    tree: GoalTree = field(default_factory=GoalTree)
     status: GoalStatus = GoalStatus.ACTIVE
     max_turns: int = DEFAULT_MAX_TURNS
     turns_used: int = 0
@@ -104,6 +110,19 @@ class GoalState:
     @property
     def budget_exhausted(self) -> bool:
         return self.turns_used >= self.max_turns
+
+    @property
+    def nodes(self) -> dict[str, GoalNode]:
+        """The tree's nodes, keyed by id. Empty when the goal has no tree.
+
+        Named ``nodes`` rather than exposing the tree so a caller that only
+        wants to read the decomposition cannot mutate it through this handle.
+        """
+        return self.tree.nodes
+
+    @property
+    def has_tree(self) -> bool:
+        return not self.tree.is_empty
 
     @property
     def headline(self) -> str:
@@ -236,6 +255,9 @@ class GoalState:
         self.wait_reason = ""
         self.subgoals.clear()
         self.gates.clear()
+        # A cleared goal is gone, not paused: leaving a tree behind would let
+        # the next dispatch find runnable nodes under an objective nobody set.
+        self.tree = GoalTree()
         self.touch()
         return self.status
 
@@ -251,6 +273,7 @@ class GoalState:
             "objective": self.objective,
             "contract": self.contract.to_dict(),
             "subgoals": list(self.subgoals),
+            "tree": self.tree.to_dict(),
             "status": self.status.value,
             "max_turns": self.max_turns,
             "turns_used": self.turns_used,
@@ -277,6 +300,7 @@ class GoalState:
             objective=str(data.get("objective", "")),
             contract=CompletionContract.from_dict(data.get("contract", {}) or {}),
             subgoals=[str(item) for item in (data.get("subgoals") or [])],
+            tree=GoalTree.from_dict(data.get("tree") or {}),
             status=status,
             max_turns=int(data.get("max_turns", DEFAULT_MAX_TURNS) or DEFAULT_MAX_TURNS),
             turns_used=int(data.get("turns_used", 0) or 0),

@@ -47,6 +47,7 @@ const {
   probeSummaryText,
   keyProviderTiers,
   selectedModelLabel,
+  initialSelectedModel,
 } = await import(toDataUrl(code));
 
 /** The subset of `AIModel` these helpers read. */
@@ -215,6 +216,17 @@ test("selectedModelLabel resolves the id to a name and reports an unknown id hon
   // the trigger then renders its "auto-routed" default rather than lying.
   assert.equal(selectedModelLabel(models, "gone"), null);
   assert.equal(selectedModelLabel([], "a"), null);
+});
+
+test("first composer selection stays auto-routed instead of choosing the first catalog model", () => {
+  assert.equal(initialSelectedModel(null, [model({ id: "union-alpha" }), model({ id: "alpha-free" })]), "default");
+});
+
+test("first composer selection preserves a saved model only while it remains available", () => {
+  const models = [model({ id: "union-alpha" }), model({ id: "alpha-free" })];
+  assert.equal(initialSelectedModel("alpha-free", models), "alpha-free");
+  assert.equal(initialSelectedModel("removed-model", models), "default");
+  assert.equal(initialSelectedModel("saved-model", []), "saved-model");
 });
 
 /* ══ Source pins on the component ═════════════════════════════════════════ */

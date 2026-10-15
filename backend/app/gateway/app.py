@@ -399,6 +399,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with langgraph_runtime(app, startup_config):
         logger.info("LangGraph runtime initialised")
 
+        # Trajectory flight recorder. The store is the durable execution log
+        # the TrajectoryRecorderMiddleware appends StepRecords to during agent
+        # runs. Mounted on app.state so the agent path (not just the harness
+        # runner) has a production writer. Best-effort: a store that fails to
+        # construct must not take the Gateway down, so absence simply means
+        # trajectory recording is off for this process.
+        try:
+            from alpha.trajectory.store import get_trajectory_store
+
+            app.state.trajectory_store = await asyncio.to_thread(get_trajectory_store)
+            logger.info("Trajectory flight recorder store initialised")
+        except Exception:
+            logger.exception("Trajectory store failed to initialise (non-fatal)")
+
         # Fail closed on an unusable subagent-batch configuration *here*, before
         # anything has been started.
         #

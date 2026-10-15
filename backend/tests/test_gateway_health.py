@@ -111,6 +111,52 @@ async def test_sqlite_readiness_does_not_create_a_missing_database(tmp_path, mon
 
 
 @pytest.mark.anyio
+async def test_sqlite_probe_close_timeout_does_not_cancel_queued_connection_close(monkeypatch):
+    """A slow aiosqlite worker must finish its queued close after probe return."""
+    close_started = asyncio.Event()
+    close_finished = asyncio.Event()
+
+    class _SlowCloseConnection:
+        async def close(self):
+            close_started.set()
+            await asyncio.sleep(0.05)
+            close_finished.set()
+
+    monkeypatch.setattr(health_module, "_SQLITE_PROBE_BUSY_TIMEOUT_SECONDS", 0.005)
+    await health_module._close_sqlite_probe_connection(_SlowCloseConnection())
+
+    assert close_started.is_set()
+    assert not close_finished.is_set()
+    await asyncio.wait_for(close_finished.wait(), timeout=0.5)
+    await asyncio.sleep(0)
+    assert not health_module._SQLITE_PROBE_CLOSE_TASKS
+
+
+@pytest.mark.anyio
+async def test_sqlite_probe_close_survives_caller_cancellation(monkeypatch):
+    close_started = asyncio.Event()
+    close_finished = asyncio.Event()
+
+    class _SlowCloseConnection:
+        async def close(self):
+            close_started.set()
+            await asyncio.sleep(0.05)
+            close_finished.set()
+
+    monkeypatch.setattr(health_module, "_SQLITE_PROBE_BUSY_TIMEOUT_SECONDS", 1.0)
+    cleanup = asyncio.create_task(health_module._close_sqlite_probe_connection(_SlowCloseConnection()))
+    await close_started.wait()
+    cleanup.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cleanup
+
+    assert not close_finished.is_set()
+    await asyncio.wait_for(close_finished.wait(), timeout=0.5)
+    await asyncio.sleep(0)
+    assert not health_module._SQLITE_PROBE_CLOSE_TASKS
+
+
+@pytest.mark.anyio
 async def test_readiness_payload_ready_when_database_ok_and_memory_backend(monkeypatch):
     monkeypatch.setattr("app.gateway.health.get_engine", lambda: _FakeEngine())
 

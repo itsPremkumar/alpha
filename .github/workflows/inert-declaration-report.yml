@@ -7,9 +7,8 @@ name: Inert Declaration Report
 # allowlist is reviewed on a schedule instead of accumulating quietly between unrelated
 # changes.
 #
-# `continue-on-error` is set on the only step that can fail, and the job gates nothing.
-# A new finding fails the unit tests -- that is the gate. A new *recording* is
-# reviewed here.
+# The report captures and labels the checker exit status; a new finding fails
+# the unit tests, which are the gate. A new *recording* is reviewed here.
 
 on:
   push:
@@ -52,17 +51,26 @@ jobs:
         working-directory: backend
         run: uv sync --group dev
 
-      - name: Print the inert-declaration state
+      - name: Print the inert-declaration state (non-gating report)
         working-directory: backend
         # Report only. The blocking version of this is tests/test_no_inert_config.py,
         # which the unit-test shards already run.
-        continue-on-error: true
         run: |
-          uv run --no-sync python tests/test_no_inert_config.py | tee "${RUNNER_TEMP}/gate-state.txt"
+          set +e
+          echo "INERT DECLARATION REPORT (non-gating): collecting diagnostic output"
+          uv run --no-sync python tests/test_no_inert_config.py > "${RUNNER_TEMP}/gate-state.txt" 2>&1
+          status=$?
+          set -e
+          if [ ! -s "${RUNNER_TEMP}/gate-state.txt" ]; then
+            echo "ERROR the inert-declaration report is empty; the measurement did not run"
+            exit 1
+          fi
+          echo "INERT DECLARATION REPORT (non-gating): checker_exit=$status" >> "${RUNNER_TEMP}/gate-state.txt"
+          cat "${RUNNER_TEMP}/gate-state.txt"
 
       - name: Publish the inert-declaration register
         working-directory: backend
-        continue-on-error: true
+        if: always()
         # The register is data, not code, so it is published as it stands rather than
         # through an inline renderer: every entry already carries a written reason, and
         # a renderer is one more thing that can disagree with the contract.

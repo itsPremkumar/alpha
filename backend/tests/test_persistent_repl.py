@@ -1,5 +1,8 @@
 """Unit tests for RLM Persistent Python REPL Kernel."""
 
+import importlib
+from types import SimpleNamespace
+
 import pytest
 from langgraph.prebuilt import ToolRuntime
 
@@ -103,7 +106,17 @@ isinstance(p, Path)
 
 
 @pytest.mark.asyncio
-async def test_python_repl_tool():
+async def test_python_repl_tool(monkeypatch):
+    # ``python_repl`` exec()s inside the Gateway process itself and is therefore
+    # default-off behind ``sandbox.allow_in_process_repl`` (a switch separate
+    # from ``sandbox.allow_host_bash``). This test drives the real tool, so it
+    # opens that switch the documented way; leaving it closed would only
+    # re-assert the refusal message instead of the session behaviour under test.
+    # importlib, not a dotted string: ``alpha.tools.builtins`` re-exports the
+    # tool under the same name as its module.
+    tool_module = importlib.import_module("alpha.tools.builtins.python_repl_tool")
+    monkeypatch.setattr(tool_module, "get_app_config", lambda: SimpleNamespace(sandbox=SimpleNamespace(allow_in_process_repl=True)))
+
     runtime = _tool_runtime()
 
     out1 = await python_repl_tool.ainvoke(

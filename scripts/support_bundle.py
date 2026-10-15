@@ -116,9 +116,7 @@ def _harness_redactor() -> Any:
         # Sized for whole log lines rather than one span attribute, matching the
         # log chokepoint: the *patterns* are identical, only the disclosure
         # bound differs, so a log tail is not truncated mid-credential.
-        redactor = Redactor(
-            "standard", max_value_chars=65536, max_items=4096, max_depth=16
-        )
+        redactor = Redactor("standard", max_value_chars=65536, max_items=4096, max_depth=16)
     except Exception:
         redactor = None
     _HARNESS_REDACTOR = redactor
@@ -162,29 +160,17 @@ SECRET_KEY_RE = re.compile(
 # strings (DATABASE_URL, REDIS_URL, ...) are deliberately not in this set -- their
 # embedded credentials are already stripped in place by URL_USERINFO_RE, which
 # preserves the host/port/db-name diagnostic value instead of blanking the field.
-NO_FLAG_CREDENTIAL_KEY_NAMES = frozenset(
-    {"gh_pat", "github_pat", "redis_auth", "rediscli_auth", "pgservicefile"}
-)
+NO_FLAG_CREDENTIAL_KEY_NAMES = frozenset({"gh_pat", "github_pat", "redis_auth", "rediscli_auth", "pgservicefile"})
 ENV_KEY_RE = re.compile(r"(?i)^env$")
 VAR_REFERENCE_RE = re.compile(r"^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$")
-ENV_SECRET_RE = re.compile(
-    r"(?im)^([A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|AUTHORIZATION|COOKIE|CREDENTIAL)[A-Z0-9_]*\s*=\s*)(.+)$"
-)
-YAML_SECRET_RE = re.compile(
-    r"(?im)^(\s*[\w.-]*(?:api[_-]?key|token|secret|password|passwd|authorization|cookie|credential|private[_-]?key)[\w.-]*\s*:\s*)(.+)$"
-)
+ENV_SECRET_RE = re.compile(r"(?im)^([A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|AUTHORIZATION|COOKIE|CREDENTIAL)[A-Z0-9_]*\s*=\s*)(.+)$")
+YAML_SECRET_RE = re.compile(r"(?im)^(\s*[\w.-]*(?:api[_-]?key|token|secret|password|passwd|authorization|cookie|credential|private[_-]?key)[\w.-]*\s*:\s*)(.+)$")
 BEARER_RE = re.compile(r"(?i)(Bearer\s+)[A-Za-z0-9._~+/=-]+")
 OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b")
 URL_USERINFO_RE = re.compile(r"([a-zA-Z][\w+.-]*://)([^/?#\s@]+)@")
-URL_QUERY_SECRET_RE = re.compile(
-    r"(?i)([?&][\w.-]*(?:api[_-]?key|token|secret|password|passwd|authorization|access[_-]?token|credential)[\w.-]*=)([^&\s#]+)"
-)
-CLI_INLINE_SECRET_RE = re.compile(
-    r"(?i)(--?[\w.-]*(?:api[_-]?key|token|secret|password|passwd|authorization|cookie|credential)[\w.-]*=)(\S+)"
-)
-SECRET_FLAG_RE = re.compile(
-    r"(?i)^--?[\w.-]*(?:api[_-]?key|token|secret|password|passwd|authorization|cookie|credential)[\w.-]*$"
-)
+URL_QUERY_SECRET_RE = re.compile(r"(?i)([?&][\w.-]*(?:api[_-]?key|token|secret|password|passwd|authorization|access[_-]?token|credential)[\w.-]*=)([^&\s#]+)")
+CLI_INLINE_SECRET_RE = re.compile(r"(?i)(--?[\w.-]*(?:api[_-]?key|token|secret|password|passwd|authorization|cookie|credential)[\w.-]*=)(\S+)")
+SECRET_FLAG_RE = re.compile(r"(?i)^--?[\w.-]*(?:api[_-]?key|token|secret|password|passwd|authorization|cookie|credential)[\w.-]*$")
 HEADER_KEY_RE = re.compile(r"(?i)header")
 POSIX_HOME_RE = re.compile(r"(?<![\w.-])(/Users|/home)/([^/\s:]+)")
 WINDOWS_HOME_RE = re.compile(r"(?i)([A-Z]:\\Users\\)([^\\\s:]+)")
@@ -193,9 +179,7 @@ WINDOWS_HOME_RE = re.compile(r"(?i)([A-Z]:\\Users\\)([^\\\s:]+)")
 # Kept as a local copy because this script must run even in environments
 # where the backend venv is broken.
 SAFE_THREAD_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-DOCTOR_STATUS_RE = re.compile(
-    r"Status:\s*(\d+)\s+error\(s\),\s*(\d+)\s+warning\(s\)", re.IGNORECASE
-)
+DOCTOR_STATUS_RE = re.compile(r"Status:\s*(\d+)\s+error\(s\),\s*(\d+)\s+warning\(s\)", re.IGNORECASE)
 ATTENTION_SIGNAL_NAMES = {
     "doctor_failed",
     "config_missing",
@@ -212,9 +196,7 @@ ATTENTION_SIGNAL_NAMES = {
 def _redact_yaml_secret_match(match: re.Match[str]) -> str:
     prefix = match.group(1)
     value = match.group(2)
-    if "authorization" in prefix.lower() and value.lstrip().lower().startswith(
-        "bearer "
-    ):
+    if "authorization" in prefix.lower() and value.lstrip().lower().startswith("bearer "):
         return prefix + BEARER_RE.sub(r"\1<redacted>", value)
     return prefix + "<redacted>"
 
@@ -280,9 +262,7 @@ def _redact_secret_flag_list(items: list[Any]) -> list[Any]:
     mask_next = False
     for item in items:
         if mask_next:
-            redacted.append(
-                "<redacted>" if isinstance(item, str) else redact_data(item)
-            )
+            redacted.append("<redacted>" if isinstance(item, str) else redact_data(item))
             mask_next = False
             continue
         if isinstance(item, str) and SECRET_FLAG_RE.fullmatch(item):
@@ -308,10 +288,7 @@ def redact_data(value: Any) -> Any:
         redacted: dict[Any, Any] = {}
         for key, item in value.items():
             key_str = str(key)
-            if (
-                SECRET_KEY_RE.search(key_str)
-                or key_str.lower() in NO_FLAG_CREDENTIAL_KEY_NAMES
-            ):
+            if SECRET_KEY_RE.search(key_str) or key_str.lower() in NO_FLAG_CREDENTIAL_KEY_NAMES:
                 redacted[key] = "<redacted>"
             elif ENV_KEY_RE.fullmatch(key_str) and isinstance(item, dict):
                 redacted[key] = {k: _redact_env_value(v) for k, v in item.items()}
@@ -429,19 +406,11 @@ def collect_git_summary(project_root: Path) -> dict[str, Any]:
         "status_short": ["git", "status", "--short", "--branch"],
         "diff_stat": ["git", "diff", "--stat"],
     }
-    return {
-        name: _run_command(command, cwd=project_root)
-        for name, command in commands.items()
-    }
+    return {name: _run_command(command, cwd=project_root) for name, command in commands.items()}
 
 
 def _validate_thread_id(thread_id: str) -> None:
-    if (
-        not thread_id
-        or thread_id in {".", ".."}
-        or ".." in thread_id
-        or not SAFE_THREAD_ID_RE.fullmatch(thread_id)
-    ):
+    if not thread_id or thread_id in {".", ".."} or ".." in thread_id or not SAFE_THREAD_ID_RE.fullmatch(thread_id):
         raise ValueError(f"Invalid thread_id: {thread_id!r}")
 
 
@@ -449,23 +418,14 @@ def _candidate_thread_data_dirs(project_root: Path, thread_id: str) -> list[Path
     _validate_thread_id(thread_id)
     candidates = [
         project_root / ".alpha" / "threads" / thread_id / "user-data",
-        project_root
-        / "backend"
-        / ".alpha"
-        / "threads"
-        / thread_id
-        / "user-data",
+        project_root / "backend" / ".alpha" / "threads" / thread_id / "user-data",
     ]
     for base in (
         project_root / ".alpha" / "users",
         project_root / "backend" / ".alpha" / "users",
     ):
         if base.exists():
-            candidates.extend(
-                user_dir / "threads" / thread_id / "user-data"
-                for user_dir in base.iterdir()
-                if user_dir.is_dir()
-            )
+            candidates.extend(user_dir / "threads" / thread_id / "user-data" for user_dir in base.iterdir() if user_dir.is_dir())
     return candidates
 
 
@@ -482,9 +442,7 @@ def _file_manifest(root: Path, *, max_files: int = 500) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     for path in sorted(item for item in root.rglob("*") if item.is_file()):
         if len(entries) >= max_files:
-            entries.append(
-                {"path": "<truncated>", "reason": f"file limit {max_files} reached"}
-            )
+            entries.append({"path": "<truncated>", "reason": f"file limit {max_files} reached"})
             break
         try:
             stat = path.stat()
@@ -521,10 +479,7 @@ def collect_thread_summary(project_root: Path, thread_id: str) -> dict[str, Any]
     return {
         "thread_id": thread_id,
         "found": False,
-        "checked_layouts": [
-            _display_path(path, project_root)
-            for path in _candidate_thread_data_dirs(project_root, thread_id)
-        ],
+        "checked_layouts": [_display_path(path, project_root) for path in _candidate_thread_data_dirs(project_root, thread_id)],
     }
 
 
@@ -576,9 +531,7 @@ def _log_level_of(line: str) -> str:
     level of whatever happened to appear later in the file, which is worse than
     admitting the line is not a level-bearing record.
     """
-    match = re.search(
-        r"\b(CRITICAL|FATAL|ERROR|WARNING|WARN|INFO|DEBUG|TRACE|NOTSET)\b", line
-    )
+    match = re.search(r"\b(CRITICAL|FATAL|ERROR|WARNING|WARN|INFO|DEBUG|TRACE|NOTSET)\b", line)
     if not match:
         return "UNKNOWN"
     token = match.group(1)
@@ -598,9 +551,7 @@ def _level_histogram(lines: list[str]) -> dict[str, int]:
     return histogram
 
 
-def _read_log_tail(
-    path: Path, *, max_lines: int, max_bytes: int
-) -> tuple[list[str], dict[str, Any]]:
+def _read_log_tail(path: Path, *, max_lines: int, max_bytes: int) -> tuple[list[str], dict[str, Any]]:
     """Return the last *max_lines* lines of *path*, bounded by *max_bytes*.
 
     Reads the tail by seeking rather than loading the file: a launcher log can be
@@ -684,9 +635,7 @@ def collect_logs(
             if not is_collected_log(path):
                 continue
             try:
-                lines, detail = _read_log_tail(
-                    path, max_lines=max_lines, max_bytes=max_bytes
-                )
+                lines, detail = _read_log_tail(path, max_lines=max_lines, max_bytes=max_bytes)
             except OSError as exc:
                 collected.append(
                     {
@@ -751,11 +700,7 @@ def _trace_candidate_paths(project_root: Path, config_summary: Any) -> list[Path
         observability = config_summary.get("observability")
         if isinstance(observability, dict):
             candidate = observability.get("file_sink_path")
-            if (
-                isinstance(candidate, str)
-                and candidate.strip()
-                and not candidate.strip().startswith("$")
-            ):
+            if isinstance(candidate, str) and candidate.strip() and not candidate.strip().startswith("$"):
                 configured = Path(candidate.strip()).expanduser()
     roots = [
         project_root / ".alpha",
@@ -816,9 +761,7 @@ def collect_trace(
         try:
             records, _unparsable = _export_run_trace.read_records(candidate)
         except Exception as exc:
-            attempted.append(
-                f"{_display_path(candidate, project_root)}: {type(exc).__name__}: {exc}"
-            )
+            attempted.append(f"{_display_path(candidate, project_root)}: {type(exc).__name__}: {exc}")
             continue
         matched = len(_export_run_trace.filter_records(records, run_id=run_id))
         if best is None or matched > best[0]:
@@ -831,13 +774,9 @@ def collect_trace(
         return summary
     source = best[1]
     try:
-        timeline = _export_run_trace.render_trace(
-            source, max_events=max_events, run_id=run_id
-        )
+        timeline = _export_run_trace.render_trace(source, max_events=max_events, run_id=run_id)
     except Exception as exc:
-        summary["reason"] = (
-            f"could not render {source.name}: {type(exc).__name__}: {exc}"
-        )
+        summary["reason"] = f"could not render {source.name}: {type(exc).__name__}: {exc}"
         summary["candidates_checked"] = attempted[:25]
         return summary
     summary.update(
@@ -867,12 +806,8 @@ def _command_output(command: dict[str, Any] | None) -> str | None:
 
 def _environment_versions(environment: dict[str, Any]) -> dict[str, str | None]:
     platform_info = environment.get("platform", {})
-    python_version = (
-        platform_info.get("python") if isinstance(platform_info, dict) else None
-    )
-    versions: dict[str, str | None] = {
-        "python": python_version if isinstance(python_version, str) else None
-    }
+    python_version = platform_info.get("python") if isinstance(platform_info, dict) else None
+    versions: dict[str, str | None] = {"python": python_version if isinstance(python_version, str) else None}
     for command in environment.get("commands", []):
         if isinstance(command, dict) and isinstance(command.get("name"), str):
             versions[command["name"]] = _command_output(command)
@@ -934,13 +869,7 @@ def _config_summary(config_summary: Any) -> dict[str, Any]:
         "config_version": config_summary.get("config_version"),
         "error": config_summary.get("error"),
         "models": len(models) if isinstance(models, list) else 0,
-        "tools": sorted(
-            str(tool.get("name"))
-            for tool in tools
-            if isinstance(tool, dict) and tool.get("name")
-        )
-        if isinstance(tools, list)
-        else [],
+        "tools": sorted(str(tool.get("name")) for tool in tools if isinstance(tool, dict) and tool.get("name")) if isinstance(tools, list) else [],
         "channels": _enabled_mapping_keys(channels),
     }
 
@@ -966,18 +895,9 @@ def _dirty_worktree(status_short: str | None) -> bool:
 
 
 def _status_from_signals(signals: dict[str, bool]) -> str:
-    if (
-        signals["config_missing"]
-        or signals["config_error"]
-        or signals["models_missing"]
-        or signals["extensions_config_error"]
-    ):
+    if signals["config_missing"] or signals["config_error"] or signals["models_missing"] or signals["extensions_config_error"]:
         return "needs_user_setup"
-    if (
-        signals["node_missing"]
-        or signals["node_version_too_old"]
-        or signals["nginx_missing"]
-    ):
+    if signals["node_missing"] or signals["node_version_too_old"] or signals["nginx_missing"]:
         return "environment_mismatch"
     if not signals["doctor_included"]:
         return "insufficient_evidence"
@@ -987,88 +907,54 @@ def _status_from_signals(signals: dict[str, bool]) -> str:
 
 
 def _active_signal_names(signals: dict[str, bool]) -> list[str]:
-    return [
-        name
-        for name, enabled in signals.items()
-        if enabled and name in ATTENTION_SIGNAL_NAMES
-    ]
+    return [name for name, enabled in signals.items() if enabled and name in ATTENTION_SIGNAL_NAMES]
 
 
 def _maintainer_next_steps(status: str, signals: dict[str, bool]) -> list[str]:
     steps: list[str] = []
     if status == "needs_user_setup":
-        steps.append(
-            "Ask the reporter to complete local setup with `make setup`, then rerun `make doctor` and `make support-bundle`."
-        )
+        steps.append("Ask the reporter to complete local setup with `make setup`, then rerun `make doctor` and `make support-bundle`.")
     if signals["node_missing"] or signals["node_version_too_old"]:
-        steps.append(
-            "Ask the reporter to install Node.js 22+ before treating this as an application bug."
-        )
+        steps.append("Ask the reporter to install Node.js 22+ before treating this as an application bug.")
     if signals["config_missing"] or signals["models_missing"]:
-        steps.append(
-            "Do not triage model/runtime behavior until `config.yaml` exists and at least one model is configured."
-        )
+        steps.append("Do not triage model/runtime behavior until `config.yaml` exists and at least one model is configured.")
     if signals["config_error"]:
-        steps.append(
-            "Ask the reporter to fix `config.yaml` syntax or regenerate it with `make setup`."
-        )
+        steps.append("Ask the reporter to fix `config.yaml` syntax or regenerate it with `make setup`.")
     if signals["extensions_config_error"]:
-        steps.append(
-            "Ask the reporter to fix `extensions_config.json` syntax before triaging MCP/skill behavior."
-        )
+        steps.append("Ask the reporter to fix `extensions_config.json` syntax before triaging MCP/skill behavior.")
     if signals["doctor_failed"] and status == "likely_runtime_issue":
-        steps.append(
-            "Use `doctor.json` plus the reproduction steps in the issue body to identify the failing subsystem."
-        )
+        steps.append("Use `doctor.json` plus the reproduction steps in the issue body to identify the failing subsystem.")
     if signals["thread_summary_included"]:
-        steps.append(
-            "Use `thread-summary.json` to inspect workspace/upload/output file shape; raw file contents are intentionally absent."
-        )
+        steps.append("Use `thread-summary.json` to inspect workspace/upload/output file shape; raw file contents are intentionally absent.")
     if signals["logs_included"]:
         steps.append(
             "Use `logs.json` for the per-file level histogram and `logs/` for the redacted tails before asking the reporter for more detail; a non-zero `log_error_lines` is the most direct evidence of what the reporter could not see."
         )
     if signals["trace_included"]:
-        steps.append(
-            "Use `trace-timeline.txt` for the span/event shape of the newest run, and `--run-id` on this script to scope it to one run."
-        )
+        steps.append("Use `trace-timeline.txt` for the span/event shape of the newest run, and `--run-id` on this script to scope it to one run.")
     elif signals.get("trace_configured_but_missing"):
-        steps.append(
-            "No readable run trace was found. `observability.sinks: [file]` with `observability.file_sink_path` is the opt-in that produces one; without it spans and events are not persisted anywhere."
-        )
+        steps.append("No readable run trace was found. `observability.sinks: [file]` with `observability.file_sink_path` is the opt-in that produces one; without it spans and events are not persisted anywhere.")
     if not steps:
-        steps.append(
-            "Use the issue reproduction steps and evidence JSON files to continue triage."
-        )
+        steps.append("Use the issue reproduction steps and evidence JSON files to continue triage.")
     return steps
 
 
 def _reporter_next_steps(status: str, signals: dict[str, bool]) -> list[str]:
     steps: list[str] = []
     if status == "needs_user_setup":
-        steps.append(
-            "Run `make setup`, then rerun `make doctor` and `make support-bundle` before filing the issue if the problem changes."
-        )
+        steps.append("Run `make setup`, then rerun `make doctor` and `make support-bundle` before filing the issue if the problem changes.")
     if signals["node_missing"] or signals["node_version_too_old"]:
         steps.append("Install Node.js 22+ and rerun `make doctor`.")
     if signals["config_missing"] or signals["models_missing"]:
-        steps.append(
-            "Create or repair `config.yaml` with `make setup`; model/runtime issues cannot be triaged until at least one model is configured."
-        )
+        steps.append("Create or repair `config.yaml` with `make setup`; model/runtime issues cannot be triaged until at least one model is configured.")
     if signals["config_error"]:
         steps.append("Fix `config.yaml` syntax or regenerate it with `make setup`.")
     if signals["doctor_failed"] and status == "likely_runtime_issue":
-        steps.append(
-            "Paste the generated issue summary into the GitHub issue. Attach the zip if a maintainer asks for the evidence bundle."
-        )
+        steps.append("Paste the generated issue summary into the GitHub issue. Attach the zip if a maintainer asks for the evidence bundle.")
     if signals["log_error_lines"]:
-        steps.append(
-            "The bundle already contains WARNING/ERROR log lines, so paste those instead of asking the reporter to reproduce anything again."
-        )
+        steps.append("The bundle already contains WARNING/ERROR log lines, so paste those instead of asking the reporter to reproduce anything again.")
     if not steps:
-        steps.append(
-            "Paste the generated issue summary into the GitHub issue if the issue still reproduces. Attach the zip if a maintainer asks for the evidence bundle."
-        )
+        steps.append("Paste the generated issue summary into the GitHub issue if the issue still reproduces. Attach the zip if a maintainer asks for the evidence bundle.")
     return steps
 
 
@@ -1158,23 +1044,17 @@ def build_triage_report(
         "doctor_failed": bool(doctor and not doctor.get("ok")),
         "config_missing": config.get("present") is False,
         "config_error": bool(config.get("error")),
-        "models_missing": bool(
-            config.get("present") is True and config.get("models") == 0
-        ),
+        "models_missing": bool(config.get("present") is True and config.get("models") == 0),
         "extensions_config_missing": extensions.get("present") is False,
         "extensions_config_error": bool(extensions.get("error")),
-        "node_missing": versions.get("node") is not None
-        and "not found" in versions["node"].lower(),
+        "node_missing": versions.get("node") is not None and "not found" in versions["node"].lower(),
         "node_version_too_old": node_major is not None and node_major < 22,
-        "nginx_missing": versions.get("nginx") is not None
-        and "not found" in versions["nginx"].lower(),
+        "nginx_missing": versions.get("nginx") is not None and "not found" in versions["nginx"].lower(),
         "dirty_worktree": _dirty_worktree(status_short),
         "thread_summary_included": thread_summary is not None,
         "thread_summary_found": bool(thread_summary and thread_summary.get("found")),
         "trace_included": bool(trace.get("available")),
-        "trace_configured_but_missing": bool(trace)
-        and not trace.get("available")
-        and "no readable trace file" in str(trace.get("reason") or ""),
+        "trace_configured_but_missing": bool(trace) and not trace.get("available") and "no readable trace file" in str(trace.get("reason") or ""),
     }
     signals.update(log_signals)
     status = _status_from_signals(signals)
@@ -1248,8 +1128,7 @@ def render_issue_summary(triage: dict[str, Any]) -> str:
         f"- Active signals: {', '.join(triage['active_signals']) or 'none'}",
         f"- Doctor: included={doctor['included']}, ok={doctor['ok']}, errors={doctor['errors']}, warnings={doctor['warnings']}",
         f"- Logs: included={logs['included']}, files={logs['files']}, error_lines={logs['error_lines']}, warning_lines={logs['warning_lines']}, tail_truncated={logs['tail_truncated']}",
-        f"- Run trace: included={trace['included']}, source={trace['source'] or 'none'}"
-        + (f", reason={trace['reason']}" if trace.get("reason") else ""),
+        f"- Run trace: included={trace['included']}, source={trace['source'] or 'none'}" + (f", reason={trace['reason']}" if trace.get("reason") else ""),
         f"- Git: branch={git['branch'] or 'unknown'}, head={git['head'] or 'unknown'}, dirty_worktree={git['dirty_worktree']}",
         f"- Versions: python={versions.get('python') or 'unknown'}, node={versions.get('node') or 'unknown'}, pnpm={versions.get('pnpm') or 'unknown'}, uv={versions.get('uv') or 'unknown'}, nginx={versions.get('nginx') or 'unknown'}",
         "",
@@ -1263,12 +1142,7 @@ def render_issue_summary(triage: dict[str, Any]) -> str:
         _markdown_list(triage["maintainer_next_steps"]),
         "",
         "### Evidence files in the attached zip",
-        _markdown_list(
-            [
-                f"`{item['path']}` - {item['description']}"
-                for item in triage["evidence_files"]
-            ]
-        ),
+        _markdown_list([f"`{item['path']}` - {item['description']}" for item in triage["evidence_files"]]),
         "",
         "Privacy: this bundle excludes `.env`, raw conversation messages, and user file contents. Logs and the run trace are secret-scrubbed but not otherwise summarised, so read them before uploading.",
         "",
@@ -1299,14 +1173,7 @@ def _platform_details(platform_info: dict[str, Any]) -> str:
 def _draft_affected_areas(triage: dict[str, Any]) -> list[str]:
     signals = triage["signals"]
     areas: list[str] = []
-    if (
-        signals["config_missing"]
-        or signals["config_error"]
-        or signals["models_missing"]
-        or signals["node_missing"]
-        or signals["node_version_too_old"]
-        or signals["nginx_missing"]
-    ):
+    if signals["config_missing"] or signals["config_error"] or signals["models_missing"] or signals["node_missing"] or signals["node_version_too_old"] or signals["nginx_missing"]:
         areas.append("Config / setup (make, config.yaml, env)")
     if signals["extensions_config_error"]:
         areas.extend(["MCP", "Skills"])
@@ -1315,9 +1182,7 @@ def _draft_affected_areas(triage: dict[str, Any]) -> list[str]:
     return areas
 
 
-def _doctor_excerpt(
-    doctor: dict[str, Any] | None, *, max_lines: int = 80, max_chars: int = 12000
-) -> str:
+def _doctor_excerpt(doctor: dict[str, Any] | None, *, max_lines: int = 80, max_chars: int = 12000) -> str:
     output = _command_output(doctor) if doctor else None
     if not output:
         return "<REQUIRED: paste key log lines. Do not invent if unknown.>"
@@ -1336,9 +1201,7 @@ def _doctor_excerpt(
     return excerpt
 
 
-def render_ai_issue_draft(
-    triage: dict[str, Any], issue_summary: str, doctor: dict[str, Any] | None
-) -> str:
+def render_ai_issue_draft(triage: dict[str, Any], issue_summary: str, doctor: dict[str, Any] | None) -> str:
     """Render a GitHub issue body scaffold for AI-assisted reporters."""
     versions = triage["versions"]
     git = triage["git"]
@@ -1469,12 +1332,7 @@ def render_bundle_readme(triage: dict[str, Any]) -> str:
         "",
         "## Files",
         "",
-        _markdown_list(
-            [
-                f"`{item['path']}` - {item['description']}"
-                for item in triage["evidence_files"]
-            ]
-        ),
+        _markdown_list([f"`{item['path']}` - {item['description']}" for item in triage["evidence_files"]]),
         "",
         "## Privacy",
         "",
@@ -1490,12 +1348,7 @@ def render_bundle_readme(triage: dict[str, Any]) -> str:
 
 def _default_out_path(project_root: Path) -> Path:
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    return (
-        project_root
-        / ".alpha"
-        / "support-bundles"
-        / f"alpha-support-bundle-{timestamp}.zip"
-    )
+    return project_root / ".alpha" / "support-bundles" / f"alpha-support-bundle-{timestamp}.zip"
 
 
 def _write_json(zf: zipfile.ZipFile, name: str, data: Any) -> None:
@@ -1556,9 +1409,7 @@ def create_support_bundle(
     """
     project_root = project_root.resolve()
     config_path = (config_path or project_root / "config.yaml").resolve()
-    extensions_config_path = (
-        extensions_config_path or project_root / "extensions_config.json"
-    ).resolve()
+    extensions_config_path = (extensions_config_path or project_root / "extensions_config.json").resolve()
     out_path = (out_path or _default_out_path(project_root)).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if thread_id:
@@ -1588,18 +1439,10 @@ def create_support_bundle(
     config_summary = collect_config_summary(config_path)
     extensions_summary = collect_extensions_summary(extensions_config_path)
     git_summary = collect_git_summary(project_root)
-    thread_summary = (
-        collect_thread_summary(project_root, thread_id) if thread_id else None
-    )
+    thread_summary = collect_thread_summary(project_root, thread_id) if thread_id else None
     doctor = collect_doctor_output(project_root) if include_doctor else None
     logs = collect_logs(project_root, max_lines=log_tail_lines) if include_logs else []
-    trace = (
-        collect_trace(
-            project_root, config_summary, run_id=run_id, max_events=max_trace_events
-        )
-        if include_trace
-        else {}
-    )
+    trace = collect_trace(project_root, config_summary, run_id=run_id, max_events=max_trace_events) if include_trace else {}
     triage = build_triage_report(
         manifest=manifest,
         environment=environment,
@@ -1630,14 +1473,10 @@ def create_support_bundle(
                 content = entry.pop("text", "")
                 log_entries.append(entry)
                 if content:
-                    _write_text(
-                        zf, _zip_name(str(entry.get("name", "unnamed.log"))), content
-                    )
+                    _write_text(zf, _zip_name(str(entry.get("name", "unnamed.log"))), content)
             _write_json(zf, "logs", log_entries)
         if include_trace:
-            trace_summary = {
-                key: value for key, value in trace.items() if key != "timeline"
-            }
+            trace_summary = {key: value for key, value in trace.items() if key != "timeline"}
             _write_json(zf, "trace", trace_summary)
             if trace.get("timeline"):
                 _write_text(zf, "trace-timeline.txt", str(trace["timeline"]))
@@ -1654,9 +1493,7 @@ def create_support_bundle(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     repo_root = Path(__file__).resolve().parents[1]
-    parser.add_argument(
-        "--project-root", type=Path, default=repo_root, help="Alpha project root"
-    )
+    parser.add_argument("--project-root", type=Path, default=repo_root, help="Alpha project root")
     parser.add_argument("--config", type=Path, default=None, help="Path to config.yaml")
     parser.add_argument(
         "--extensions-config",
@@ -1697,9 +1534,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_LOG_TAIL_BYTES,
         help=f"Maximum log bytes read per file (default: {DEFAULT_LOG_TAIL_BYTES})",
     )
-    parser.add_argument(
-        "--run-id", default=None, help="Render only trace records for this run id"
-    )
+    parser.add_argument("--run-id", default=None, help="Render only trace records for this run id")
     parser.add_argument(
         "--max-trace-events",
         type=int,
@@ -1745,14 +1580,9 @@ def main(argv: list[str] | None = None) -> int:
     logs = triage.get("logs", {})
     trace = triage.get("trace", {})
     if logs.get("included"):
-        print(
-            f"Logs: {logs.get('files')} file(s), {logs.get('error_lines')} error / {logs.get('warning_lines')} warning line(s) in the collected tail"
-            + (" (tail truncated)" if logs.get("tail_truncated") else "")
-        )
+        print(f"Logs: {logs.get('files')} file(s), {logs.get('error_lines')} error / {logs.get('warning_lines')} warning line(s) in the collected tail" + (" (tail truncated)" if logs.get("tail_truncated") else ""))
     elif not args.no_logs:
-        print(
-            "Logs: none found. A started stack writes them under logs/ or backend/logs/; nothing has been collected there."
-        )
+        print("Logs: none found. A started stack writes them under logs/ or backend/logs/; nothing has been collected there.")
     if trace.get("included"):
         print(f"Run trace: {trace.get('source')}")
     elif trace.get("reason"):
@@ -1761,12 +1591,8 @@ def main(argv: list[str] | None = None) -> int:
     for step in triage["reporter_next_steps"]:
         print(f"- {step}")
     print("If you still file an issue, paste the issue summary.")
-    print(
-        "If an AI assistant files the issue, start from the issue draft and replace every REQUIRED placeholder."
-    )
-    print(
-        "Attach the zip if a maintainer asks for the evidence bundle, or if the summary alone is not enough."
-    )
+    print("If an AI assistant files the issue, start from the issue draft and replace every REQUIRED placeholder.")
+    print("Attach the zip if a maintainer asks for the evidence bundle, or if the summary alone is not enough.")
     print("Maintainers or AI triage tools should read triage.json first.")
     return 0
 

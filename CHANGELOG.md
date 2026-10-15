@@ -265,6 +265,34 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Fixed
 
+- **ci:** The aggregate `CI` workflow (`.github/workflows/ci.yml`) could not
+  start at all: `converge` sat at the top level of the file instead of under
+  `jobs:`, so GitHub rejected the workflow and every run failed in ~0s without
+  executing one step (the run listed the raw workflow path where its name
+  should be). Fixed, then audited end to end because the file had never
+  actually run: the five backend/frontend test jobs were removed as duplicates
+  of dedicated workflows that run the same tests with service containers,
+  sharding and per-job timeouts (`backend-unit-tests.yml`,
+  `backend-blocking-io-tests.yml`, `frontend-unit-tests.yml`, `lint-check.yml`)
+  — the copies here skipped the Postgres/Redis services and one ran only
+  `pnpm test`, missing the branding and reasoning-effort suites;
+  `docker-build` built with `context: ./frontend`/`./backend` although both
+  Dockerfiles are written for the repository root as build context and fail at
+  the first `COPY`; `dependency-review` ran on pushes (the action refuses
+  non-PR events) and referenced a `.github/dependency-review-config.yml` that
+  never existed — the job is now PR-gated and the config file added;
+  `secret-scan` pinned the mutable `trufflesecurity/trufflehog@main` ref and
+  now pins `v3.99.2`; the frontend jobs installed pnpm 11 via
+  `pnpm/action-setup@v2` while the repository pins pnpm 10.26.2 in root
+  `package.json` (Corepack, as `lint-check.yml` and `frontend-unit-tests.yml`
+  activate); and the `release` job could never trigger (a tag push does not
+  start a branches-filtered workflow) while duplicating the documented release
+  pipeline against different targets (Docker Hub and PyPI instead of
+  `container.yaml`/`chart.yaml`/`windows-installer.yml`), so it was removed.
+  The reference extension (`examples/alpha-extension-example/`) gained its own
+  contract job, installed editable exactly as a third-party consumer would
+  install it.
+
 - **workspace-navigation:** The **More Views** menu could not be opened. The
   button toggled its state and the panel node existed, but the panel was an
   `absolute` child of its own trigger, so it was clipped by every ancestor

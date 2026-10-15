@@ -90,7 +90,7 @@ Follows [Semantic Versioning](https://semver.org/):
 
 ## Code of Conduct
 
-All participants must follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+All participants must follow the [Code of Conduct](https://github.com/itsPremkumar/alpha/blob/main/CODE_OF_CONDUCT.md).
 
 ### Enforcement
 
@@ -106,7 +106,7 @@ All participants must follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Report to: security@itsPremkumar.com
 
-See [SECURITY.md](SECURITY.md) for details.
+See [SECURITY.md](https://github.com/itsPremkumar/alpha/blob/main/SECURITY.md) for details.
 
 ### Disclosure Policy
 

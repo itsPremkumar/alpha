@@ -555,9 +555,12 @@ class ThreadGoalRequest(BaseModel):
 
 
 class ThreadGoalResponse(BaseModel):
-    """Response model for a thread goal."""
+    """Response model for active or retained completed thread-goal state."""
 
-    goal: dict[str, Any] | None = Field(default=None, description="Current goal state, or null when no goal is active")
+    goal: dict[str, Any] | None = Field(
+        default=None,
+        description="Active goal or its retained completion receipt; null only when cleared or never set",
+    )
 
 
 class ThreadCompactRequest(BaseModel):
@@ -1415,7 +1418,7 @@ async def get_thread(thread_id: ThreadId, request: Request) -> ThreadResponse:
 @router.get("/{thread_id}/goal", response_model=ThreadGoalResponse)
 @require_permission("threads", "read", owner_check=True)
 async def get_thread_goal(thread_id: ThreadId, request: Request) -> ThreadGoalResponse:
-    """Return the active Claude-style goal for a thread, if any."""
+    """Return the active goal or its retained completion receipt, if any."""
     checkpointer = get_checkpointer(request)
     try:
         goal = await read_thread_goal(checkpointer, thread_id)

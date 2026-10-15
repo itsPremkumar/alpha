@@ -87,7 +87,8 @@ export interface FleetHealthOverview {
   fleet_health_score: number | null;
   bots: BotHealthRow[];
   /** The rows the engine flagged as stalled — the recovery queue. */
-  stalled_workers: BotHealthRow[];
+  /** `null` when the Gateway omitted the detail list; `[]` means it reported none. */
+  stalled_workers: BotHealthRow[] | null;
 }
 
 export type ReadResult<T> =
@@ -156,7 +157,7 @@ export function normalizeHealthOverview(
       ? raw.stalled_workers
           .map(normalizeHealthRow)
           .filter((r): r is BotHealthRow => r !== null)
-      : [],
+      : null,
   };
 }
 

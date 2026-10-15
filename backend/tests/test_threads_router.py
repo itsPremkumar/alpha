@@ -1001,6 +1001,42 @@ def test_goal_status_and_clear_round_trip() -> None:
     assert "goal" not in state_response.json()["values"]
 
 
+def test_completed_goal_receipt_round_trips_through_goal_route() -> None:
+    from alpha.runtime.goal import write_thread_goal
+
+    app, _store, checkpointer = _build_thread_app()
+    thread_id = "completed-goal-route"
+    completed_goal = {
+        "objective": "Ship it",
+        "status": "completed",
+        "continuation_count": 2,
+        "max_continuations": 8,
+        "no_progress_count": 0,
+        "max_no_progress_continuations": 2,
+        "last_evaluation": {
+            "satisfied": True,
+            "blocker": "none",
+            "reason": "Acceptance evidence is present.",
+            "evidence_summary": "The task output was read back exactly.",
+            "run_id": "run-final",
+            "evaluated_at": "2026-10-15T12:30:00Z",
+        },
+    }
+
+    with TestClient(app) as client:
+        created = client.put(
+            f"/api/threads/{thread_id}/goal",
+            json={"objective": "Ship it"},
+        )
+        assert created.status_code == 200, created.text
+        assert client.portal is not None
+        client.portal.call(write_thread_goal, checkpointer, thread_id, completed_goal)
+        response = client.get(f"/api/threads/{thread_id}/goal")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["goal"] == completed_goal
+
+
 def test_goal_mutations_reject_run_owned_by_another_worker() -> None:
     """PUT and DELETE goal writes share the durable thread-operation boundary."""
     from alpha.runtime import RunManager, RunStatus

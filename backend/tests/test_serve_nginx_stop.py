@@ -14,6 +14,31 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SERVE_SH = REPO_ROOT / "scripts" / "serve.sh"
 
 
+def test_windows_port_ownership_detection_is_used_for_cleanup_and_preflight():
+    source = SERVE_SH.read_text(encoding="utf-8")
+    assert source.count("_is_alpha_pid() {") == 1, "a later shell definition must not replace ownership checks"
+    assert '_is_alpha_pid() { _is_alpha_pid "$@"; }' not in source
+    assert "Get-CimInstance -ClassName Win32_Process" in source
+    assert "$parent.CreationDate -gt $process.CreationDate" in source, "stale/reused parent PIDs must not grant ownership"
+    assert "Get-NetTCPConnection -LocalPort ([int]$env:ALPHA_PORT) -State Listen" in source
+    assert '_port_listener_pids "$port"' in source, "shutdown must use the Windows listener lookup"
+    assert "taskkill.exe /F /T /PID" in source, "Git Bash kill cannot reliably terminate native Windows listeners"
+
+
+def test_serve_script_parses_in_bash():
+    if os.name == "nt":
+        wrapper = REPO_ROOT / "scripts" / "run-with-git-bash.cmd"
+        if not wrapper.is_file():
+            pytest.skip(f"Git Bash wrapper not found at {wrapper}")
+        result = subprocess.run([str(wrapper), "-n", str(SERVE_SH)], check=False, capture_output=True, text=True)
+    else:
+        bash = shutil.which("bash")
+        if bash is None:
+            pytest.skip("bash is required to validate serve.sh")
+        result = subprocess.run([bash, "-n", str(SERVE_SH)], check=False, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
 def _extract_shell_function(name: str) -> str:
     text = SERVE_SH.read_text(encoding="utf-8")
     marker = f"{name}() {{"

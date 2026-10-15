@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import re
 from typing import Any
 
 from alpha.mission.goalloop import (
@@ -154,17 +155,35 @@ def _refuse_near_miss(args: str) -> str | None:
     """
     from alpha.commands.registry import command_registry
 
-    tokens = (args or "").strip().split()
+    raw = (args or "").strip()
+    tokens = raw.split()
+    if not tokens:
+        return None
+    siblings = [c.split(" ", 1)[1] for c in command_registry.subcommands_of("/goal") if " " in c]
+    # A free-text goal may contain punctuation, but a command operator glued
+    # to a known subcommand is an attempted command composition, not an
+    # objective. Do not let `/goal status; ...` fall through as a new goal.
+    if len(tokens) > 1 and re.search(r"(?:;|\|\||&&|[|])", raw):
+        candidate = re.match(r"[\w-]+", tokens[0])
+        wanted = candidate.group(0).lower() if candidate else ""
+        if wanted and wanted in siblings:
+            return _unknown_goal_subcommand(wanted, siblings)
+        return None
     if len(tokens) != 1:
         return None
     wanted = tokens[0].lower()
-    siblings = [c.split(" ", 1)[1] for c in command_registry.subcommands_of("/goal") if " " in c]
     close = difflib.get_close_matches(wanted, siblings, n=3, cutoff=0.6)
     if not close:
         return None
+    return _unknown_goal_subcommand(wanted, siblings, close)
+
+
+def _unknown_goal_subcommand(wanted: str, siblings: list[str], close: list[str] | None = None) -> str:
+    close = close if close is not None else difflib.get_close_matches(wanted, siblings, n=3, cutoff=0.6)
     listed = close + [s for s in siblings if s not in close]
-    hint = f" Did you mean: {', '.join(close)}?"
-    return f"Unknown subcommand '{wanted}' for /goal; nothing was executed.{hint}\nKnown subcommands of /goal: {', '.join(listed)}\nTo set a goal whose text starts with those words, add more text so it is unambiguously an objective."
+    hint = f" Did you mean: {', '.join(f'/goal {item}' for item in close)}?"
+    known = ", ".join(f"/goal {item}" for item in listed)
+    return f"Unknown subcommand '{wanted}' for /goal; nothing was executed.{hint}\nKnown subcommands of /goal: {known}\nTo set a goal whose text starts with those words, add more text so it is unambiguously an objective."
 
 
 def handle_goal(args: str, context: dict[str, Any] | None = None) -> Any:
@@ -175,7 +194,7 @@ def handle_goal(args: str, context: dict[str, Any] | None = None) -> Any:
     added to, and carrying them onto a different objective would silently
     change what "done" means.
     """
-    from alpha.commands.registry import CommandExecutionResult
+    from alpha.commands.registry import CommandExecutionResult, command_registry
 
     session = _session_of(context)
     text = (args or "").strip()
@@ -191,7 +210,16 @@ def handle_goal(args: str, context: dict[str, Any] | None = None) -> Any:
 
     refusal = _refuse_near_miss(text)
     if refusal is not None:
-        return _result("/goal", refusal, status="not_found", executed=False)
+        wanted = text.split(maxsplit=1)[0].lower()
+        siblings = [c.split(" ", 1)[1] for c in command_registry.subcommands_of("/goal") if " " in c]
+        candidate = re.match(r"[\w-]+", wanted)
+        unknown = candidate.group(0) if candidate else wanted
+        known = [f"/goal {item}" for item in siblings]
+        if len(text.split()) == 1:
+            close = difflib.get_close_matches(unknown, siblings, n=3, cutoff=0.6)
+            ordered = close + [item for item in siblings if item not in close]
+            known = [f"/goal {item}" for item in ordered]
+        return _result("/goal", refusal, status="not_found", executed=False, unknown_subcommand=unknown, known_subcommands=known)
 
     parsed = parse_goal_text(text)
     if not parsed.objective:

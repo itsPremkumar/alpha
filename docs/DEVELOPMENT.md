@@ -125,6 +125,7 @@ alpha/
 ├── scripts/                 # Root orchestration scripts
 ├── contracts/               # JSON contracts
 ├── tests/                   # Root-level tests
+├── docs-site/               # Docusaurus documentation site (npm; builds in CI)
 └── docs/                    # Documentation (this folder)
 ```
 
@@ -469,6 +470,29 @@ The gate ignores only the manifest's wall-clock `generated_at` field. A stale
 manifest, missing generator output, malformed JSON, or a future committed
 `docs/INDEX/` file that the official generator does not reproduce fails the
 build. On CI failure, the workflow uploads the per-file unified diff.
+
+## Documentation Site (`docs-site/`)
+
+The public documentation site (Docusaurus, `docs.alpha.itsPremkumar.com`) is a
+module with its own lockfile:
+
+```bash
+cd docs-site
+npm ci             # install from the committed package-lock.json
+npm run start      # local dev server
+npm run typecheck  # tsc --noEmit
+npm run build      # static build; CI's docs-build job runs typecheck + build
+```
+
+Content rules that keep the SSG build passing: plugin content directories
+(`api/`, `guides/`) are **siblings** of the preset `docs/` directory, never
+nested inside it (the double MDX-loader failure is explained in
+`docusaurus.config.ts`), and a nav link to a directory with no index document
+needs a `plugin-client-redirects` entry. `docs-site/static/llms.txt` is copied
+verbatim by the build and must stay identical to the root `llms.txt`
+(`tests/test_docs_claim_honesty.py` pins that). Deployment runs from
+`.github/workflows/docs-deploy.yml` and is skipped unless the Vercel secrets
+are configured.
 
 ## Git Workflow
 
@@ -881,12 +905,13 @@ Canonical reference for the repository-root `Makefile`. Root targets drive the
 ```bash
 make setup       # Interactive setup wizard (recommended for new users); unattended: make setup SETUP_ARGS=--non-interactive (ALPHA_SETUP_* env)
 make doctor      # Check configuration and system requirements
-make prod-check  # Production readiness pre-flight (versions, config files, secrets)
+make prod-check  # Static deployment config pre-flight; does not test runtime/providers
 make support-bundle  # Generate redacted troubleshooting summary, AI issue draft, and optional zip
 make update-status|check|apply|recover  # guarded source update (docs/AUTO_UPDATE.md)
 make update-skip VERSION=x.y.z          # skip one verified version
 make config      # Generate local config files from the examples
 make check       # Check that required tools are installed
+make test-skills # Unit tests for skills/public generation scripts (Skill Review CI runs the same suite)
 make install     # Install all dependencies (frontend + backend + pre-commit hooks)
 make voice-setup|voice-verify  # free local speech models (docs/VOICE_CONVERSATION.md)
 make extension-install SOURCE=...  # Install and enable a trusted Python extension

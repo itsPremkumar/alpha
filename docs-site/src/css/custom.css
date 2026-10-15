@@ -1,0 +1,72 @@
+/**
+ * Docusaurus custom stylesheet.
+ *
+ * `docusaurus.config.ts` has always pointed `theme.customCss` at this file, but
+ * it did not exist: Docusaurus fails the build on a missing custom CSS path.
+ * The palette below is the same near-black `#091E42` the announcement bar and
+ * the PWA `theme-color` already used, so the site has one accent rather than
+ * three. Keep the Infima variables as the single source and let components
+ * inherit them.
+ */
+
+:root {
+  --ifm-color-primary: #1f6feb;
+  --ifm-color-primary-dark: #1a63d4;
+  --ifm-color-primary-darker: #195ebf;
+  --ifm-color-primary-darkest: #144d9d;
+  --ifm-color-primary-light: #3a81ee;
+  --ifm-color-primary-lighter: #4a8bf0;
+  --ifm-color-primary-lightest: #75a5f4;
+
+  --ifm-font-family-base: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ifm-code-font-size: 95%;
+  --ifm-heading-font-weight: 650;
+
+  --alpha-ink: #091e42;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #75a5f4;
+  --ifm-color-primary-dark: #5490f0;
+  --ifm-color-primary-darker: #4486ef;
+  --ifm-color-primary-darkest: #1f6feb;
+  --ifm-color-primary-light: #96b8f6;
+  --ifm-color-primary-lighter: #a6c2f7;
+  --ifm-color-primary-lightest: #d7e4fb;
+
+  --ifm-background-color: #060b14;
+}
+
+/* The one brand accent, used by the announcement bar and the hero. */
+.navbar__title {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.markdown h1:first-child {
+  --ifm-h1-font-size: 2.4rem;
+}
+
+/*
+ * Docusaurus highlights every fenced code block with a `docusaurus-highlight-code-line`
+ * span; keep it visible in both themes rather than inheriting a transparent
+ * background in dark mode.
+ */
+.docusaurus-highlight-code-line {
+  background-color: rgba(31, 111, 235, 0.12);
+  display: block;
+  margin: 0 calc(-1 * var(--ifm-pre-padding));
+  padding: 0 var(--ifm-pre-padding);
+}
+
+[data-theme='dark'] .docusaurus-highlight-code-line {
+  background-color: rgba(117, 165, 244, 0.18);
+}
+
+/* Mermaid diagrams are in the content; give them a readable surface. */
+[data-theme='dark'] .docusaurus-mermaid-container {
+  background-color: #0d1526;
+  border-radius: var(--ifm-global-radius);
+  padding: 0.5rem;
+}

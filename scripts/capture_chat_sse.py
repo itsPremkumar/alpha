@@ -41,16 +41,15 @@ TIMEOUT = float(os.environ.get("ALPHA_CAPTURE_TIMEOUT", "300"))
 if len(sys.argv) > 1:
     OUT = Path(sys.argv[1])
 else:
-    raise SystemExit(
-        "usage: python scripts/capture_chat_sse.py <output.json>\n"
-        "  e.g. python scripts/capture_chat_sse.py frontend/src/lib/fixtures/chat-run-capture.json"
-    )
+    raise SystemExit("usage: python scripts/capture_chat_sse.py <output.json>\n  e.g. python scripts/capture_chat_sse.py frontend/src/lib/fixtures/chat-run-capture.json")
 
 
 def post_json(path: str, payload: object) -> tuple[int, str]:
     req = urllib.request.Request(
-        f"{BASE}{path}", data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "application/json"}, method="POST",
+        f"{BASE}{path}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
@@ -95,10 +94,7 @@ with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
 raw_text = raw.decode("utf-8", "replace")
 
 # Count frames the way the SSE spec does, purely for reporting.
-frames = [
-    block for block in raw_text.replace("\r\n", "\n").split("\n\n")
-    if block.strip()
-]
+frames = [block for block in raw_text.replace("\r\n", "\n").split("\n\n") if block.strip()]
 
 doc = {
     "thread_id": thread_id,

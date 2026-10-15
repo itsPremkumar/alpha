@@ -17,25 +17,25 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import conftest as conftest_module
+from config_fallback_test_support import ensure_config_path_for_tests
 
 from alpha.config.app_config import AppConfig
 
 
 def _shipped_template() -> Path:
-    return Path(conftest_module.__file__).resolve().parents[2] / "config.example.yaml"
+    return Path(__file__).resolve().parents[2] / "config.example.yaml"
 
 
 def test_explicit_config_path_is_left_alone(monkeypatch):
     monkeypatch.setenv("ALPHA_CONFIG_PATH", str(Path("does") / "not" / "exist.yaml"))
-    assert conftest_module.ensure_config_path_for_tests() is None
+    assert ensure_config_path_for_tests() is None
     assert os.environ["ALPHA_CONFIG_PATH"].endswith("exist.yaml")
 
 
 def test_existing_config_resolution_keeps_env_unset(monkeypatch):
     monkeypatch.delenv("ALPHA_CONFIG_PATH", raising=False)
     monkeypatch.setattr(AppConfig, "resolve_config_path", classmethod(lambda cls: Path("resolved") / "config.yaml"))
-    assert conftest_module.ensure_config_path_for_tests() is None
+    assert ensure_config_path_for_tests() is None
     assert "ALPHA_CONFIG_PATH" not in os.environ
 
 
@@ -46,7 +46,7 @@ def test_missing_config_falls_back_to_shipped_template(monkeypatch):
         raise FileNotFoundError("`config.yaml` file not found in the project root")
 
     monkeypatch.setattr(AppConfig, "resolve_config_path", classmethod(_missing))
-    resolved = conftest_module.ensure_config_path_for_tests()
+    resolved = ensure_config_path_for_tests()
 
     assert resolved == str(_shipped_template())
     assert resolved is not None and Path(resolved).is_file()

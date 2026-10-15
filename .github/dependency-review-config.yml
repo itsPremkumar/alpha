@@ -1,0 +1,12 @@
+# Configuration for actions/dependency-review-action, consumed by
+# .github/workflows/ci.yml (`config-file` input). The file was referenced by
+# the workflow but never existed, which fails the action before it reviews
+# anything.
+#
+# Policy: fail a pull request that introduces a HIGH or CRITICAL advisory in a
+# runtime dependency. Scope `runtime` keeps development-only advisories in the
+# separate non-gating `pnpm audit` report (security-audit job) instead of
+# blocking merges; the backend audit in the same job still gates.
+fail-on-severity: high
+fail-on-scopes:
+  - runtime

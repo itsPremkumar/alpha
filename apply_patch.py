@@ -1,10 +1,10 @@
 import sys
 
 path = "C:/Users/PREM KUMAR/Videos/alpha/backend/packages/harness/alpha/orchestrator/replay.py"
-with open(path, "r", encoding="utf-8") as fh:
+with open(path, encoding="utf-8") as fh:
     src = fh.read()
 
-old = '''        elif kind == "patch_committed":
+old = """        elif kind == "patch_committed":
             graph_version = payload.get("graph_version")
             if isinstance(graph_version, int):
                 run.graph_version = graph_version
@@ -12,9 +12,9 @@ old = '''        elif kind == "patch_committed":
             if isinstance(patch_payload, dict):
                 patch = WorkflowPatch(**patch_payload)
                 run.patches_applied.append(patch)
-                for op in patch.operations:'''
+                for op in patch.operations:"""
 
-new = '''        elif kind == "patch_committed":
+new = """        elif kind == "patch_committed":
             graph_version = payload.get("graph_version")
             if isinstance(graph_version, int):
                 run.graph_version = graph_version
@@ -45,7 +45,7 @@ new = '''        elif kind == "patch_committed":
                 # never installed a second time.
                 if not any(getattr(existing, "patch_id", None) == patch.get("patch_id") for existing in run.patches_applied):
                     run.patches_applied.append(patch)
-                for op in patch.operations:'''
+                for op in patch.operations:"""
 
 if old not in src:
     print("OLD NOT FOUND")

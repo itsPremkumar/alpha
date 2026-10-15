@@ -258,7 +258,12 @@ async def test_langgraph_runtime_drains_runs_before_closing_checkpointer(monkeyp
     with registry.attributed_to("service:install"):
         registry.service(_Service())
     app.state.extensions = registry.build()
-    startup_config = SimpleNamespace(database=SimpleNamespace(backend="memory", checkpoint_channel_mode="full", checkpoint_delta=SimpleNamespace(snapshot_frequency=10)), run_events=None)
+    startup_config = SimpleNamespace(
+        database=SimpleNamespace(backend="memory", checkpoint_channel_mode="full", checkpoint_delta=SimpleNamespace(snapshot_frequency=10)),
+        checkpointer=None,
+        capabilities=SimpleNamespace(is_graph_execution_enabled=lambda: False),
+        run_events=None,
+    )
 
     async with langgraph_runtime(app, startup_config):
         pass

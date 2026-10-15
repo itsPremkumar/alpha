@@ -108,7 +108,8 @@ def test_backend_make_dev_gateway_reload_excludes_runtime_state_with_absolute_di
     # The launch line may carry runtime-only uv flags (`--locked` pins the
     # extension lock); what this guards is that ALPHA_HOME is exported on it,
     # so the reload-excludes below resolve to the same absolute directories.
-    assert re.search(r'ALPHA_HOME="\$\(ALPHA_HOME\)" uv run(?: --(?:locked|no-sync))? uvicorn', makefile)
+    assert re.search(r'RUN_ENV_ALPHA_HOME\s*=.*ALPHA_HOME="\$\(ALPHA_HOME\)"', makefile)
+    assert re.search(r"\$\(RUN_ENV_ALPHA_HOME\) uv run(?: --(?:locked|no-sync))? uvicorn", makefile)
     assert '--reload-exclude="$(ALPHA_HOME)"' in makefile
     assert '--reload-exclude="$(BACKEND_SANDBOX_HOME)"' in makefile
 

@@ -193,11 +193,13 @@ def test_supported_thinking_model_still_builds_with_explicit_true():
 
 
 def test_shipped_config_models_declare_supports_thinking_false():
-    """Why the default had to change: the shipped models are all non-thinking.
+    """The operator config includes at least one non-thinking model.
 
     Reads the operator's real ``config.yaml`` when present. Skipped, not failed,
     without one -- a test that cannot see the shipped config proves nothing about
-    it, but it also has nothing to assert.
+    it, but it also has nothing to assert. Other configured models may support
+    thinking; that must not change the client's opt-in default, which is pinned
+    independently above.
     """
     from pathlib import Path
 
@@ -211,5 +213,5 @@ def test_shipped_config_models_declare_supports_thinking_false():
     data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     models = data.get("models") or []
     assert models, "shipped config.yaml declares no models"
-    non_thinking = [m["name"] for m in models if not m.get("supports_thinking")]
-    assert len(non_thinking) == len(models), f"shipped config.yaml now declares at least one thinking model, so the default-thinking argument no longer holds (non-thinking: {non_thinking})"
+    non_thinking = [m["name"] for m in models if not m.get("supports_thinking", False)]
+    assert non_thinking, "the operator config must exercise the non-thinking model path"

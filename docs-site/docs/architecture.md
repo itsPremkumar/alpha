@@ -168,7 +168,7 @@ sequenceDiagram
 
 | Type | Count | Description |
 |------|-------|-------------|
-| Built-in | 456+ | Core tools (file, shell, web, code, etc.) |
+| Built-in | 139 | Core tools (file, shell, web, code, etc.) |
 | MCP | Dynamic | External MCP servers |
 | Skills | Dynamic | Community/custom skills |
 | Custom | Dynamic | User-defined tools |
@@ -320,4 +320,4 @@ spec:
 - [Configuration](/getting-started/configuration) — Configure Alpha
 - [Deployment](/deployment) — Production deployment guide
 - [API Reference](/api) — Complete API documentation
-- [Guides](/guides) — Detailed how-to guides
+- [Guides](/guides/agents/overview) — Detailed how-to guides

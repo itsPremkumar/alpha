@@ -48,7 +48,12 @@ from alpha.runtime.shutdown import PlannedShutdown, ShutdownPhase, ShutdownStatu
 #: real rather than being refused, which is the slower and more realistic outage.
 BLACK_HOLE = ProbeTarget(name="blackhole", host="192.0.2.1", port=9, timeout_seconds=1.0)
 
-TIMEOUT = pytest.mark.timeout(180) if hasattr(pytest.mark, "timeout") else (lambda fn: fn)
+# No ``pytest.mark.timeout`` here: ``pytest-timeout`` is not a dependency, and
+# pytest 9 warns on the unregistered mark the moment it is *created*, even
+# though this constant was never applied to a test (the warning landed in
+# ``logs/`` and the sentinel classifier pins it). The real-time bound these
+# tests need is enforced where they wait: ``asyncio.wait_for``,
+# ``wait_for_file`` and ``child.wait`` all carry explicit deadlines.
 
 
 # ---------------------------------------------------------------------------

@@ -210,6 +210,7 @@ def _score_quality(match: dict[str, Any], agent_id: str) -> int:
     try:
         total = float(scores.get("total", 0) or 0)
     except (TypeError, ValueError):
+        logger.warning("Ignoring malformed arena score for agent %s: %r", agent_id, scores.get("total"), exc_info=True)
         return 0
     return max(0, min(10, round(total)))
 

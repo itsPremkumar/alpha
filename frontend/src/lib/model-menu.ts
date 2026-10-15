@@ -27,6 +27,23 @@ import type { FreeProviderHealth } from "@/lib/freeModels";
 export const MODEL_GROUP_ORDER = ["keyless", "quota", "standard"] as const;
 export type ModelGroupKey = (typeof MODEL_GROUP_ORDER)[number];
 
+/**
+ * First-load selection for the composer. The catalog is usually ordered with
+ * paid/provider-backed entries first, so using its first item bypasses the
+ * Gateway's configured `default_model` (and can violate `spend.mode`). Keep
+ * auto-routing as the default unless the operator has explicitly saved a
+ * still-available model selection.
+ */
+export function initialSelectedModel(
+  savedModel: string | null,
+  models: readonly Pick<AIModel, "id">[],
+): string {
+  if (savedModel && (models.length === 0 || models.some((model) => model.id === savedModel))) {
+    return savedModel;
+  }
+  return "default";
+}
+
 export interface ModelGroups {
   keyless: AIModel[];
   quota: AIModel[];

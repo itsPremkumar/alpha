@@ -1927,9 +1927,10 @@ class TestToolCallBatchDecisions:
         result = await graph.ainvoke(inputs, **kwargs) if use_async else graph.invoke(inputs, **kwargs)
 
         assert executed == []
-        assert len(model.seen_messages) == 1
+        assert len(model.seen_messages) == 2
         assert result["messages"][-1].tool_calls == []
-        assert "FORCED STOP" in result["messages"][-1].content
+        assert any("FORCED STOP" in str(message.content) for message in result["messages"])
+        assert any(getattr(message, "name", None) == "loop_detection_finalization" for message in model.seen_messages[-1])
         assert mw.consume_stop_reason("batch-run") == "loop_capped"
         assert not mw._pending_warnings
 

@@ -1,131 +1,44 @@
 import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
-const sidebars = {
+/**
+ * The guides sidebar (`docs/guides/`).
+ *
+ * It listed 64 ids against 8 real files, so every build failed on the first
+ * missing document. Add the document first, then the entry.
+ */
+const sidebars: SidebarsConfig = {
   guidesSidebar: [
-    'overview',
     {
       type: 'category',
-      label: 'Getting Started',
-      items: [
-        'getting-started/quick-start',
-        'getting-started/installation',
-        'getting-started/configuration',
-        'getting-started/first-agent',
-      ],
-    },
-    {
-      type: 'category',
-      label: 'Core Concepts',
+      label: 'Agents',
       collapsed: false,
-      items: [
-        'architecture',
-        'core-concepts/agents',
-        'core-concepts/tools',
-        'core-concepts/memory',
-        'core-concepts/sandbox',
-        'core-concepts/subagents',
-        'core-concepts/swarms',
-        'core-concepts/goals',
-        'core-concepts/workflows',
-      ],
+      items: ['agents/overview'],
     },
     {
       type: 'category',
-      label: 'Guides',
-      items: [
-        {
-          type: 'category',
-          label: 'Agents',
-          items: [
-            'guides/agents/overview',
-            'guides/agents/creating-agents',
-            'guides/agents/spawning-subagents',
-            'guides/agents/agent-communication',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Tools',
-          items: [
-            'guides/tools/built-in-tools',
-            'guides/tools/custom-tools',
-            'guides/tools/mcp-integration',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Memory',
-          items: [
-            'guides/memory/working-with-memory',
-            'guides/memory/context-window',
-            'guides/memory/summarization',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Sandbox',
-          items: [
-            'guides/sandbox/overview',
-            'guides/sandbox/docker',
-            'guides/sandbox/aio',
-            'guides/sandbox/e2b',
-            'guides/sandbox/security',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Goals & Workflows',
-          items: [
-            'guides/goals/overview',
-            'guides/goals/creating-goals',
-            'guides/goals/verification',
-            'guides/goals/subgoals',
-            'guides/workflows/creating-workflows',
-            'guides/workflows/workflow-patterns',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Skills',
-          items: [
-            'guides/skills/overview',
-            'guides/skills/creating-skills',
-            'guides/skills/marketplace',
-            'guides/skills/testing',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Sandbox',
-          items: [
-            'guides/sandbox/overview',
-            'guides/sandbox/docker',
-            'guides/sandbox/aio',
-            'guides/sandbox/e2b',
-            'guides/sandbox/security',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Deployment',
-          items: [
-            'deployment',
-            'guides/deployment/docker',
-            'guides/deployment/kubernetes',
-            'guides/deployment/monitoring',
-          ],
-        },
-        {
-          type: 'category',
-          label: 'Integrations',
-          items: [
-            'integrations/github',
-            'integrations/slack',
-            'integrations/jira',
-            'integrations/custom-api',
-          ],
-        },
-      ],
+      label: 'Tools',
+      items: ['tools/built-in-tools'],
+    },
+    {
+      type: 'category',
+      label: 'Memory',
+      items: ['memory/working-with-memory'],
+    },
+    {
+      type: 'category',
+      label: 'Goals',
+      items: ['goals/overview'],
+    },
+    {
+      type: 'category',
+      label: 'Skills',
+      items: ['skills/overview'],
+    },
+    {
+      type: 'category',
+      label: 'Sandbox',
+      collapsed: false,
+      items: ['sandbox/overview', 'sandbox/docker', 'sandbox/e2b'],
     },
   ],
 };

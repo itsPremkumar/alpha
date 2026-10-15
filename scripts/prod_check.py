@@ -1,7 +1,8 @@
-"""Production readiness pre-flight check for Alpha.
+"""Static deployment-configuration pre-flight check for Alpha.
 
-Validates the things that most often break a production deployment, before
-you deploy it. Run from the repository root:
+Validates deployment files and settings without starting Alpha, importing the
+runtime, or contacting providers. A pass is not production-readiness evidence.
+Run from the repository root:
 
     python scripts/prod_check.py          # warnings allowed, failures block
     python scripts/prod_check.py --strict # warnings also block (CI gate)
@@ -187,12 +188,14 @@ def main() -> int:
 
     blocking = failures + (warnings if args.strict else [])
     if blocking:
-        print(f"\nprod-check: {len(failures)} failure(s), {len(warnings)} warning(s) -> NOT production ready")
+        print(f"\ndeployment preflight: {len(failures)} failure(s), {len(warnings)} warning(s) -> NOT passed")
         return 1
     if warnings:
-        print(f"\nprod-check: 0 failures, {len(warnings)} warning(s) -> ready with warnings")
+        print(f"\ndeployment preflight: passed with {len(warnings)} warning(s)")
+        print("Runtime, model-provider, and UI readiness were not checked; start Alpha and run `make doctor`.")
         return 0
-    print("\nprod-check: all checks passed -> production ready")
+    print("\ndeployment preflight: passed")
+    print("Runtime, model-provider, and UI readiness were not checked; start Alpha and run `make doctor`.")
     return 0
 
 

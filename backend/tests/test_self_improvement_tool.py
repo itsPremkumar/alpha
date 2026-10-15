@@ -49,8 +49,8 @@ def _make_runtime() -> SimpleNamespace:
                 "outputs_path": "/tmp/outputs",
             },
         },
-        context={"thread_id": "thread-1"},
-        config={"metadata": {"model_name": "ark-model", "trace_id": "trace-1"}},
+        context={"thread_id": "thread-1", "subagent_enabled": True},
+        config={"configurable": {"subagent_enabled": True}, "metadata": {"model_name": "ark-model", "trace_id": "trace-1"}},
     )
 
 
@@ -190,6 +190,15 @@ def _message(result: str | Command) -> ToolMessage:
 
 
 class TestRalphValidation:
+    def test_explicitly_disabled_delegation_refuses_before_starting_a_child(self, monkeypatch):
+        _install_mocks(monkeypatch, results=[])
+        runtime = _make_runtime()
+        runtime.config["configurable"]["subagent_enabled"] = False
+        runtime.context["subagent_enabled"] = False
+        message = _message(_run_ralph(runtime=runtime, task="write it", completion_promise="file:out.txt exists"))
+        assert "delegation is off" in message.content
+        assert _FakeExecutor.instances == []
+
     def test_empty_task_fails(self, monkeypatch):
         _install_mocks(monkeypatch, results=[])
         message = _message(_run_ralph(task="  ", completion_promise="file:out.txt exists"))

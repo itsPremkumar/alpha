@@ -28,8 +28,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import shutil
-import sys
 from pathlib import Path
 
 # (old_name, new_name) pairs, relative to each project root that is checked.

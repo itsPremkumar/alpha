@@ -242,6 +242,8 @@ async def test_sqlite_runtime_reconciles_orphaned_runs_on_startup(monkeypatch):
     app = FastAPI()
     config = SimpleNamespace(
         database=SimpleNamespace(backend="sqlite", checkpoint_channel_mode="full", checkpoint_delta=SimpleNamespace(snapshot_frequency=10)),
+        checkpointer=None,
+        capabilities=SimpleNamespace(is_graph_execution_enabled=lambda: False),
         run_events=SimpleNamespace(backend="memory"),
         stream_bridge=SimpleNamespace(recovered_stream_cleanup_delay_seconds=60.0),
     )
@@ -286,6 +288,8 @@ async def test_runtime_starts_and_stops_safe_recovery_service(monkeypatch):
     app = FastAPI()
     config = SimpleNamespace(
         database=SimpleNamespace(backend="sqlite", checkpoint_channel_mode="full", checkpoint_delta=SimpleNamespace(snapshot_frequency=10)),
+        checkpointer=None,
+        capabilities=SimpleNamespace(is_graph_execution_enabled=lambda: False),
         run_events=SimpleNamespace(backend="memory"),
         run_ownership=SimpleNamespace(auto_resume=True),
         stream_bridge=SimpleNamespace(recovered_stream_cleanup_delay_seconds=60.0),
@@ -323,6 +327,8 @@ async def test_sql_runtime_shares_run_repository_with_scheduler(monkeypatch):
     app = FastAPI()
     config = SimpleNamespace(
         database=SimpleNamespace(backend="sqlite", checkpoint_channel_mode="full", checkpoint_delta=SimpleNamespace(snapshot_frequency=10)),
+        checkpointer=None,
+        capabilities=SimpleNamespace(is_graph_execution_enabled=lambda: False),
         run_events=SimpleNamespace(backend="memory"),
         stream_bridge=SimpleNamespace(recovered_stream_cleanup_delay_seconds=60.0),
     )
@@ -354,6 +360,8 @@ async def test_sqlite_runtime_does_not_mark_thread_error_when_newer_run_is_succe
     app = FastAPI()
     config = SimpleNamespace(
         database=SimpleNamespace(backend="sqlite", checkpoint_channel_mode="full", checkpoint_delta=SimpleNamespace(snapshot_frequency=10)),
+        checkpointer=None,
+        capabilities=SimpleNamespace(is_graph_execution_enabled=lambda: False),
         run_events=SimpleNamespace(backend="memory"),
         stream_bridge=SimpleNamespace(recovered_stream_cleanup_delay_seconds=60.0),
     )

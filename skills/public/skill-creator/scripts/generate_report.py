@@ -16,7 +16,6 @@ from pathlib import Path
 def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") -> str:
     """Generate HTML report from loop output data. If auto_refresh is True, adds a meta refresh tag."""
     history = data.get("history", [])
-    holdout = data.get("holdout", 0)
     title_prefix = html.escape(skill_name + " \u2014 ") if skill_name else ""
 
     # Get all unique queries from train and test sets, with should_trigger info
@@ -155,19 +154,23 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
         + title_prefix
         + """Skill Description Optimization</h1>
     <div class="explainer">
-        <strong>Optimizing your skill's description.</strong> This page updates automatically as Claude tests different versions of your skill's description. Each row is an iteration — a new description attempt. The columns show test queries: green checkmarks mean the skill triggered correctly (or correctly didn't trigger), red crosses mean it got it wrong. The "Train" score shows performance on queries used to improve the description; the "Test" score shows performance on held-out queries the optimizer hasn't seen. When it's done, Claude will apply the best-performing description to your skill.
+        <strong>Optimizing your skill's description.</strong> This page updates automatically as Claude tests different versions of your skill's description.
+        Each row is an iteration — a new description attempt. The columns show test queries: green checkmarks mean the skill triggered correctly
+        (or correctly didn't trigger), red crosses mean it got it wrong. The "Train" score uses queries that improve the description; the "Test" score
+        uses held-out queries the optimizer hasn't seen. When it's done, Claude will apply the best-performing description to your skill.
     </div>
 """
     ]
 
     # Summary section
     best_test_score = data.get("best_test_score")
-    best_train_score = data.get("best_train_score")
+    best_train_score = data.get("best_train_score", "N/A")
     html_parts.append(f"""
     <div class="summary">
         <p><strong>Original:</strong> {html.escape(data.get("original_description", "N/A"))}</p>
         <p class="best"><strong>Best:</strong> {html.escape(data.get("best_description", "N/A"))}</p>
-        <p><strong>Best Score:</strong> {data.get("best_score", "N/A")} {"(test)" if best_test_score else "(train)"}</p>
+        <p><strong>Best Score:</strong> {data.get("best_score", "N/A")} {"(test)" if best_test_score is not None else "(train)"}</p>
+        <p><strong>Best Train Score:</strong> {html.escape(str(best_train_score))}</p>
         <p><strong>Iterations:</strong> {data.get("iterations_run", 0)} | <strong>Train:</strong> {data.get("train_size", "?")} | <strong>Test:</strong> {data.get("test_size", "?")}</p>
     </div>
 """)
@@ -219,10 +222,6 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
     # Add rows for each iteration
     for h in history:
         iteration = h.get("iteration", "?")
-        train_passed = h.get("train_passed", h.get("passed", 0))
-        train_total = h.get("train_total", h.get("total", 0))
-        test_passed = h.get("test_passed")
-        test_total = h.get("test_total")
         description = h.get("description", "")
         train_results = h.get("train_results", h.get("results", []))
         test_results = h.get("test_results", [])

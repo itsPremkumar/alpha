@@ -3,13 +3,13 @@ import re
 # ---- 1. sandbox/tools.py:1177 ``$`` lookahead: does it catch cd/pushd via substitution? ----
 pattern = re.compile(r"\$\([^)]*\b(?:cd|pushd)\b")
 tests = [
-    "cd $(pwd)",            # looks like it should be caught
-    "cd $(cd /tmp)",        # nested cd - should it be caught?
-    "cd $(goto C:\\)\\x",   # Windows goto trick (prior report's example)
-    "echo $(cd)",           # cd alone, no arg
-    "cd $(echo hi)",        # substitution containing cd but not as cmd name
-    "pushd $(pwd)",         # pushd variant
-    "ls $(cd ..)",          # cd inside, already the command, not cd/pushd itself
+    "cd $(pwd)",  # looks like it should be caught
+    "cd $(cd /tmp)",  # nested cd - should it be caught?
+    "cd $(goto C:\\)\\x",  # Windows goto trick (prior report's example)
+    "echo $(cd)",  # cd alone, no arg
+    "cd $(echo hi)",  # substitution containing cd but not as cmd name
+    "pushd $(pwd)",  # pushd variant
+    "ls $(cd ..)",  # cd inside, already the command, not cd/pushd itself
 ]
 for cmd in tests:
     print(f"  {cmd!r:40} matched={bool(pattern.search(cmd))}")

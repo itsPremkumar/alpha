@@ -71,20 +71,15 @@ print(f"  status: {st}")
 check("B1  connectors installed", st["connectors_enabled"] == 3)
 check("B2  experts + group installed", st["experts_enabled"] == 3)
 check("B3  marketplace skills installed", st["skills_enabled"] == 3)
-check("B4  expert group pipeline resolves",
-      [e.id for e in ws.experts.group_members("content-creation")] ==
-      ["creative-director", "copywriter", "graphic-designer", "video-generator"])
+check("B4  expert group pipeline resolves", [e.id for e in ws.experts.group_members("content-creation")] == ["creative-director", "copywriter", "graphic-designer", "video-generator"])
 
 # ---------------------------------------------------------------------
 section("C — Egress routing + profile (security boundary)")
 ws.egress.set_default_route(EgressRoute.DIRECT)
 ws.egress.add_rule("*.bank.com", EgressRoute.RESIDENTIAL_PROXY, prepend=True)
-ws.egress.add_profile(import_profile("priya", label="Priya Chrome",
-                                     source_path="/profiles/priya", authenticated_domains=["mail.google.com"]))
-check("C1  finance domain routed via residential proxy",
-      ws.egress.resolve("pay.bank.com") == EgressRoute.RESIDENTIAL_PROXY)
-must_raise("C2  credential smuggling refused", EgressValidationError,
-           import_profile, "x", source_path='{"cookies":"SID=1"}')
+ws.egress.add_profile(import_profile("priya", label="Priya Chrome", source_path="/profiles/priya", authenticated_domains=["mail.google.com"]))
+check("C1  finance domain routed via residential proxy", ws.egress.resolve("pay.bank.com") == EgressRoute.RESIDENTIAL_PROXY)
+must_raise("C2  credential smuggling refused", EgressValidationError, import_profile, "x", source_path='{"cookies":"SID=1"}')
 
 # ---------------------------------------------------------------------
 section("D — Routine capture + replay")
@@ -94,8 +89,7 @@ rec.record_step("gmail_draft", {"to": "{{contact}}", "subject": "Renewal"})
 routine = rec.finalize()
 ws.save_routine(routine)
 calls = replay(ws.routines.get("renewal_outreach"), {"owner": "priya@acme.com", "contact": "cto@bigco.com"})
-check("D1  routine saved and replayed", calls[1]["args"]["to"] == "cto@bigco.com",
-      f"{len(ws.routines.list())} routine(s); owner auto-parameterised")
+check("D1  routine saved and replayed", calls[1]["args"]["to"] == "cto@bigco.com", f"{len(ws.routines.list())} routine(s); owner auto-parameterised")
 
 # ---------------------------------------------------------------------
 section("E — Automations (RRULE)")
@@ -106,8 +100,7 @@ ws.add_automation(Automation("monthly", "Monthly Close", "Reconcile", Automation
 for a in ws.automations.list():
     print(f"    {a.name:16s} next={next_run(a.schedule, now).isoformat(sep=' ')}  rrule={to_rrule(a.schedule)}")
 check("E1  three automations scheduled", ws.status()["automations"] == 3)
-check("E2  next-run computation correct",
-      next_run(ws.automations.get("weekly").schedule, now) == datetime(2026, 10, 2, 17, 0))
+check("E2  next-run computation correct", next_run(ws.automations.get("weekly").schedule, now) == datetime(2026, 10, 2, 17, 0))
 
 # ---------------------------------------------------------------------
 section("F — Mode enforcement")
@@ -131,14 +124,12 @@ check("G6  egress policy persisted", ws2.egress.resolve("pay.bank.com") == Egres
 # ---------------------------------------------------------------------
 section("H — Capability scorecard")
 report = ws.capability_report()
-check("H1  frontier coverage is 100%", report.present_count == report.total,
-      f"{report.present_count}/{report.total} across {len(report.by_category())} categories")
+check("H1  frontier coverage is 100%", report.present_count == report.total, f"{report.present_count}/{report.total} across {len(report.by_category())} categories")
 
 # ---------------------------------------------------------------------
 section("I — Snapshot")
 snap = ws.snapshot()
-check("I1  snapshot serialises the whole workspace",
-      set(snap) >= {"status", "mode_capabilities", "connectors", "experts", "skills", "automations", "routines", "egress"})
+check("I1  snapshot serialises the whole workspace", set(snap) >= {"status", "mode_capabilities", "connectors", "experts", "skills", "automations", "routines", "egress"})
 
 # ---------------------------------------------------------------------
 section("SUMMARY")

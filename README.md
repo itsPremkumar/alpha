@@ -192,7 +192,7 @@ the parts that decide whether an autonomous agent is usable in production.
 | **It hallucinates that it finished** | A Goal Engine with verifiable completion criteria plus a finish-first evidence matrix. A run can complete and still be honestly reported as *unverified*. |
 | **It burns your budget** | Token, tool-call, wall-clock, task, and replan budgets per run; explicit `budget_exhausted` / `stalled` states; cache-aware spend telemetry. |
 | **It runs dangerous commands** | A risk-scoring approval gate, a scoped credential vault, per-thread sandbox isolation, and an emergency stop (Estop) — ⚠️ though Estop currently gates only the RSI cycle, so do not treat it as a fleet kill switch. |
-| **You can't tell what it did** | End-to-end artifact lineage tracing — hash-linked provenance from prompt to output (stored locally; not a cryptographic attestation) — plus a run-event feed and `X-Trace-Id` correlation on every log line. ⚠️ The trajectory flight recorder's writer is not installed in production, so span-level tracing is off by default and not reachable from `config.yaml`. |
+| **You can't tell what it did** | End-to-end artifact lineage tracing — hash-linked provenance from prompt to output (stored locally; not a cryptographic attestation) — plus a run-event feed, bounded/redacted lead-agent trajectory records, and `X-Trace-Id` correlation on every log line. |
 | **It can't use your tools** | 139 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
 | **It forgets everything** | A layered memory plane: working memory, episodic replay, semantic knowledge graph, and idle-time dreaming consolidation. Opt-in **active memory** (`memory.fusion.enabled`) additionally fuses the curated `MEMORY.md` rules, your configured memory backend, and session history into one relevance-ranked `memory_search` answer that reports each source's health honestly — off by default, and relevance is never presented as truth. |
 | **It only works in a terminal** | Web workspace, Windows desktop app, and eight messaging platforms — all driving the same agent runtime. |
@@ -292,7 +292,7 @@ none of it is hypothetical.
 | **In-process REPL** | ✅ Fixed. `python_repl` `exec()`s in the Gateway process and previously bypassed `allow_host_bash: false`. Now default-off behind `sandbox.allow_in_process_repl`. | `39416bf`, `tests/test_python_repl_boundary.py` |
 | **RSI preview honesty** | ✅ Fixed. `run_rsi_cycle` hardcoded `0.72 -> 0.88` and `0.80 -> 0.89`, so it always reported an improvement. Scores are now `null` with the reason disclosed, and `regressed` is `null` rather than `false` — an unrun suite is not a clean one. It still only *proposes*; a real verdict needs the hidden-suite harness. | `65464c1`, `rsi/engine.py` |
 | **Irreversible git** | ✅ Fixed. `force_push` and `git_push_protected` were already classified as approval-requiring by the autonomy guard, but `assert_requires_approval` had no production caller — so nothing stopped a force-push over `main`. The `bash` tool now refuses both, with `sandbox.allow_protected_git_push: true` to restore it. | `sandbox/git_push_guard.py` |
-| **Code-tool workspace escape** | ✅ Fixed. `auto_test_and_repair` ran a model-supplied string through `shell=True` with no gate while `bash` required `allow_host_bash`, and `manage_code_checkpoint` wrote `root / target_files[i]` after `mkdir(parents=True)`, so `../..` both read and wrote outside the workspace. Roots are bounded (`sandbox.workspace_roots`) and a caller-supplied `test_command` now needs the same opt-in `bash` does. | `sandbox/workspace_boundary.py` |
+| **Code-tool workspace escape** | ✅ Fixed. `auto_test_and_repair` ran a model-supplied string through `shell=True` with no gate while `bash` required `allow_host_bash`, and `manage_code_checkpoint` wrote `root / target_files[i]` after `mkdir(parents=True)`, so `../..` both read and wrote outside the workspace. Roots are bounded (`sandbox.workspace_roots`) and a caller-supplied `test_command` needs the same opt-in `bash` does. Automatic test discovery prefers a project virtualenv, the project's `uv` lock, then Alpha's active Python interpreter so a different global pytest does not cause false failures. | `sandbox/workspace_boundary.py`; `tools/builtins/code_agentic_core.py` |
 | **Local sandbox as a boundary** | ⚠️ `LocalSandbox` is a path convention running at full user privilege; Windows has no Job Object. Real isolation requires AIO/E2B/BoxLite. The code says so itself. | `sandbox/AGENTS.md`: *"This is not a host filesystem security boundary."* |
 | **Frontend reads a disabled API as a broken one** | ✅ Fixed. `errMsg()` rewrote a `403`/`404` into a generic sentence, so the Gateway's own setup instructions never reached the screen: `agents_api.enabled=false` (403) rendered as *"Not allowed — this action needs admin rights or a feature flag."*, and the un-bootstrapped-company 404 (*"No active organizations found. Bootstrap a company first."*) rendered as *"Not found — it may have been deleted."* — telling an operator a company they never created had gone missing. `lib/server-reasons.ts` now keeps the server's sentence and classifies both as configuration states: **"Agents API is disabled by configuration"** and **"No company configured — this view is unavailable"**, on the Agents, Overview, Board, Team Ops and Companies views. A 403/404 carrying any *other* reason is deliberately left unclassified. | `frontend/src/lib/server-reasons.ts`; `frontend/src/lib/server-reasons.test.mjs` |
 
@@ -334,7 +334,7 @@ subsystem.
 | :--- | :--- | :--- |
 | **Autonomous research reports** | 5-pass search (discovery → evidence → falsification → verification → synthesis), gap filling, and an explicit `[S1]`-style citation contract with per-source status | [docs/DEEP_RESEARCH.md](docs/DEEP_RESEARCH.md) |
 | **Autonomous coding & repair** | AST-verified edits, git shadow checkpoints with 1-click rollback, test-and-repair loops, repo twin previewing, AST-grep search/rewrite | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| **Goal-driven control plane** | **APEX Autopilot**: dispatch an objective through the Gateway `RunManager`, observe run status and token usage, and submit measured evidence for every acceptance criterion from the APEX UI or API. The acceptance gate, not a successful run, decides completion. A narrow automatic verifier can confirm explicit exact-text file readbacks from correlated write/read tool events; arbitrary criteria remain unverified until a typed collector or owner evidence covers them. Recent session history shows persisted acceptance evidence and, when expanded, the RunManager error and stop reason for failed runs. An administrator can request a bounded replan after reviewing terminal failure. Goal trees and linked session decisions preserve owner boundaries. Every enabled profile has unlimited token, tool-call, and runtime spending ceilings; operational capacity, approvals, and the shared emergency stop remain. Child calls inherit the persisted APEX policy; policy refusals remove tools from the next model step so exhausted budgets cannot cause repeated rejected calls; durable batch leases share a per-session cap across batches and Gateway workers, while ordinary task and batch counts are not yet combined | [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) |
+| **Goal-driven control plane** | **APEX Autopilot**: dispatch an objective through the Gateway `RunManager`, observe run status and token usage, and submit measured evidence for every acceptance criterion from the APEX UI or API. The acceptance gate, not a successful run, decides completion. The separate conversation goal loop evaluates visible messages together with persisted successful tool receipts; its model judgment is not a measured acceptance verdict. A narrow automatic verifier can confirm explicit exact-text file readbacks from correlated write/read tool events; arbitrary criteria remain unverified until a typed collector or owner evidence covers them. Recent session history shows persisted acceptance evidence and, when expanded, the RunManager error and stop reason for failed runs. An administrator can request a bounded replan after reviewing terminal failure. Goal trees and linked session decisions preserve owner boundaries. Every enabled profile has unlimited token, tool-call, and runtime spending ceilings; operational capacity, approvals, and the shared emergency stop remain. Child calls inherit the persisted APEX policy; policy refusals remove tools from the next model step so exhausted budgets cannot cause repeated rejected calls; durable batch leases share a per-session cap across batches and Gateway workers, while ordinary task and batch counts are not yet combined | [docs/APEX_AUTOPILOT.md](docs/APEX_AUTOPILOT.md) |
 | **Event-driven execution governance** | The Alpha Mod Kernel runs ordered policy middleware on lead-agent tool and model lifecycle events, with first-party emergency-stop, risk, evidence, routing, and failure controllers. Held actions are persisted with an admin approve/reject flow, and a static manifest report shows what each mod declares versus what it is wired to. Kernel journal replay/dead-letter processing is not implemented; see the [production inventory](docs/PRODUCTION_READINESS_INVENTORY.md) | [docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md](docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md) |
 | **A team of agents on one project** | Bot roster, SOUL protocol, private inboxes, DMs, group chat rooms, live Kanban board, project constitutions, ADRs, resource locks | [docs/WORKFORCE.md](docs/WORKFORCE.md) |
 | **A community of agent groups** | Nest group rooms inside group rooms at any time, staff them by rule instead of by name, inherit membership from a parent, and split direct / inherited / rule-matched members in the roster | [AGENTS.md](AGENTS.md#nested-groups-the-community-shape) |
@@ -403,8 +403,9 @@ If nginx could not be installed, Alpha still runs: Gateway on `:8001`, web UI on
 git clone https://github.com/itsPremkumar/alpha.git && cd alpha
 cp .env.production.example .env     # optional: on a fresh clone `make up` generates secrets
 make config
-make prod-check                    # pre-flight: versions, config files, secrets
+make prod-check                    # static pre-flight: versions, config files, secrets
 make up                            # build + start; waits for the Gateway health probe
+make doctor                        # verify configured model clients/providers and live service readiness
 # browser: http://localhost:2026
 make down                          # stop
 ```
@@ -737,11 +738,10 @@ exactly-once execution.
   does not stop the run worker, subagents, the admission controller, or the
   background loops; see *Known gaps* above. It is a freeze switch for one
   subsystem, not a fleet kill switch.
-- **Trajectory flight recorder** — the recorder, taxonomy and coverage table exist
-  (18 layers) and are exercised by tests, but ⚠️ **no writer is installed in
-  production**, so nothing is recorded by default. The run-event feed and
-  `X-Trace-Id` correlation *do* work; span-level tracing is off and not reachable
-  from `config.yaml`.
+- **Trajectory flight recorder** — lead-agent turns are recorded to the local
+  SQLite trajectory store. Model text and tool payloads are credential-redacted
+  and bounded before persistence; this local audit record is not a cryptographic
+  attestation.
 - **Universal artifact lineage** — hash-linked provenance of every generated
   file, code, and document (SHA-256 content digests, stored locally; not a
   cryptographic attestation).
@@ -1030,7 +1030,8 @@ Rules of thumb:
   `extensions_config.json`, because that list causes code to be imported.
   Every mutation needs a Gateway restart.
 - Background autonomy loops are gated by `config.yaml -> autonomy.loops`; an
-  absent id means disabled, and all flags off means zero tasks.
+  absent id means disabled, and all flags off means zero tasks. The APEX loop
+  scopes durable run-event reads to each session owner outside HTTP requests.
 
 → [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 
@@ -1271,7 +1272,8 @@ and artifacts stay in your runtime home / database; only the model providers you
 configure receive the prompts you send them.
 
 **Q: How do I get help?**
-**A:** Run `make doctor` and `make prod-check`, read
+**A:** Run `make prod-check` for a static deployment-config preflight, then run
+`make doctor` with Alpha started to verify runtime, model providers, and the UI. Read
 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), then open an issue with the
 redacted bundle from `make support-bundle`, the `X-Trace-Id` header, and relevant
 Gateway/Frontend logs.

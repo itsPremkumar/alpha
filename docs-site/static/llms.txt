@@ -1,0 +1,74 @@
+# Alpha
+
+> **Alpha** — An autonomous AI agent framework with sandboxed execution, persistent memory, subagent delegation, and extensible tooling. Built for autonomous operations at scale.
+
+## Quick Links
+
+- [Website](https://alpha.itsPremkumar.com)
+- [Documentation](https://docs.alpha.itsPremkumar.com)
+- [API Reference](https://docs.alpha.itsPremkumar.com/api/)
+- [GitHub](https://github.com/itsPremkumar/alpha)
+- [Discord](https://discord.gg/alpha)
+
+## Project Description
+
+Alpha is a LangGraph-based AI super-agent system — a backend "super agent" with sandboxed execution, persistent memory, subagent delegation, and extensible tooling (built-in, MCP, community), all per-thread isolated; a Next.js chat frontend; and IM bridges (Feishu, Slack, Telegram, Discord, DingTalk) into the same agent through the Gateway.
+
+## Key Capabilities
+
+- **Super Agent**: LangGraph-based orchestrator with tool calling, model routing, and autonomous execution
+- **Sandboxed Execution**: Isolated environments (Docker, AIO, E2B, local) per thread with file I/O, network, and process isolation
+- **Persistent Memory**: DeerMem + cognitive memory with semantic search, summarization, and cross-thread recall
+- **Subagent Delegation**: Spawn specialized agents (`/subagent spawn`), orchestrate swarms through the `swarm` tool, delegate with acceptance criteria
+- **Bot Forge + online Skills Hub**: Search the live skills.sh catalog, inspect public GitHub skill packages at immutable source identities, review findings, and install the exact digest through Alpha's user-scoped scanners; then forge a specialist with a tailored SOUL and verify a Bot-scoped task. Popularity is not a safety guarantee; unprobed builds remain unverified.
+- **Arena Tournaments**: N sub-agents solve one task with distinct strategy cards, then attack, defend, and judge in a durable single-elimination bracket until one solution survives
+- **Group-Relative Orchestration (GRO)**: A bounded group of candidate attempts executed under distinct strategies, selected by absolute acceptance gates first (relative rank only ranks the eligible; `unknown` is never a pass) with one bounded repair round and an explicit UNVERIFIED partial result when nothing passes - default off behind `gro.enabled`, driven by the `swarm` tool's `compete`/`compete_status` actions
+- **Capability Mesh**: Evidence-backed capability records for every dispatchable configuration, with every count reported beside its evidence level (`unmeasured` reads as `unmeasured`) - `capability_mesh` tool (12 actions, one write) and `/api/capability-mesh`; off by default behind `capability_mesh.enabled`, and a read/preview plane that dispatches nothing even when enabled
+- **Extensible Tooling**: 139 built-in tools + MCP servers + custom skills + community extensions
+- **Per-Thread Isolation**: Every conversation gets its own sandbox, memory, and tool namespace
+- **IM Bridges**: Native Feishu, Slack, Telegram, Discord, DingTalk connectors via unified Gateway
+- **Observability**: Real-time SSE streams, run traces, token usage, cost tracking, delivery receipts
+- **Governance**: Tool risk policies, approval gates, capability ceilings, emergency stop
+- **Durable Runtime**: Crash recovery, network partitions, graceful shutdown, session persistence
+- **Autonomous command receipts**: Natural-language lifecycle matches show the Gateway's execution status and returned output in the chat; detection alone is not shown as a completed action
+- **APEX Autopilot**: Dispatches objectives through RunManager; completion requires evidence for every criterion. Registered probes and a narrow exact-text file-readback verifier can supply evidence automatically; arbitrary criteria remain unverified until a typed collector or owner evidence covers them.
+- **Conversation goal completion**: The bounded goal loop evaluates visible chat plus persisted successful tool receipts, while treating tool output as untrusted data; this model judgment is separate from measured APEX acceptance verification.
+- **Alpha-to-Alpha peer network**: Pair installations with single-use invites shown as QR codes and scanned locally from a camera or image; the peer network is disabled by default.
+
+## Key Commands
+
+The slash-command catalog is larger than the executable surface: of the commands listed below, only `/goal` (with its subcommands) has a bound handler today. The other 13 rows are catalogued in `alpha.commands.registry` but answer `status="unimplemented"` with "nothing was executed" — catalog membership is product direction, never an available API.
+
+- `/goal` - Define and orchestrate autonomous goals
+- `/plan` - Compile 8-dimensional strategic meta-plan
+- `/swarm` - Orchestrate multi-agent specialized swarms
+- `/agent` - Spawn, inspect, or manage autonomous agents
+- `/research` - Deep multi-stage web and codebase research
+- `/code` - Inspect, write, and refactor code modules
+- `/memory` - Query and store episodic and semantic memory
+- `/verify` - Verify current result against requirements
+- `/context` - Shows current context composition and usage
+- `/model` - Shows or changes active model
+- `/reasoning` - Shows or changes reasoning effort
+- `/tools` - Shows currently available tools and their status
+- `/skills` - Shows installed, available and active skills
+- `/trace` - Shows execution trace for current mission
+
+## Technology Stack
+
+- **Backend**: Python 3.12+, FastAPI, LangGraph, uv
+- **Frontend**: Next.js 15, React 18, TypeScript, Tailwind CSS
+- **Database**: PostgreSQL, SQLite, Redis
+- **Infrastructure**: Docker, nginx, Kubernetes
+- **Orchestration**: LangGraph, LangChain
+- **Memory**: DeerMem, cognitive memory
+
+## Links
+
+- **Repository**: https://github.com/itsPremkumar/alpha
+- **Documentation**: https://docs.alpha.itsPremkumar.com
+- **API Reference**: https://docs.alpha.itsPremkumar.com/api/
+- **Issues**: https://github.com/itsPremkumar/alpha/issues
+- **Discussions**: https://github.com/itsPremkumar/alpha/discussions
+- **Discord**: https://discord.gg/alpha
+- **License**: MIT

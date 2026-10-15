@@ -55,8 +55,64 @@
   ],
   "declaration_only_keys": [
     {
-      "target": "evolution_evidence",
-      "reason": "Group A. The whole evolution_evidence subtree is declared on AppConfig and read by nothing outside alpha/evolution/evidence/, which production never imports: the evidence subsystem takes its configuration through evaluate_proposal(config=...) and is reachable only from tests. Recorded as a known inert declaration; deleting the key is a breaking config change and an operator decision, not a test edit."
+      "target": "context_window.next_turn_reserve_tokens",
+      "reason": "Read, but not visible to the name channel: ContextWindowConfig.window_spec() -- defined in the declaring module -- forwards this reserve into alpha.runtime.context_window.resolve_context_window, and window_spec() is called by live modules (app/gateway/context_usage.py, app/gateway/routers/ops.py) to derive the usable input window. The field name appears in no expression outside alpha.config.context_window_config, which is the only reason the scan reports it: callers read the derived ContextWindowSpec, not the config field. Not the memory.fabric case: the configured value reaches production."
+    },
+    {
+      "target": "context_window.output_reserve_tokens",
+      "reason": "Same accessor-invisibility as context_window.next_turn_reserve_tokens: the declaring module's window_spec() forwards this reserve into alpha.runtime.context_window.resolve_context_window, and the live callers (app/gateway/context_usage.py, app/gateway/routers/ops.py) consume the derived spec, so the field name is absent from every read expression outside its declaring module while the configured value does reach production."
+    },
+    {
+      "target": "gro.relative_rank_is_tiebreaker_only",
+      "reason": "Documentation-only by design: alpha.gro selects on absolute score after hard gates and carries relative rank as a diagnostic only (its winner reason says 'relative rank ... is diagnostic only'), so the invariant holds structurally and gro/AGENTS.md records the field as pinned true by design. Flipping it changes no behaviour, which is the declared-but-unread shape this gate records; deleting a config key is a breaking change for existing installs and an operator decision (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.difficulty_thresholds",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production, so no code path branches on it: alpha.intelligence.difficulty resolves bands from the module constant DEFAULT_BANDS and DifficultyEstimator takes bands as an explicit constructor parameter, neither of which reads this dict. The value is echoed on the read surface (GET /api/intelligence/snapshot projects the whole section as data), but a projection is not a behaviour: setting the key changes nothing. Recorded rather than deleted because deleting a config key is a breaking change for existing installs and an operator decision (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.experts.dynamic_growth",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production: the fabric's dynamic-growth path (ExpertFabric.propose / mark_trial_ready) takes explicit arguments and consults no config for this decision, so setting the flag changes nothing today. The layer's accessor intelligence_config() is live for other fields (e.g. experts.grace_period_seconds), so only the flag is unread. Recorded rather than deleted (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.experts.dynamic_pruning",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production: ExpertFabric.evaluate_prune / mark_prune_candidate take their decision inputs as explicit arguments and refuse a protected expert from the record, never from this flag, so setting it changes nothing today. Recorded rather than deleted (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.experts.trial_min_success_rate",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production: the fabric scores trial experts from the record's own metrics (success_rate stays None before any observation) and no code path consults a configured success-rate floor, so setting the key changes nothing. Recorded rather than deleted (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.experts.trial_window",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production: ExpertFabric.observe takes recent_window (a different, live-read scalar) and mark_trial_ready walks the legal transition path, so nothing asks for a trial window from configuration and setting the key changes nothing. Recorded rather than deleted (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.regression.diversity_floor",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production: alpha.intelligence.diversity.compare_diversity takes absolute_floor (default 0.5) as an explicit parameter and no caller passes the configured value, so setting the key changes nothing. Recorded rather than deleted (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.regression.diversity_min_drop",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production: compare_diversity takes min_drop (default 0.1) as an explicit parameter and no caller passes the configured value, so setting the key changes nothing. Recorded rather than deleted (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.regression.min_regression_score",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production: alpha.intelligence.regression.evaluate_gate takes min_score (default 0.0) as an explicit parameter and no caller passes the configured value, so setting the key changes nothing. Recorded rather than deleted (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.regression.reject_anomalous_improvement",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production: evaluate_gate derives the anomaly refusal from the supplied PathwayReport (is_anomalous_improvement plus its require_improvement parameter), never from this flag, so setting the key changes nothing. Recorded rather than deleted (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.regression.require_pathway_engaged",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production: evaluate_gate blocks a NOT_ENGAGED pathway whenever a pathway report is supplied (absent evidence does not block), so the strictness comes from the evidence supplied to the call, not from this flag. Setting the key changes nothing. Recorded rather than deleted (config/AGENTS.md)."
+    },
+    {
+      "target": "intelligence.replay.curiosity_enabled",
+      "reason": "Declared by alpha.intelligence.config and named nowhere else in production: CuriosityScorer.bonus takes cap as an explicit parameter and replay selection passes curiosity_cap explicitly. The sibling curiosity_cap IS read (alpha/intelligence/curiosity.py), so the section accessor is live, while this on/off flag is never consulted. Recorded rather than deleted (config/AGENTS.md)."
+    },
+    {
+      "target": "specialists.entries.extra_approvals",
+      "reason": "Read only by SpecialistConfig.resolve_approval_list() inside the declaring module, and none of that method's three callers has a production consumer: to_forge_kwargs(), to_bot_template() and SpecialistCatalogConfig.summary() are reached only from tests, while the live roster path (alpha.swarm.team.load_specialists_from_config, registered by app/gateway/app.py) projects name/role/description/capabilities/skills/tool_groups and never approvals. Setting the key changes nothing today; recorded rather than deleted (config/AGENTS.md)."
     },
     {
       "target": "verification.judge_enabled",
@@ -69,10 +125,6 @@
   ],
   "unreachable_flags": [
     {
-      "target": "self_tuning.enabled",
-      "reason": "Group B, and the sharpest instance of it: a real reader exists (alpha/config/self_tuning/{apply,validate,canary,protocol,targets,verify}.py all read the flag and refuse the whole protocol when it is false) but every one of those modules is outside the production import closure, so nothing in the running product ever calls the protocol. Flipping enabled: true starts nothing."
-    },
-    {
       "target": "memory.fabric.enabled",
       "reason": "Group B. The fabric store (alpha/memory/fabric/store.py) is fully implemented and the only importer of FabricConfig outside its own package is alpha/config/memory_config.py, which declares the field. Nothing in the production import closure constructs MemoryEnvelopeStore, so flipping this starts nothing. The rest of the fabric subtree is inert for the same reason and is recorded here as one subsystem rather than as six identical entries."
     },
@@ -81,12 +133,8 @@
       "reason": "Group B. CodebaseConfig is imported only by alpha/config/memory_config.py; nothing in the production import closure imports alpha.memory.codebase.graph, hotspots or the indexer, so the codebase memory is never built."
     },
     {
-      "target": "memory.fusion.enabled",
-      "reason": "Group B. FusionConfig is imported only by alpha/config/memory_config.py; alpha.memory.fusion.stages and the fusion entry point are outside the production import closure, so no run fuses memory types."
-    },
-    {
-      "target": "evolution_evidence.enabled",
-      "reason": "Group A seen through Gate B. The declaring module alpha.evolution.evidence.config is not in the production import closure at all, and no live module references the section: the only non-declaring mentions are inside the same unwired package. Flipping it starts nothing."
+      "target": "gro.enabled",
+      "reason": "Read, but not statically visible: alpha.tools.builtins.swarm_tool reads app_config.gro.enabled and refuses the `compete` action while it is false, but the tool module is resolved dynamically by name (alpha/tools/tools.py::resolve_builtin_tool(\"swarm_tool\")), so the static import closure never reaches it and the name-based scan cannot see the reader. Same shape as the channel_connections entries: the flag is live, and a closure cannot follow a builtin resolved by string."
     },
     {
       "target": "channel_connections.slack.enabled",
@@ -98,6 +146,14 @@
     }
   ],
   "known_blind_spots": [
+    {
+      "target": "self_tuning.enabled",
+      "reason": "Believed inert, not provable by the gate. A real reader exists -- alpha/config/self_tuning/{apply,canary,protocol,targets,validate,verify}.py all read the flag and refuse the whole protocol when it is false -- but every one of those modules is outside the production import closure and the declaring module has no live importer (pinned by test_the_reachability_channel_still_discriminates), so flipping enabled: true starts nothing. The gate cannot conclude that because a live module now names the section: alpha.intelligence.evidence_ledger carries Subsystem.SELF_TUNING = \"self_tuning\", a verdict-subsystem label rather than a config read, and the string-literal channel counts it."
+    },
+    {
+      "target": "evolution_evidence.enabled",
+      "reason": "Believed inert, not provable by the gate. A reader exists -- alpha.evolution.promotion_route reads get_app_config().evolution_evidence.enabled -- but promotion_route is outside the production import closure and the evidence subsystem it guards (alpha.evolution.evidence.service) is not imported by production either (both pinned by test_the_reachability_channel_still_discriminates), so flipping the flag reaches nothing. The gate cannot conclude that because live modules name the section as a string value (alpha.intelligence.evidence_ledger's Subsystem.EVOLUTION_EVIDENCE, alpha.intelligence.config's required_subsystems default), so both gates see a reference that is not a read."
+    },
     {
       "target": "memory.health.enabled",
       "reason": "Believed inert, not provable by the gate. HealthConfig is imported only by alpha/config/memory_config.py and nothing in the production import closure imports alpha.memory.health.health, so the health monitor is never constructed. Gate B cannot conclude that, because the section's last component is the ordinary word `health` and the chain channel matches unrelated attributes such as registry.health() in alpha/workflow/registry.py."

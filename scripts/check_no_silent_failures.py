@@ -2020,7 +2020,7 @@ BASELINE: dict[str, dict[str, int]] = {
         "narrow:f8a2fdc731ac98c1": 1,
     },
     "scripts/detect_uv_extras.py": {"narrow:b4053c7e030145bb": 1},
-    "scripts/diagnose_stack.py": {"exception:078183e4dd74b919": 1, "exception:21fdef685cea26d9": 1, "exception:349d619249a5044a": 2, "exception:79440e8db4a9e936": 1, "narrow:d62c027ccc4af976": 1},
+    "scripts/diagnose_stack.py": {"exception:078183e4dd74b919": 1, "exception:349d619249a5044a": 2, "exception:79440e8db4a9e936": 1},
     "scripts/doctor.py": {
         "exception:79440e8db4a9e936": 1,
         "exception:c81451accbe0d25e": 1,

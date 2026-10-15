@@ -16,7 +16,7 @@ from __future__ import annotations
 from .client import get_client, verify_stub_fingerprint
 
 #: Fingerprint of the tool registry this file was generated from.
-STUB_REGISTRY_SHA256 = "b8212c21ed3d22d5e69dcd0414465fa663199d4c5ac5ac79ded1293d2f8aef5b"
+STUB_REGISTRY_SHA256 = "54107168f07fb91fad870dd261529b302ba712e44f2c33cce5855dec6a8fb487"
 
 #: Registry snapshot the generator saw: name -> {"description": str}
 STUB_TOOL_INDEX = {
@@ -91,7 +91,7 @@ STUB_TOOL_INDEX = {
     "forge_skill_from_trace": {"description": "Forge a tested, parameterized SKILL.md tool from a sequence of successful execution steps. Extracts parameters, dedups via content hash, and registers the skill for autonomous reuse."},
     "generate_curriculum_plan": {"description": "Analyze agent capability gaps and generate an autonomous training curriculum. Computes urgency priority = (Target - Current) / Difficulty and schedules targeted exercises."},
     "generate_repo_map": {"description": "Generate a token-efficient structural map of the repository with AST symbol signatures. Provides high-level codebase awareness (directory layout, key classes, functions, and methods)"},
-    "goal_engine": {"description": "Manage continuous, goal-driven autonomous execution loops with self-healing."},
+    "goal_engine": {"description": "Inspect the retired continuous-goal record store. This tool no longer launches work. `RunManager` owns every real run: send the"},
     "goal_integrity": {"description": "Audit plans and proposed subtasks for goal drift, scope creep, and overengineering."},
     "group_chat": {"description": "Collaborate in multi-agent group chat rooms with adaptive speaker modes and voting. Vastly expands on bot mode with 5 speaker selection strategies (mention,"},
     "harness_refine": {"description": "Manage self-improving Continual Harness state and trigger online refinement. Inspired by Prime Agent's /refine and durable harness state. Entries record"},
@@ -756,7 +756,7 @@ def generate_repo_map(**kwargs) -> object:
 
 
 def goal_engine(**kwargs) -> object:
-    """Manage continuous, goal-driven autonomous execution loops with self-healing.
+    """Inspect the retired continuous-goal record store. This tool no longer launches work. `RunManager` owns every real run: send the
 
     Generated shim.  ``kwargs`` are forwarded verbatim to the ``goal_engine`` tool
     through the script bridge; authorisation is evaluated parent-side.

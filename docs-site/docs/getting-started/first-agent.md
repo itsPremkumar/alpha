@@ -60,30 +60,24 @@ This will:
 
 ## Your First Subagent
 
-Spawn a specialized agent:
-
-```
-/subagent spawn researcher "Research best practices for FastAPI"
-```
-
-This spawns a specialized researcher agent that:
+Choose a specialist from the **Subagent mode** selector beside the composer, then
+ask Alpha to research the topic. A specialist agent can:
 1. Researches the topic
 2. Returns findings
 3. Can be used in your main conversation
 
 ## Your First Swarm
 
-Create a multi-agent swarm:
-
-```
-/swarm create "Build a complete web application" --agents 5
-```
-
-This creates a swarm of 5 specialized agents that collaborate.
+For independent work, ask Alpha to coordinate a swarm and state the task,
+desired number of workers, shared project scope, and acceptance criteria. Alpha
+uses the available swarm tool when the request can be safely decomposed.
 
 ## Using the Slash Command Palette
 
-Type `/` in the composer to see all available commands. The palette now supports:
+Type `/` in the composer to inspect the slash-command catalog. Catalog entries
+without a bound handler are marked unavailable; only commands shown as
+executable should be submitted as slash commands. Subagent and swarm work is
+configured through the composer and natural-language task request. The palette supports:
 
 - **Command families**: Type `/goal` to see all goal-related commands
 - **Subcommand expansion**: Click `→` or press `→` on a parent command to expand subcommands
@@ -92,8 +86,8 @@ Type `/` in the composer to see all available commands. The palette now supports
 
 ## Next Steps
 
-- [Architecture](/architecture) — Understand Alpha's architecture
-- [Tools](/guides/tools/built-in-tools) — Explore available tools
-- [Skills](/guides/skills/creating-skills) — Create custom skills
-- [Memory](/guides/memory/working-with-memory) — Work with persistent memory
-- [Subagents](/guides/agents/spawning-subagents) — Learn about subagent delegation
+- [Architecture](/architecture) - Understand Alpha's architecture
+- [Tools](/guides/tools/built-in-tools) - Explore available tools
+- [Skills](/guides/skills/overview) - Create custom skills
+- [Memory](/guides/memory/working-with-memory) - Work with persistent memory
+- Subagents - Learn about subagent delegation

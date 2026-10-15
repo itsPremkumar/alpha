@@ -147,6 +147,7 @@ def test_a_real_tick_is_skipped_while_stopped(monkeypatch, tmp_path):
         return "did work"
 
     monkeypatch.setitem(supervisor._semaphores, loop_id, asyncio.Semaphore(1))
+    monkeypatch.setitem(supervisor._inflight, loop_id, set())
 
     async def _drive():
         control.engage("incident")

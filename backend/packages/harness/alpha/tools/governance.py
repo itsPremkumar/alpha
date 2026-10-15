@@ -259,6 +259,22 @@ def _entry_from_mapping(name: str, spec: Any, *, provenance: str) -> ToolGoverna
     unknown = set(spec) - _CONFIG_KEYS
     if unknown:
         raise GovernanceError(f"unknown tool_governance[{name!r}] key(s): {sorted(unknown)}")
+    # Security-relevant keys must be present; a partial declaration is a
+    # configuration error rather than a silent fallback to AUTO/unknown. The
+    # discovery catalog disclosure path never synthesizes this struct, so the
+    # only caller is operator config, and an operator that omits a risk class
+    # or a confirmation policy is configuring an unreadable audit, never
+    # choosing a lax default. The remaining keys fall back to documented
+    # defaults (empty sets, null timeout, empty retry, empty notes).
+    required_keys = {
+        "risk_class",
+        "confirmation",
+        "reversibility",
+        "verification_method",
+    }
+    missing = required_keys - set(spec)
+    if missing:
+        raise GovernanceError(f"tool_governance[{name!r}] missing required key(s): {', '.join(sorted(missing))}")
     timeout = spec.get("timeout_seconds")
     if timeout is not None:
         if not isinstance(timeout, int | float) or isinstance(timeout, bool):

@@ -31,7 +31,7 @@ import logging
 import pathlib
 import urllib.parse
 import weakref
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 
@@ -84,6 +84,13 @@ _READINESS_FLIGHTS: weakref.WeakKeyDictionary[
 ] = weakref.WeakKeyDictionary()
 _READINESS_FLIGHT_LOCKS: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = weakref.WeakKeyDictionary()
 
+# aiosqlite runs sqlite operations on a per-connection worker thread. If a
+# readiness request is cancelled while that worker is busy, ``close()`` is
+# queued behind the operation and can outlive the request's cleanup budget.
+# Keep the close task alive until the worker drains instead of cancelling it
+# with ``wait_for`` (which can leave the connection's thread unclosed).
+_SQLITE_PROBE_CLOSE_TASKS: set[asyncio.Task[None]] = set()
+
 
 def _probe_gate() -> asyncio.Lock:
     """Return the serialization gate bound to the currently running loop."""
@@ -93,6 +100,33 @@ def _probe_gate() -> asyncio.Lock:
         gate = asyncio.Lock()
         _PROBE_GATES[loop] = gate
     return gate
+
+
+async def _close_sqlite_probe_connection(connection: Any) -> None:
+    """Close a probe connection without letting cleanup extend request timeouts.
+
+    ``asyncio.wait`` leaves the close task running when its short wait expires
+    or its caller is cancelled. aiosqlite queues close behind any operation
+    already running on its worker, so cancelling close can strand that worker.
+    The process-level task set provides the strong reference needed for the
+    eventual queued close to finish.
+    """
+    close_task = asyncio.create_task(connection.close())
+    _SQLITE_PROBE_CLOSE_TASKS.add(close_task)
+
+    def _finished(task: asyncio.Task[None]) -> None:
+        _SQLITE_PROBE_CLOSE_TASKS.discard(task)
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception:
+            logger.warning("Readiness sqlite database probe connection close failed", exc_info=True)
+
+    close_task.add_done_callback(_finished)
+    done, _pending = await asyncio.wait({close_task}, timeout=_SQLITE_PROBE_BUSY_TIMEOUT_SECONDS)
+    if not done:
+        logger.warning("Readiness sqlite database probe connection close remains queued")
 
 
 # Result vocabulary for the database probe.
@@ -157,7 +191,7 @@ async def _probe_sqlite_engine(database: str) -> str:
     finally:
         if connection is not None:
             try:
-                await asyncio.wait_for(connection.close(), timeout=_SQLITE_PROBE_BUSY_TIMEOUT_SECONDS)
+                await _close_sqlite_probe_connection(connection)
             except Exception:
                 logger.warning("Readiness sqlite database probe connection did not close cleanly", exc_info=True)
     return DATABASE_OK

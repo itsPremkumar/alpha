@@ -2,6 +2,12 @@
 
 FastAPI listens on port 8001; health: `GET /health` (liveness) and `GET /health/ready` (readiness; concurrently probes the ORM engine behind `database:` plus the effective LangGraph checkpointer/Store backend - the legacy `checkpointer:` section, otherwise derived from `database:`, resolved from the startup config snapshot on `app.state`; identical concurrent requests share one in-flight probe pair, and checkpointer connections are serialized behind a strict per-process gate; disk-backed SQLite ORM readiness opens a separate short-lived, non-creating connection so a saturated application pool does not report a false database outage; in-memory SQLite continues to use its existing pooled connection; one bounded deadline; 503 while either is unreachable or the startup backend cannot be resolved; `not_configured` for process-local backends such as `backend=memory`). Set `GATEWAY_ENABLE_DOCS=false` to disable the default `/docs`, `/redoc`, and `/openapi.json` endpoints.
 
+The disk-backed SQLite ORM probe uses a separate `aiosqlite` connection. Closing
+that connection is queued behind its worker-thread operations; its short cleanup
+wait must not cancel the queued close task, or the connection worker can remain
+alive after readiness returns. A timed-out close remains strongly referenced and
+finishes when the worker drains.
+
 Durable MCP notifications use internal Agent runs. Keep their trusted delivery instruction outside the user-input boundary, and frame serialized remote events as untrusted before model invocation. Strict thread existence/ownership admission dead-letters events whose task outlives its deleted chat instead of recreating the thread.
 
 **Connectivity lifecycle.** `langgraph_runtime()` owns the network monitor and

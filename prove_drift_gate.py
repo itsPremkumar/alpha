@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Prove contracts/check_generated_drift.py bites: revert, observe failure, restore."""
+
 import json
-import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent

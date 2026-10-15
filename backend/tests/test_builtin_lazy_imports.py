@@ -40,6 +40,17 @@ assert 'alpha.tools.builtins.tool_search' not in sys.modules
     subprocess.run([sys.executable, "-c", code], check=True)
 
 
+def test_authorization_principal_import_does_not_load_sandbox_runtime() -> None:
+    code = """
+import sys
+from alpha.authz.principal import normalize_authz_attributes
+assert normalize_authz_attributes({}) == {}
+assert 'alpha.authz.sandbox_authz' not in sys.modules
+assert 'alpha.sandbox.exceptions' not in sys.modules
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
 def test_subagent_tool_export_survives_submodule_import_order() -> None:
     code = """
 from alpha.tools.builtins.task_tool import task_tool as direct_tool

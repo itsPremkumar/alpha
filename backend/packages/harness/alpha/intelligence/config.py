@@ -16,9 +16,12 @@ Three properties are deliberate and load-bearing:
    writes no learned state; nothing new mutates a promotion path unless an
    operator opts in. This mirrors how ``evolution_evidence`` and ``self_tuning``
    already ship.
-2. **No magic constants in code.** Every field below is read through
-   :func:`intelligence_config`; a module that hardcodes a threshold instead of
-   reading it here is a bug, and the package docstring says so.
+2. **No magic constants in code.** Every field below is *meant* to be read
+   through :func:`intelligence_config`; a module that hardcodes a threshold
+   instead of reading it here is a bug, and the package docstring says so. The
+   fields that today have no reader are recorded in
+   ``contracts/inert_declarations_allowlist.v1.json`` (repo root) so the gap
+   stays visible instead of being read as wired.
 3. **Thresholds that must fail closed.** ``min_regression_*, min_heldout_*``
    and the plasticity windows are all *deliberate* so a candidate must clear a
    real bar; nothing here can be satisfied by a missing measurement because

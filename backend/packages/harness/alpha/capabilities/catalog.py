@@ -192,6 +192,12 @@ CAPABILITY_CATALOG: dict[str, CapabilitySpec] = {
         description="Atomic trajectory compressor.",
         kind="utility",
     ),
+    "trajectory_recorder": CapabilitySpec(
+        module="alpha.agents.middlewares.trajectory_middleware",
+        target="TrajectoryRecorderMiddleware",
+        description="LangGraph middleware that records one trajectory StepRecord per completed agent turn via the Gateway's TrajectoryStore.",
+        kind="middleware",
+    ),
     "sdlc_engine": CapabilitySpec(
         module="alpha.workflow.sdlc_engine",
         target="DocumentGatedSDLCEngine",

@@ -18,7 +18,7 @@ slug: /
 | 🤖 **Super Agent** | LangGraph-based orchestrator with tool calling, model routing, and autonomous execution |
 | 🏖️ **Sandboxed Execution** | Isolated environments (Docker, AIO, E2B, local) per thread with file I/O, network, and process isolation |
 | 🧠 **Persistent Memory** | DeerMem + cognitive memory with semantic search, summarization, and cross-thread recall |
-| 👥 **Subagent Delegation** | Spawn specialized agents (`/subagent spawn`), manage swarms (`/swarm`), delegate with acceptance criteria |
+| 👥 **Subagent Delegation** | Choose a specialist in the composer’s Subagent mode, or ask Alpha to coordinate a swarm with clear acceptance criteria |
 | 🔌 **Extensible Tooling** | 139 built-in tools + MCP servers + custom skills + community extensions |
 | 💾 **Per-Thread Isolation** | Every conversation gets its own sandbox, memory, and tool namespace |
 | 🌐 **IM Bridges** | Native Feishu, Slack, Telegram, Discord, DingTalk connectors via unified Gateway |
@@ -121,7 +121,7 @@ graph TB
 | 🤖 **Super Agent** | LangGraph-based orchestrator with tool calling, model routing, and autonomous execution |
 | 🏖️ **Sandboxed Execution** | Isolated environments (Docker, AIO, E2B, local) per thread with file I/O, network, and process isolation |
 | 🧠 **Persistent Memory** | DeerMem + cognitive memory with semantic search, summarization, and cross-thread recall |
-| 👥 **Subagent Delegation** | Spawn specialized agents (`/subagent spawn`), manage swarms (`/swarm`), delegate with acceptance criteria |
+| 👥 **Subagent Delegation** | Choose a specialist in the composer’s Subagent mode, or ask Alpha to coordinate a swarm with clear acceptance criteria |
 | 🔌 **Extensible Tooling** | 139 built-in tools + MCP servers + custom skills + community extensions |
 | 💾 **Per-Thread Isolation** | Every conversation gets its own sandbox, memory, and tool namespace |
 | 🌐 **IM Bridges** | Native Feishu, Slack, Telegram, Discord, DingTalk connectors via unified Gateway |

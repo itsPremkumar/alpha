@@ -29,6 +29,12 @@ class _Record(BaseModel):
 class GoalContract(_Record):
     objective: NonEmptyString
     status: GoalStatus
+    #: Links a child contract to the contract it was decomposed from. ``""``
+    #: for a root contract, which is what every pre-tree contract is.
+    parent_contract_id: str = ""
+    #: Links the contract to a :class:`~alpha.mission.goalloop.goal_tree.GoalNode`
+    #: in the goal tree. ``""`` when the contract is not tree-backed.
+    node_id: str = ""
 
 
 class PlanVersion(_Record):
@@ -36,6 +42,11 @@ class PlanVersion(_Record):
     version: Annotated[int, Field(ge=1)]
     content: dict[str, JsonValue]
     status: PlanStatus
+    #: The goal tree node this plan was compiled for, or ``""``.
+    node_id: str = ""
+    #: Which execution wave this version corresponds to, or ``-1`` when the
+    #: plan is not wave-scoped.
+    wave_index: int = Field(default=-1, ge=-1)
 
 
 class TaskAttempt(_Record):

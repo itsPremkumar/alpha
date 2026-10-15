@@ -63,7 +63,29 @@ class _Snapshot(BaseModel):
             raise ValueError("Non-contiguous plan versions")
         if any(attempt.plan_id not in plans for attempt in self.attempts):
             raise ValueError("Missing plan")
+        self._validate_contract_tree()
         return self
+
+    def _validate_contract_tree(self) -> None:
+        """Refuse a contract graph that cannot be walked.
+
+        A dangling ``parent_contract_id`` and a parent cycle are both the same
+        class of defect: a reader that walks the chain to find the root would
+        either crash or spin. Both are refused at load, so a corrupt snapshot
+        is reported as corruption rather than misread as a valid tree.
+        """
+        parents = {contract.id: contract.parent_contract_id for contract in self.contracts}
+        for contract_id, parent_id in parents.items():
+            if parent_id and parent_id not in parents:
+                raise ValueError(f"Missing parent contract {parent_id!r} for {contract_id!r}")
+        for contract_id in parents:
+            seen = {contract_id}
+            current = parents[contract_id]
+            while current:
+                if current in seen:
+                    raise ValueError(f"Contract parent cycle through {current!r}")
+                seen.add(current)
+                current = parents[current]
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -165,6 +187,43 @@ class GoalStore:
         with self._operation(owner_id) as state:
             return self._find(state.contracts, contract_id)
 
+    def create_child_contract(self, parent_contract_id: str, objective: str, *, owner_id: str, node_id: str = "") -> GoalContract:
+        """Create a contract decomposed from *parent_contract_id*.
+
+        The parent must exist and be active: a closed parent's work is over, so
+        hanging new work off it would attach work to an outcome that has already
+        been reported. Ownership is enforced structurally - the parent is looked
+        up inside this owner's snapshot, so a cross-owner link is simply not
+        findable rather than a case that needs checking.
+        """
+        with self._operation(owner_id, write=True) as state:
+            parent = self._find(state.contracts, parent_contract_id)
+            self._require_active(parent)
+            now = time.time()
+            contract = GoalContract(
+                id=uuid.uuid4().hex,
+                objective=objective,
+                owner_id=owner_id,
+                status="active",
+                parent_contract_id=parent_contract_id,
+                node_id=str(node_id or ""),
+                created_at=now,
+                updated_at=now,
+            )
+            state.contracts.append(contract)
+            return contract
+
+    def list_child_contracts(self, contract_id: str, *, owner_id: str) -> list[GoalContract]:
+        """Contracts decomposed from *contract_id*, in creation order."""
+        with self._operation(owner_id) as state:
+            self._find(state.contracts, contract_id)
+            return [contract for contract in state.contracts if contract.parent_contract_id == contract_id]
+
+    def list_contracts_for_node(self, node_id: str, *, owner_id: str) -> list[GoalContract]:
+        """Contracts attached to one goal tree node."""
+        with self._operation(owner_id) as state:
+            return [contract for contract in state.contracts if contract.node_id == node_id]
+
     def list_contracts(self, *, owner_id: str) -> list[GoalContract]:
         with self._operation(owner_id) as state:
             return state.contracts
@@ -177,12 +236,31 @@ class GoalStore:
                 raise InvalidTransitionError(f"Illegal contract transition: {contract.status} -> {status}")
             return self._replace(state.contracts, contract, status)
 
-    def create_plan(self, contract_id: str, content: dict[str, JsonValue], *, owner_id: str) -> PlanVersion:
+    def create_plan(
+        self,
+        contract_id: str,
+        content: dict[str, JsonValue],
+        *,
+        owner_id: str,
+        node_id: str = "",
+        wave_index: int = -1,
+    ) -> PlanVersion:
         with self._operation(owner_id, write=True) as state:
             self._require_active(self._find(state.contracts, contract_id))
             now = time.time()
             version = max((plan.version for plan in state.plans if plan.contract_id == contract_id), default=0) + 1
-            plan = PlanVersion(id=uuid.uuid4().hex, contract_id=contract_id, owner_id=owner_id, version=version, content=content, status="draft", created_at=now, updated_at=now)
+            plan = PlanVersion(
+                id=uuid.uuid4().hex,
+                contract_id=contract_id,
+                owner_id=owner_id,
+                version=version,
+                content=content,
+                status="draft",
+                node_id=str(node_id or ""),
+                wave_index=int(wave_index),
+                created_at=now,
+                updated_at=now,
+            )
             state.plans.append(plan)
             return plan.model_copy(deep=True)
 
@@ -194,6 +272,11 @@ class GoalStore:
         with self._operation(owner_id) as state:
             self._find(state.contracts, contract_id)
             return sorted((plan for plan in state.plans if plan.contract_id == contract_id), key=lambda plan: plan.version)
+
+    def list_plans_for_node(self, node_id: str, *, owner_id: str) -> list[PlanVersion]:
+        """Plan versions compiled for one goal tree node, in version order."""
+        with self._operation(owner_id) as state:
+            return sorted((plan for plan in state.plans if plan.node_id == node_id), key=lambda plan: plan.version)
 
     def approve_plan(self, plan_id: str, *, owner_id: str) -> PlanVersion:
         with self._operation(owner_id, write=True) as state:

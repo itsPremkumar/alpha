@@ -53,6 +53,7 @@ _LANGGRAPH_HAS_ROOT_LINEAGE_STREAM_REGRESSION = Version(package_version("langgra
 
 def _default_app_config():
     return SimpleNamespace(
+        default_model_name="default-model",
         tool_search=SimpleNamespace(enabled=False),
         authorization=SimpleNamespace(enabled=False),
         skills=SimpleNamespace(
@@ -315,7 +316,7 @@ class TestAgentConstruction:
 
         SubagentExecutor = classes["SubagentExecutor"]
 
-        app_config = SimpleNamespace(models=[SimpleNamespace(name="default-model")])
+        app_config = SimpleNamespace(default_model_name="default-model", models=[SimpleNamespace(name="default-model")])
         model = object()
         middlewares = [object()]
         agent = object()
@@ -406,7 +407,7 @@ class TestAgentConstruction:
         """Explicit app_config must be threaded into subagent skill storage lookup."""
         SubagentExecutor = classes["SubagentExecutor"]
 
-        app_config = SimpleNamespace(models=[SimpleNamespace(name="default-model")])
+        app_config = SimpleNamespace(default_model_name="default-model", models=[SimpleNamespace(name="default-model")])
         skill_dir = tmp_path / "demo-skill"
         skill_dir.mkdir()
         skill_file = skill_dir / "SKILL.md"
@@ -439,7 +440,7 @@ class TestAgentConstruction:
         monkeypatch: pytest.MonkeyPatch,
     ):
         SubagentExecutor = classes["SubagentExecutor"]
-        app_config = SimpleNamespace(models=[SimpleNamespace(name="default-model")])
+        app_config = SimpleNamespace(default_model_name="default-model", models=[SimpleNamespace(name="default-model")])
         storage_calls: list[tuple[str, object]] = []
 
         def user_storage(user_id: str, *, app_config=None):
@@ -1103,6 +1104,7 @@ class TestAgentConstruction:
                     config={"roles": {"user": {"tools": {"allow": ["safe_tool"]}}}},
                 ),
             ),
+            default_model_name="test-model",
             models=[SimpleNamespace(name="test-model")],
             tool_search=SimpleNamespace(enabled=False),
             skills=SimpleNamespace(deferred_discovery=True, container_path="/mnt/skills"),

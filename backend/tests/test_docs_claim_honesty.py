@@ -131,6 +131,21 @@ def test_retired_claims_do_not_appear_on_user_facing_surfaces() -> None:
     assert not hits, "Retired marketing claims found:\n" + "\n".join(hits)
 
 
+def test_the_docs_site_llms_txt_stays_identical_to_the_root_copy() -> None:
+    """The docs site serves its own copy of `llms.txt`; both must move together.
+
+    ``docs-site/static/llms.txt`` is copied into the built site verbatim, so a
+    capability change applied to one file only leaves the other advertising the
+    old surface — the served copy once carried a "456+ built-in tools" claim long
+    after the manifest and the root file said 139. Two files, one document.
+    """
+    root_copy = ROOT / "llms.txt"
+    docs_site_copy = ROOT / "docs-site" / "static" / "llms.txt"
+    if not root_copy.is_file() or not docs_site_copy.is_file():
+        pytest.skip("an llms.txt copy is absent; nothing to compare")
+    assert _read(docs_site_copy) == _read(root_copy), "docs-site/static/llms.txt drifted from llms.txt; edit both copies together (or delete the docs-site copy deliberately, with this test)"
+
+
 def test_docs_index_links_resolve_to_real_files() -> None:
     index = ROOT / "docs" / "INDEX.md"
     assert index.is_file(), "docs/INDEX.md is missing; run scripts/generate_docs_index.py"

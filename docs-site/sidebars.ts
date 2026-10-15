@@ -1,5 +1,13 @@
 import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
+/**
+ * The main documentation sidebar.
+ *
+ * Every entry here must resolve to a real file under `docs/`. This sidebar
+ * previously listed ~29 documents that had never been written, which fails the
+ * build outright: Docusaurus throws on a sidebar id with no document behind it.
+ * Add the document first, then the entry.
+ */
 const sidebars: SidebarsConfig = {
   tutorialSidebar: [
     'intro',
@@ -8,57 +16,22 @@ const sidebars: SidebarsConfig = {
       label: 'Getting Started',
       collapsed: false,
       items: [
-        'getting-started/quick-start',
         'getting-started/installation',
+        'getting-started/quick-start',
         'getting-started/configuration',
         'getting-started/first-agent',
-        'getting-started/deployment',
       ],
     },
     {
       type: 'category',
       label: 'Core Concepts',
       collapsed: false,
-      items: [
-        'core-concepts/architecture',
-        'core-concepts/agents',
-        'core-concepts/tools',
-        'core-concepts/memory',
-        'core-concepts/sandbox',
-        'core-concepts/subagents',
-        'core-concepts/swarms',
-        'core-concepts/goals',
-        'core-concepts/workflows',
-      ],
+      items: ['architecture', 'deployment', 'security'],
     },
     {
       type: 'category',
-      label: 'Configuration',
-      collapsed: true,
-      items: [
-        'configuration/overview',
-        'configuration/models',
-        'configuration/tools',
-        'configuration/memory',
-        'configuration/sandbox',
-        'configuration/mcp',
-        'configuration/skills',
-        'configuration/extensions',
-        'configuration/autonomy',
-        'configuration/network',
-      ],
-    },
-    {
-      type: 'category',
-      label: 'Interfaces',
-      collapsed: true,
-      items: [
-        'interfaces/web-ui',
-        'interfaces/cli',
-        'interfaces/tui',
-        'interfaces/api',
-        'interfaces/im-bridges',
-      ],
+      label: 'Project',
+      items: ['governance', 'community', 'roadmap', 'changelog'],
     },
   ],
 };

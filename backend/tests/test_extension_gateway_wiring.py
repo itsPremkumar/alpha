@@ -672,7 +672,8 @@ def test_extension_public_paths_track_auth_middleware_public_paths():
         _is_public,
     )
 
-    assert _HOST_PUBLIC_PATH_PREFIXES == _PUBLIC_PATH_PREFIXES
+    assert set(_PUBLIC_PATH_PREFIXES) <= set(_HOST_PUBLIC_PATH_PREFIXES)
+    assert set(_HOST_PUBLIC_PATH_PREFIXES) - set(_PUBLIC_PATH_PREFIXES) == {"/api/webhooks/"}
     assert _HOST_PUBLIC_EXACT_PATHS == _PUBLIC_EXACT_PATHS
     assert all(_is_public(f"{path}//") for path in _HOST_PUBLIC_EXACT_PATHS)
 
@@ -733,9 +734,12 @@ def test_extension_routes_cannot_claim_reserved_exact_paths_with_a_disjoint_meth
 @pytest.mark.parametrize(
     "path",
     [
-        "/api/v1/auth/me",
-        "/api/v1/auth/me/",
-        "/api/v1/auth/me//",
+        "/.well-known/agent-card.json",
+        "/.well-known/agent-card.json/",
+        "/api/peer-network/card",
+        "/api/peer-network/remote/pair",
+        "/api/peer-network/inbound/messages",
+        "/api/webhooks/github",
     ],
 )
 def test_extension_csrf_reserved_exact_paths_track_csrf_exemption(
@@ -766,7 +770,8 @@ def test_extension_csrf_reserved_exact_paths_track_csrf_exemption(
     )
 
     assert path.rstrip("/") in _HOST_CSRF_EXEMPT_EXACT_PATHS
-    assert _HOST_CSRF_EXEMPT_EXACT_PATHS == csrf_middleware._CSRF_EXEMPT_EXACT_PATHS
+    assert csrf_middleware._CSRF_EXEMPT_EXACT_PATHS <= _HOST_CSRF_EXEMPT_EXACT_PATHS
+    assert _HOST_CSRF_EXEMPT_EXACT_PATHS - csrf_middleware._CSRF_EXEMPT_EXACT_PATHS == {"/api/v1/auth/me"}
     assert _CSRF_STATE_CHANGING_METHODS == csrf_middleware._CSRF_STATE_CHANGING_METHODS
     assert csrf_middleware._AUTH_EXEMPT_PATHS <= _HOST_PUBLIC_EXACT_PATHS
     assert csrf_middleware.should_check_csrf(request) is False

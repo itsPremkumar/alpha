@@ -30,14 +30,16 @@ is no code path here that rewrites prior context.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final
 
 from alpha.mission.goalloop.gates import DEFAULT_MAX_GATE_FAILURES, GateReport, GateResult, GateRunner
+from alpha.mission.goalloop.goal_tree import NODE_TRANSITIONS, GoalEvidence, GoalNode, IllegalNodeTransition, NodeState
 from alpha.mission.goalloop.judge import GoalJudge, JudgeOutcome, build_request
 from alpha.mission.goalloop.state import GoalState, GoalStatus
 from alpha.mission.goalloop.verdict import GoalVerdict
@@ -68,7 +70,7 @@ TERMINAL_ACTIONS: Final[frozenset[TurnAction]] = frozenset(
     {TurnAction.DONE, TurnAction.BLOCKED, TurnAction.PAUSED, TurnAction.IDLE},
 )
 
-BUDGET_EXHAUSTED_MESSAGE: Final[str] = "Goal paused - {used}/{max_turns} turns used. Use /goal resume to keep going (the turn counter resets to zero), or /goal clear to stop."
+BUDGET_EXHAUSTED_MESSAGE: Final[str] = "Goal paused - turn budget exhausted ({used}/{max_turns} turns used). Use /goal resume to keep going (the turn counter resets to zero), or /goal clear to stop."
 
 GATE_EXHAUSTED_MESSAGE: Final[str] = "Goal paused - quality gate exhausted its retries without exiting 0: {command}\nFix the failure by hand, or use /goal gate remove {index} to drop the gate, then /goal resume to continue."
 
@@ -167,13 +169,18 @@ class GoalLoopEngine:
         self,
         *,
         judge: GoalJudge | None = None,
+        judge_fn: Callable[..., Any] | None = None,
+        decomposer: Callable[[GoalNode], Any] | None = None,
+        executor: Callable[[GoalNode], Any] | None = None,
         gate_runner: GateRunner | None = None,
         save: Saver | None = None,
         wait_seconds: float = DEFAULT_WAIT_SECONDS,
         max_gate_failures: int = DEFAULT_MAX_GATE_FAILURES,
         clock: Callable[[], float] = time.time,
     ) -> None:
-        self._judge = judge or GoalJudge()
+        self._judge = judge or GoalJudge(judge_fn=judge_fn)
+        self._decomposer = decomposer
+        self._executor = executor
         self._gates = gate_runner or GateRunner()
         self._save = save
         self._wait_seconds = wait_seconds
@@ -223,6 +230,26 @@ class GoalLoopEngine:
                 user_initiated=user_initiated,
                 reason="a quality gate did not exit 0",
             )
+
+        # A persisted tree is an explicit completion contract. Falling back to
+        # the prose judge when its runtime collaborators are absent would let
+        # that judge complete the overall goal without measuring the tree's
+        # criteria. Fail closed instead; the flat judge path is only for goals
+        # that do not carry a tree.
+        if state.has_tree:
+            if self._decomposer is None or self._executor is None:
+                reason = "goal tree is present but its decomposer and executor are not both configured; no tree evidence was measured"
+                state.block(reason)
+                self._persist(state)
+                return TurnDecision(
+                    action=TurnAction.BLOCKED,
+                    reason=reason,
+                    gate_report=gate_report,
+                    turns_used=state.turns_used,
+                    budget_remaining=state.budget_remaining,
+                    user_initiated=user_initiated,
+                )
+            return await self._tree_boundary(state, gate_report, user_initiated=user_initiated)
 
         # --- 5: the judge only sees a green boundary ----------------------
         request = build_request(
@@ -291,6 +318,164 @@ class GoalLoopEngine:
         if outcome.degraded:
             reason = f"{reason} (degraded: no usable judge verdict)"
         return self._continue(state, gate_report, user_initiated, reason=reason, outcome=outcome)
+
+    async def _tree_boundary(
+        self,
+        state: GoalState,
+        gate_report: GateReport,
+        *,
+        user_initiated: bool,
+    ) -> TurnDecision:
+        """Advance one bounded goal-tree node at a turn boundary.
+
+        Decomposition and execution are injected so the graph layer remains
+        independent from model/provider construction. Only measured evidence
+        can close a node; a callback failure parks the goal with its cause.
+        """
+        tree = state.tree
+        tree.bind_clock(self._clock)
+        root = tree.root
+        if root is None:
+            return self._idle(state, user_initiated=user_initiated, reason="goal tree has no root")
+        if root.state is NodeState.COMPLETED:
+            state.complete("goal tree root completed with measured evidence")
+            self._persist(state)
+            return TurnDecision(
+                action=TurnAction.DONE,
+                reason=state.last_reason,
+                gate_report=gate_report,
+                turns_used=state.turns_used,
+                budget_remaining=state.budget_remaining,
+                user_initiated=user_initiated,
+            )
+        if root.state in {NodeState.FAILED, NodeState.CANCELLED, NodeState.PARTIAL}:
+            reason = root.blocked_reason or f"goal tree root ended as {root.state.value}"
+            state.pause(reason)
+            self._persist(state)
+            return TurnDecision(
+                action=TurnAction.PAUSED,
+                reason=reason,
+                gate_report=gate_report,
+                turns_used=state.turns_used,
+                budget_remaining=state.budget_remaining,
+                user_initiated=user_initiated,
+            )
+
+        node = tree.next_runnable_node()
+        if node is None:
+            reason = "no runnable goal tree node; inspect blocked or terminal nodes and replan"
+            state.pause(reason)
+            self._persist(state)
+            return TurnDecision(
+                action=TurnAction.PAUSED,
+                reason=reason,
+                gate_report=gate_report,
+                turns_used=state.turns_used,
+                budget_remaining=state.budget_remaining,
+                user_initiated=user_initiated,
+            )
+
+        try:
+            if node.state is NodeState.IDLE:
+                tree.transition(node.node_id, NodeState.ANALYZING)
+            elif node.state is NodeState.ANALYZING:
+                target = NodeState.DECOMPOSING if tree.can_decompose(node.node_id) else NodeState.EXECUTING
+                tree.transition(node.node_id, target)
+            elif node.state is NodeState.DECOMPOSING:
+                assert self._decomposer is not None
+                children = self._decomposer(node)
+                if inspect.isawaitable(children):
+                    children = await children
+                if children is None:
+                    children = []
+                if isinstance(children, (str, dict)):
+                    children = [children]
+                tree.decompose(node.node_id, children)
+            elif node.state in {NodeState.EXECUTING, NodeState.VERIFYING}:
+                assert self._executor is not None
+                measurements = self._executor(node)
+                if inspect.isawaitable(measurements):
+                    measurements = await measurements
+                if measurements is None:
+                    measurements = []
+                if isinstance(measurements, GoalEvidence):
+                    measurements = [measurements]
+                if not isinstance(measurements, Iterable):
+                    raise TypeError("goal executor must return GoalEvidence records")
+                for evidence in measurements:
+                    if not isinstance(evidence, GoalEvidence):
+                        raise TypeError("goal executor must return GoalEvidence records")
+                    tree.record_evidence(node.node_id, evidence)
+
+                if node.state is NodeState.EXECUTING:
+                    tree.transition(node.node_id, NodeState.VERIFYING)
+                if node.criteria_failed():
+                    tree.transition(node.node_id, NodeState.PARTIAL)
+                    tree.propagate_completion(node.node_id)
+                elif not node.criteria_without_evidence() and node.success_criteria:
+                    tree.request_completion(node.node_id, reason="all success criteria have passing evidence")
+                    tree.propagate_completion(node.node_id)
+            else:
+                raise IllegalNodeTransition(f"goal tree node {node.node_id} is not runnable ({node.state.value})")
+        except Exception as exc:  # noqa: BLE001 - record the exact collaborator failure and stop safely
+            logger.exception("Goal-tree step failed for node %s", node.node_id)
+            if not node.is_terminal and NodeState.BLOCKED in NODE_TRANSITIONS.get(node.state, frozenset()):
+                tree.transition(node.node_id, NodeState.BLOCKED, reason=f"{type(exc).__name__}: {exc}")
+            state.block(f"Goal tree node {node.node_id} failed: {type(exc).__name__}: {exc}")
+            self._persist(state)
+            return TurnDecision(
+                action=TurnAction.BLOCKED,
+                reason=state.pause_reason,
+                gate_report=gate_report,
+                turns_used=state.turns_used,
+                budget_remaining=state.budget_remaining,
+                user_initiated=user_initiated,
+            )
+
+        state.touch()
+        if root.state is NodeState.COMPLETED:
+            state.complete("goal tree root completed with measured evidence")
+            self._persist(state)
+            return TurnDecision(
+                action=TurnAction.DONE,
+                reason=state.last_reason,
+                gate_report=gate_report,
+                turns_used=state.turns_used,
+                budget_remaining=state.budget_remaining,
+                user_initiated=user_initiated,
+            )
+        if user_initiated:
+            self._persist(state)
+            return TurnDecision(
+                action=TurnAction.IDLE,
+                reason="goal tree advanced; user turn takes precedence over automatic continuation",
+                gate_report=gate_report,
+                turns_used=state.turns_used,
+                budget_remaining=state.budget_remaining,
+                user_initiated=True,
+            )
+        if state.budget_exhausted:
+            return self._pause_on_budget(state, gate_report, user_initiated)
+
+        state.consume_turn()
+        self._persist(state)
+        active = tree.next_runnable_node()
+        next_work = f"Next goal node: {active.objective}\nState: {active.state.value}" if active is not None else "The goal tree has no currently runnable node; inspect its blocked states and evidence."
+        criteria = "\n".join(f"- {item}" for item in (active.success_criteria if active else []))
+        continuation = "[continuing the standing goal tree]\n" + next_work
+        if criteria:
+            continuation += "\nSuccess criteria to measure:\n" + criteria
+        if active and active.constraints:
+            continuation += "\nConstraints:\n" + "\n".join(f"- {item}" for item in active.constraints)
+        return TurnDecision(
+            action=TurnAction.CONTINUE,
+            reason=f"advanced goal tree node {node.node_id} ({node.state.value})",
+            continuation=continuation,
+            gate_report=gate_report,
+            turns_used=state.turns_used,
+            budget_remaining=state.budget_remaining,
+            user_initiated=False,
+        )
 
     # ------------------------------------------------------------- outcomes
 

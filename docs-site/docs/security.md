@@ -291,4 +291,4 @@ CORS_CONFIG = {
 **PGP**: [keys.openpgp.org](https://keys.openpgp.org/search?q=security%40itsPremkumar.com)  
 **Response**: Within 48 hours  
 
-See [SECURITY.md](../SECURITY.md) for full details.
+See [SECURITY.md](https://github.com/itsPremkumar/alpha/blob/main/SECURITY.md) for full details.

@@ -252,6 +252,11 @@ interruptions remain parked for operator action. See
 The invariant endpoint reports module/symbol presence only; it does not verify
 that runtime paths invoke those guards.
 
+The separate conversation goal loop evaluates visible messages plus bounded,
+persisted successful tool receipts. Failed or uncorrelated results are excluded;
+tool output is treated as untrusted data. Its model judgment is not a measured
+APEX acceptance verdict.
+
 ### 5.10 Alpha Mod Kernel
 The native Mod Kernel runs ordered middleware on lead-agent tool/model lifecycle
 events and run admission. First-party emergency-stop, blast-radius, verification,
@@ -344,7 +349,7 @@ exactly-once. See
 
 ## 6. Harness engine map
 
-126 engine packages live under `backend/packages/harness/alpha/`:
+127 engine packages live under `backend/packages/harness/alpha/`:
 
 `action` `agency` `agent` `agents` `apex` `arena` `authz` `autoconfig` `automations`
 `avo` `benchmarks` `blackboard` `bots` `browser` `canvas` `capabilities`

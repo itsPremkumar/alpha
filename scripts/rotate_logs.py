@@ -108,9 +108,7 @@ def _shift_backups(path: Path, backups: int) -> list[str]:
     return shifted
 
 
-def rotate_file(
-    path: Path, *, max_bytes: int = DEFAULT_MAX_BYTES, backups: int = DEFAULT_BACKUPS
-) -> RotationResult:
+def rotate_file(path: Path, *, max_bytes: int = DEFAULT_MAX_BYTES, backups: int = DEFAULT_BACKUPS) -> RotationResult:
     """Rotate *path* if it exceeds *max_bytes*, keeping at most *backups* generations.
 
     A file at or below the threshold is left untouched and reported as such: the
@@ -163,11 +161,7 @@ def rotate_directory(
 ) -> list[RotationResult]:
     """Rotate every launcher log in *directory*. A missing directory is not an error."""
     if not directory.is_dir():
-        return [
-            RotationResult(
-                path=str(directory), rotated=False, reason="directory absent"
-            )
-        ]
+        return [RotationResult(path=str(directory), rotated=False, reason="directory absent")]
     results: list[RotationResult] = []
     candidates = 0
     for entry in sorted(directory.iterdir()):
@@ -178,17 +172,9 @@ def rotate_directory(
         # Distinguish "the directory is empty" from "only rotated generations are
         # present". The second case is the normal state right after a rotation, and
         # reporting it as an empty directory reads as "the logs vanished".
-        generations = sorted(
-            entry.name for entry in directory.iterdir() if entry.is_file()
-        )
-        reason = (
-            "no log files present"
-            if not generations
-            else f"nothing to rotate; {len(generations)} rotated generation(s) present"
-        )
-        results.append(
-            RotationResult(path=str(directory), rotated=False, reason=reason)
-        )
+        generations = sorted(entry.name for entry in directory.iterdir() if entry.is_file())
+        reason = "no log files present" if not generations else f"nothing to rotate; {len(generations)} rotated generation(s) present"
+        results.append(RotationResult(path=str(directory), rotated=False, reason=reason))
     return results
 
 
@@ -211,18 +197,11 @@ def rotate_logs(
 ) -> dict[str, list[RotationResult]]:
     """Rotate every default (or supplied) log directory under *project_root*."""
     directories = log_dirs if log_dirs is not None else default_log_dirs(project_root)
-    return {
-        str(directory): rotate_directory(
-            directory, max_bytes=max_bytes, backups=backups
-        )
-        for directory in directories
-    }
+    return {str(directory): rotate_directory(directory, max_bytes=max_bytes, backups=backups) for directory in directories}
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Rotate Alpha launcher log files so no single log grows without bound."
-    )
+    parser = argparse.ArgumentParser(description="Rotate Alpha launcher log files so no single log grows without bound.")
     parser.add_argument(
         "--project-root",
         type=Path,
@@ -249,9 +228,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_BACKUPS,
         help=f"Generations of rotated logs to keep (default: {DEFAULT_BACKUPS})",
     )
-    parser.add_argument(
-        "--json", action="store_true", help="Emit the result as JSON instead of lines"
-    )
+    parser.add_argument("--json", action="store_true", help="Emit the result as JSON instead of lines")
     return parser
 
 
@@ -271,11 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         backups=args.backups,
     )
     flat = [result for results in report.values() for result in results]
-    failures = [
-        result
-        for result in flat
-        if result.reason.startswith(("stat failed", "rotate failed"))
-    ]
+    failures = [result for result in flat if result.reason.startswith(("stat failed", "rotate failed"))]
 
     if args.json:
         print(
@@ -284,10 +257,7 @@ def main(argv: list[str] | None = None) -> int:
                     "schema_version": 1,
                     "max_bytes": args.max_bytes,
                     "backups": args.backups,
-                    "directories": {
-                        directory: [asdict(result) for result in results]
-                        for directory, results in report.items()
-                    },
+                    "directories": {directory: [asdict(result) for result in results] for directory, results in report.items()},
                     "rotated": sum(1 for result in flat if result.rotated),
                     "failed": len(failures),
                 },
@@ -298,11 +268,7 @@ def main(argv: list[str] | None = None) -> int:
         for directory, results in report.items():
             for result in results:
                 marker = "rotated" if result.rotated else "kept"
-                suffix = (
-                    f" -> {', '.join(os.path.basename(item) for item in result.backups)}"
-                    if result.backups
-                    else ""
-                )
+                suffix = f" -> {', '.join(os.path.basename(item) for item in result.backups)}" if result.backups else ""
                 print(f"[{marker}] {result.path}: {result.reason}{suffix}")
         if not any(result.rotated for result in flat):
             print("No log file exceeded the size budget; nothing rotated.")

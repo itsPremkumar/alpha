@@ -88,6 +88,7 @@ from alpha.completion import (
     settings_from_config,
 )
 from alpha.completion.verifier import REVERIFY_MODES
+from alpha.utils.thread_id import validate_thread_id
 from alpha.utils.time import coerce_iso
 from app.gateway.deps import is_admin_user
 
@@ -442,6 +443,15 @@ async def list_scopes(
     caller, is_admin = await _caller(request)
     if status is not None and status not in _SCOPE_STATUSES:
         return _error(422, INVALID_FILTER_CODE, f"unknown status {status!r}; expected one of {list(_SCOPE_STATUSES)}")
+    if thread_id is not None:
+        # Same refusal, same code and *string* detail as the status filter
+        # above. An id the contract rejects must not reach the ledger, where it
+        # would match nothing and answer the same empty page as a real thread
+        # with no scopes.
+        try:
+            validate_thread_id(thread_id)
+        except ValueError as exc:
+            return _error(422, INVALID_FILTER_CODE, str(exc))
 
     def _run(engine: CompletionEngine) -> list[dict[str, Any]]:
         owner_filter = caller if not is_admin else owner_id

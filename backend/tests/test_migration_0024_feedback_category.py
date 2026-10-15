@@ -59,7 +59,8 @@ async def _feedback_columns(engine: AsyncEngine) -> list[str]:
 
 
 async def test_revision_is_current_head() -> None:
-    assert _get_head_revision() == REVISION
+    # Head moves forward as revisions land; update this literal on the next bump.
+    assert _get_head_revision() == "0029_network_waits_terminal_at"
 
 
 async def test_upgrade_adds_nullable_category_legacy_rows_read_null(migration_database) -> None:

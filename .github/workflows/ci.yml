@@ -1,13 +1,32 @@
 name: CI
 
+# Cross-cutting gates only. The language suites are owned by dedicated
+# workflows that run on the same events and carry CI-shaped settings this file
+# must not duplicate:
+#   - backend/test suite ....... backend-unit-tests.yml (sharded, Postgres+Redis
+#                                 services, per-job timeouts, DEDUPE_TEST_POSTGRES_URL)
+#   - tests/blocking_io ........ backend-blocking-io-tests.yml (`make test-blocking-io`)
+#   - frontend unit tests ...... frontend-unit-tests.yml (also runs the branding
+#                                 and reasoning-effort suites `pnpm test` misses)
+#   - frontend lint/build ...... lint-check.yml (typecheck + build on the pinned
+#                                 pnpm@10.26.2 via corepack, Node 24)
+# Running those here too would execute the same tests twice, the second time
+# without the services, timeouts or superset test selection.
+#
+# Releasing is owned by container.yaml, chart.yaml and windows-installer.yml,
+# all gated on `v*` tags by verify-versions.yml (see RELEASING.md). This
+# workflow deliberately has no release job: a tag push does not trigger a
+# branches-filtered workflow, and publishing elsewhere would drift from the
+# documented release pipeline.
+
 on:
   push:
-    branches: [main, develop]
+    branches: [main, '2.0.x-dev']
   pull_request:
-    branches: [main, develop]
+    branches: [main, '2.0.x-dev']
 
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: '24'
   PYTHON_VERSION: '3.12'
   UV_VERSION: '0.11.21'
 
@@ -50,8 +69,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  backend-typecheck:
-    name: Backend Type Check
+  backend-mypy-report:
+    name: Backend Mypy Debt Report (non-gating)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -67,17 +86,19 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
       - name: Install dependencies
         run: uv sync --all-extras --dev
-      - name: Run mypy
-        # `|| true` is deliberate and load-bearing: mypy genuinely runs (655b6de
-        # made the root config parseable — it used to abort before analyzing a
-        # single file), and it currently reports 2,632 errors across 687 of the
-        # 2,439 checked files. The step is a report, not a gate: removing the
-        # escape turns this blocking job red on every push until that backlog is
-        # cleared. Re-measure before changing it — if the count reaches zero,
-        # delete `|| true` in the same change that gets it there.
+      - name: Measure backend mypy debt (non-gating report)
         run: |
           mkdir -p .alpha/reports
-          uv run mypy . --ignore-missing-imports > .alpha/reports/mypy.log 2>&1 || true
+          set +e
+          echo "MYPY DEBT REPORT (non-gating): collecting diagnostic output"
+          uv run mypy . --ignore-missing-imports > .alpha/reports/mypy.log 2>&1
+          status=$?
+          set -e
+          if [ ! -s .alpha/reports/mypy.log ]; then
+            echo "ERROR the mypy report is empty; the measurement did not run"
+            exit 1
+          fi
+          echo "BACKEND MYPY REPORT (non-gating): checker_exit=$status" | tee -a .alpha/reports/mypy.log
           cat .alpha/reports/mypy.log
       - name: Upload Python type diagnostics
         if: always()
@@ -88,166 +109,53 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  backend-test:
-    name: Backend Tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-      - name: Install dependencies
-        run: uv sync --all-extras --dev
-      - name: Run tests
-        run: |
-          mkdir -p .alpha/reports
-          uv run pytest -x -q --tb=short --junitxml=.alpha/reports/pytest-backend.xml
-        env:
-          ALPHA_AUTH_DISABLED: 1
-      - name: Upload backend test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-test-diagnostics-${{ github.run_id }}
-          path: backend/.alpha/reports/pytest-backend.xml
-          if-no-files-found: ignore
-          retention-days: 7
-
-  backend-test-blocking-io:
-    name: Backend Blocking I/O Tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-      - name: Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-      - name: Install dependencies
-        run: uv sync --all-extras --dev
-      - name: Run blocking I/O tests
-        run: |
-          mkdir -p .alpha/reports
-          uv run pytest tests/blocking_io -x -q --tb=short --junitxml=.alpha/reports/pytest-blocking-io.xml
-        env:
-          ALPHA_AUTH_DISABLED: 1
-      - name: Upload blocking I/O diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-blocking-io-diagnostics-${{ github.run_id }}
-          path: backend/.alpha/reports/pytest-blocking-io.xml
-          if-no-files-found: ignore
-          retention-days: 7
+  # backend-test and backend-test-blocking-io used to run here. The full suite
+  # is owned by backend-unit-tests.yml (4 duration-balanced shards with
+  # Postgres/Redis services and DEDUPE_TEST_POSTGRES_URL wired) and the strict
+  # Blockbuster gate by backend-blocking-io-tests.yml (`make test-blocking-io`).
+  # The copies here ran the same tests unsharded, without the service
+  # containers or a job timeout, so DB-backed tests silently skipped and a
+  # single hang could occupy a runner for the default six hours.
 
   # ============================================
   # FRONTEND CHECKS
   # ============================================
-  frontend-lint:
-    name: Frontend Lint & Format
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 11
-          run_install: false
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Run ESLint
-        run: pnpm lint || true
-      - name: Run Prettier check
-        run: pnpm format:check
+  # frontend-typecheck, frontend-test and frontend-build used to run here.
+  # lint-check.yml typechecks and builds the frontend (on the corepack-pinned
+  # pnpm@10.26.2 and Node 24 this file used to disagree with), and
+  # frontend-unit-tests.yml runs `pnpm test` plus the branding and
+  # reasoning-effort suites — the copy here ran only `pnpm test`.
 
-  frontend-typecheck:
-    name: Frontend Type Check
+  # The reference extension is an independent package a third-party consumer
+  # would install (`alpha-extension-api>=0.2,<0.3`), and nothing else in CI
+  # touched it: its `test_entry_point` test asserts the *installed*
+  # distribution metadata, so the editable install is part of the test subject.
+  extension-example:
+    name: Extension Example Contract
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: examples/alpha-extension-example
     steps:
       - uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
         with:
-          version: 11
-          run_install: false
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Run TypeScript check
-        run: pnpm typecheck
-
-  frontend-test:
-    name: Frontend Tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 11
-          run_install: false
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Run tests
-        run: pnpm test
-
-  frontend-build:
-    name: Frontend Build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 11
-          run_install: false
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build
-        run: pnpm build
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Install the workspace extension API and the example package
+        run: |
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip install -e ../../backend/packages/extension-api
+          uv pip install -e ".[dev]"
+      - name: Run the example contract tests
+        run: uv run --no-project pytest -q
+      - name: Lint the example package
+        run: uv run --no-project ruff check .
+      - name: Check the example package formatting
+        run: uv run --no-project ruff format --check .
 
   # ============================================
   # SECURITY & QUALITY
@@ -257,34 +165,95 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run pip-audit
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Install backend dependency set from the lock
+        working-directory: backend
+        run: uv sync --locked --all-extras --dev
+      - name: Audit locked backend dependencies
+        working-directory: backend
         run: |
-          pip install pip-audit
-          pip-audit --desc --format=json --output=pip-audit.json || true
-      - name: Upload pip-audit results
+          mkdir -p .alpha/reports
+          uv run --with pip-audit pip-audit --desc --format=json --output=.alpha/reports/pip-audit.json
+      - name: Upload backend dependency audit results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pip-audit-results
-          path: pip-audit.json
+          name: backend-pip-audit-${{ github.run_id }}
+          path: backend/.alpha/reports/pip-audit.json
+          if-no-files-found: warn
 
-      - name: Run npm audit
+      # corepack before setup-node: Setup Node.js with `cache: pnpm` queries the
+      # pnpm store path, so pnpm has to exist on PATH first. The version comes
+      # from root package.json's `packageManager` pin (pnpm@10.26.2), the same
+      # pin lint-check.yml and frontend-unit-tests.yml activate.
+      - name: Enable Corepack
+        if: always()
+        run: corepack enable
+      - name: Use pinned pnpm version
+        if: always()
+        run: corepack prepare pnpm@10.26.2 --activate
+      - name: Set up Node.js
+        if: always()
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Gate production frontend dependencies
         working-directory: frontend
-        run: npm audit --json > npm-audit.json || true
-      - name: Upload npm audit results
+        if: always()
+        run: pnpm audit --prod --json > pnpm-audit-production.json
+      - name: Upload production frontend audit results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: npm-audit-results
-          path: frontend/npm-audit.json
+          name: frontend-production-audit-${{ github.run_id }}
+          path: frontend/pnpm-audit-production.json
+          if-no-files-found: warn
+      - name: Measure development frontend advisories (non-gating report)
+        working-directory: frontend
+        if: always()
+        run: |
+          set +e
+          echo "FRONTEND DEVELOPMENT-DEPENDENCY REPORT (non-gating): collecting advisory output"
+          pnpm audit --json > pnpm-audit-development.json
+          status=$?
+          set -e
+          if [ ! -s pnpm-audit-development.json ]; then
+            echo "ERROR the development dependency report is empty; the measurement did not run"
+            exit 1
+          fi
+          echo "FRONTEND DEVELOPMENT AUDIT (non-gating): checker_exit=$status" > pnpm-audit-development-status.txt
+      - name: Upload development frontend audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-development-audit-${{ github.run_id }}
+          path: |
+            frontend/pnpm-audit-development.json
+            frontend/pnpm-audit-development-status.txt
+          if-no-files-found: warn
 
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
+    # actions/dependency-review-action diffs a pull request against the base
+    # revision through the dependency-review API; it fails on any non-PR event
+    # ("This action can only be used in a pull request workflow"), so a push
+    # must skip the job rather than run it.
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - name: Review dependencies
         uses: actions/dependency-review-action@v4
         with:
-          config-file: '.github/dependency-review-config.yml'
+          config-file: './.github/dependency-review-config.yml'
 
   secret-scan:
     name: Secret Scan
@@ -293,8 +262,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # Pinned to a release tag, never `@main`: an unpinned action is code
+      # executed from a moving ref. Scans the PR diff on pull requests
+      # (default branch .. HEAD); on a push to the default branch the range is
+      # empty, which is upstream's documented base/head shape.
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.99.2
         with:
           path: ./
           base: main
@@ -310,17 +283,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      # Both Dockerfiles are written for the REPOSITORY ROOT as build context
+      # (their COPY paths are prefixed `frontend/` / `backend/`; see
+      # container.yaml, which builds them the same way). Building with
+      # `context: ./frontend` fails at the first COPY.
       - name: Build frontend image
         uses: docker/build-push-action@v5
         with:
-          context: ./frontend
+          context: .
+          file: frontend/Dockerfile
           push: false
           tags: alpha-frontend:test
           load: true
       - name: Build backend image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
+          context: .
+          file: backend/Dockerfile
           push: false
           tags: alpha-backend:test
           load: true
@@ -336,12 +315,23 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          # Docs-site Node pin, deliberately separate from env.NODE_VERSION
+          # (frontend): docs-deploy.yml builds the site on Node 22, and a PR
+          # that passes here must pass there.
+          node-version: '22'
           cache: 'npm'
+          # The site is an npm project of its own; the repository root only
+          # carries a stub lockfile, so keying the cache off it would cache
+          # the wrong dependency tree.
+          cache-dependency-path: docs-site/package-lock.json
       - name: Install docs dependencies
         run: |
           cd docs-site
           npm ci
+      - name: Typecheck docs
+        run: |
+          cd docs-site
+          npm run typecheck
       - name: Build docs
         run: |
           cd docs-site
@@ -350,58 +340,34 @@ jobs:
   # ============================================
   # RELEASE
   # ============================================
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [backend-test, frontend-test, frontend-build]
-    permissions:
-      contents: write
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          generate_release_notes: true
-          draft: false
-          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
-      - name: Build and push Docker images
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            premkumar/alpha:${{ github.ref_name }}
-            premkumar/alpha:latest
-          platforms: linux/amd64,linux/arm64
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+  # The `release` job was removed here rather than fixed. It was gated on
+  # `refs/tags/v*`, but this workflow only triggers on branch pushes and pull
+  # requests, so a tag push never started it — the job could not run. Had it
+  # run it would have duplicated the documented release pipeline against
+  # different targets (Docker Hub instead of GHCR, plus PyPI, which
+  # RELEASING.md does not publish to) without the verify-versions gate.
+  # v* tag publishing stays with container.yaml, chart.yaml and
+  # windows-installer.yml; creating the GitHub Release itself is RELEASING.md
+  # step 7.
 
-# ============================================
-# CONVERGENCE
-# ============================================
-converge:
-  name: Converge (All Checks Pass)
-  runs-on: ubuntu-latest
-  needs:
-    - backend-lint
-    - backend-typecheck
-    - backend-test
-    - frontend-lint
-    - frontend-typecheck
-    - frontend-test
-    - frontend-build
-    - security-audit
-    - docker-build
-    - docs-build
-  if: always()
-  steps:
-    - name: Check all jobs passed
-      run: |
-        echo "All CI checks passed!"
+  # ============================================
+  # CONVERGENCE
+  # ============================================
+  converge:
+    name: Converge (All Checks Pass)
+    runs-on: ubuntu-latest
+    needs:
+      - backend-lint
+      - extension-example
+      - security-audit
+      - docker-build
+      - docs-build
+    if: always()
+    steps:
+      - name: Fail when a required gate failed, was cancelled, or was skipped
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: exit 1
+      - name: Report that every required gate passed
+        if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}
+        run: |
+          echo "All required CI gates passed. Backend mypy debt is reported separately and is not represented as a passing typecheck."

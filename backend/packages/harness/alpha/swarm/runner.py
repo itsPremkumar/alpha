@@ -9,13 +9,21 @@ result is accepted only when its lease still belongs to that attempt.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 import threading
 import time
 from typing import Any
 
-from alpha.config.runtime_paths import project_root
+from alpha.config.runtime_paths import project_root, runtime_home
+from alpha.sandbox.worktree_strategy import (
+    Assurance,
+    TaskSignals,
+    WorktreeMode,
+    is_protected_branch,
+    select_strategy,
+)
 from alpha.swarm.aggregator import SwarmAggregator
 from alpha.swarm.governor import get_swarm_resource_governor
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode, TaskNodeState, is_terminal_swarm_status
@@ -38,6 +46,18 @@ logger = logging.getLogger(__name__)
 _ACTIVE_SWARM_TASKS: dict[str, asyncio.Task] = {}
 _ACTIVE_SWARM_THREADS: dict[str, threading.Thread] = {}
 _ACTIVE_SWARM_REGISTRY_LOCK = threading.RLock()
+
+
+def _worktree_branch_name(task_id: str) -> str:
+    """Return a bounded, collision-resistant branch for the original task id."""
+    safe_task_id = re.sub(r"[^A-Za-z0-9._-]", "-", task_id).strip("-.") or "task"
+    while ".." in safe_task_id:
+        safe_task_id = safe_task_id.replace("..", "-")
+    # Normalization is intentionally lossy (for example, ``task:a`` and
+    # ``task-a``); retain a digest of the unmodified identifier so parallel
+    # coding tasks can never silently select the same worktree branch.
+    suffix = hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
+    return f"wt-{safe_task_id[:180]}-{suffix}"
 
 
 def _final_event_for(status: str) -> str:
@@ -122,10 +142,28 @@ class AsyncSwarmRunner:
             # The path is descriptive task metadata; WorktreeManager always
             # receives the server's current project root, never a
             # model-supplied arbitrary host directory.
-            safe_task_id = re.sub(r"[^A-Za-z0-9._-]", "-", task_node.task_id).strip(".-") or "task"
-            while ".." in safe_task_id:
-                safe_task_id = safe_task_id.replace("..", "-")
-            return CodingWorktreeWorker(repo_root=project_root(), branch_name=f"wt-{safe_task_id}"[:200])
+            branch_name = _worktree_branch_name(task_node.task_id)
+            if is_protected_branch(branch_name):
+                raise RuntimeError(f"refusing to run task {task_node.task_id!r} on protected branch {branch_name!r}")
+            # Ask the strategy layer which isolation a coding task gets rather
+            # than assuming a worktree is available. A coding task produces a
+            # mergeable diff, so that is the signal that selects the mode; a
+            # deployment without usable git answers with a lower-assurance
+            # copy, which cannot commit or merge — and pretending otherwise is
+            # how a "successful" coding task ends up with no branch at all.
+            selection = select_strategy(TaskSignals(produces_mergeable_diff=True))
+            if selection.assurance is not Assurance.STANDARD or selection.mode is not WorktreeMode.WORKTREE:
+                raise RuntimeError(f"worktree isolation is unavailable for task {task_node.task_id!r} (selected {selection.mode}, assurance {selection.assurance}): {selection.reason}")
+            return CodingWorktreeWorker(
+                repo_root=project_root(),
+                branch_name=branch_name,
+                base_worktree_dir=runtime_home() / "swarm" / "worktrees",
+                # A worktree that may merge is one whose change must exist as a
+                # commit on a branch, and the merge must be judged before the
+                # task is called done.
+                auto_commit=selection.mergeable,
+                simulate_merge=selection.mergeable,
+            )
         return EphemeralSubagentWorker(task_node.task_id, model=task_node.model_override)
 
     async def _prepare_specialist_pool(self, plan: SwarmPlan) -> None:

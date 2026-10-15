@@ -4505,17 +4505,25 @@ network:
 #   bash:
 #     risk_class: execute
 #     side_effects: [filesystem_read, shell_exec]
-#     reversibility: partial
+#     reversibility: unknown
+#     verification_method: status
 #     confirmation: ask        # ask calls are denied unless server-internal
 #   web_fetch:
 #     risk_class: external
 #     side_effects: [http_request]
 #     reversibility: reversible
+#     verification_method: status
 #     confirmation: auto
 #   rm_tool:
 #     risk_class: destructive
 #     reversibility: irreversible
+#     verification_method: existence
 #     confirmation: block
+#
+# Every entry must declare risk_class, confirmation, reversibility and
+# verification_method; a partial entry fails agent assembly rather than
+# defaulting a security-relevant key silently. permissions, side_effects,
+# timeout_seconds, retry and notes keep their documented defaults.
 #
 # confirmation: block -> always denied (governance.blocked)
 # confirmation: ask  -> denied unless server-internal dispatch

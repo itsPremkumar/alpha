@@ -66,7 +66,6 @@ from alpha.runtime.goal import (
     create_goal_evaluator_model,
     evaluate_goal_completion,
     goal_thread_lock,
-    latest_visible_assistant_signature,
     make_goal_continuation_message,
     read_thread_goal,
     should_continue_goal,
@@ -2223,7 +2222,11 @@ async def _prepare_goal_continuation_input(
         checkpoint_id_before = _checkpoint_id(checkpoint_tuple)
         messages = await _materialized_checkpoint_messages(accessor, thread_id)
         conversation_signature_before = visible_conversation_signature(messages)
-        evidence_signature = latest_visible_assistant_signature(messages)
+        # Count successful tool receipts as progress even when the agent's
+        # visible prose repeats verbatim. The conversation signature excludes
+        # hidden continuation bookkeeping and includes only visible messages
+        # plus successful receipts.
+        evidence_signature = visible_conversation_signature(messages)
 
         if not _has_durable_goal_turn_receipt(checkpoint_tuple, messages):
             evaluation = GoalEvaluation(
@@ -2290,10 +2293,18 @@ async def _prepare_goal_continuation_input(
                 latest_goal = _read_checkpoint_goal(latest_checkpoint_tuple)
                 if latest_goal is None or not _goal_instance_matches(goal, latest_goal):
                     return None
+                completed_goal = attach_goal_evaluation(
+                    goal,
+                    evaluation,
+                    run_id=run_id,
+                    no_progress_count=no_progress_count,
+                    evidence_signature=evidence_signature,
+                )
+                completed_goal["status"] = "completed"
                 values = await write_thread_goal(
                     checkpointer,
                     thread_id,
-                    None,
+                    completed_goal,
                     as_node="goal_evaluator",
                     expected_checkpoint_id=_checkpoint_id(latest_checkpoint_tuple),
                 )
@@ -2301,7 +2312,7 @@ async def _prepare_goal_continuation_input(
         except GoalWriteConflict:
             return None
         except Exception:
-            logger.warning("Could not clear satisfied goal for thread %s", thread_id, exc_info=True)
+            logger.warning("Could not persist completed goal receipt for thread %s", thread_id, exc_info=True)
         return None
 
     stand_down_reason = _stand_down_reason(goal, evaluation, no_progress_count)

@@ -139,9 +139,7 @@ def _sort_key(record: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def select(
-    records: list[dict[str, Any]], max_events: int, *, keep: str = "ends"
-) -> tuple[list[dict[str, Any]], int]:
+def select(records: list[dict[str, Any]], max_events: int, *, keep: str = "ends") -> tuple[list[dict[str, Any]], int]:
     """Return ``(selected, dropped_count)``.
 
     ``keep="ends"`` keeps the first and last halves; ``keep="first"`` keeps the
@@ -174,19 +172,14 @@ def filter_records(
     if name is not None:
         selected = [record for record in selected if record.get("name") == name]
     if status is not None:
-        selected = [
-            record for record in selected if str(record.get("status", "")) == status
-        ]
+        selected = [record for record in selected if str(record.get("status", "")) == status]
     return selected
 
 
 def _format_attributes(attributes: dict[str, Any]) -> str:
     if not attributes:
         return ""
-    parts = [
-        f"{key}={json.dumps(value, sort_keys=True, default=str)}"
-        for key, value in sorted(attributes.items())
-    ]
+    parts = [f"{key}={json.dumps(value, sort_keys=True, default=str)}" for key, value in sorted(attributes.items())]
     return "  " + " ".join(parts)
 
 
@@ -207,21 +200,14 @@ def render_text(
     lines: list[str] = []
     active_filters = {key: value for key, value in filters.items() if value}
     if active_filters:
-        lines.append(
-            "filters: "
-            + " ".join(
-                f"{key}={value}" for key, value in sorted(active_filters.items())
-            )
-        )
+        lines.append("filters: " + " ".join(f"{key}={value}" for key, value in sorted(active_filters.items())))
     lines.append(f"records: {total} shown: {len(selected)} dropped: {dropped}")
     if unparsable:
         # A torn final line is normal after a kill; saying so keeps a reader
         # from assuming the timeline is complete.
         lines.append(f"unparsable lines skipped: {unparsable}")
     if dropped:
-        lines.append(
-            f"TRUNCATED: {dropped} of {total} records were not rendered; the timeline above is incomplete"
-        )
+        lines.append(f"TRUNCATED: {dropped} of {total} records were not rendered; the timeline above is incomplete")
     lines.append("")
 
     base = _base_timestamp(selected)
@@ -231,23 +217,13 @@ def render_text(
         if kind == "span":
             depth = int(record.get("depth", 0) or 0)
             indent = "  " * depth
-            status = str(
-                record.get("status") or ("ended" if record.get("ended") else "open")
-            )
+            status = str(record.get("status") or ("ended" if record.get("ended") else "open"))
             duration = record.get("duration")
-            duration_text = (
-                f" {float(duration) * 1000:.1f}ms"
-                if isinstance(duration, (int, float)) and not isinstance(duration, bool)
-                else ""
-            )
+            duration_text = f" {float(duration) * 1000:.1f}ms" if isinstance(duration, (int, float)) and not isinstance(duration, bool) else ""
             flags = " [depth-capped]" if record.get("depth_capped") else ""
             dropped_attributes = int(record.get("dropped_attributes", 0) or 0)
-            dropped_text = (
-                f" [dropped-attrs={dropped_attributes}]" if dropped_attributes else ""
-            )
-            lines.append(
-                f"{stamp}  {indent}span {record.get('name')} [{status}]{duration_text}{flags}{dropped_text} span={record.get('span_id')}"
-            )
+            dropped_text = f" [dropped-attrs={dropped_attributes}]" if dropped_attributes else ""
+            lines.append(f"{stamp}  {indent}span {record.get('name')} [{status}]{duration_text}{flags}{dropped_text} span={record.get('span_id')}")
             if record.get("parent_span_id"):
                 lines.append(f"{stamp}  {indent}  parent={record['parent_span_id']}")
         elif kind == "event":
@@ -257,13 +233,9 @@ def render_text(
                 # event joined the trace across a boundary rather than having
                 # inherited it.
                 link = f" [LINK {record.get('link_kind') or 'unspecified'}]"
-            lines.append(
-                f"{stamp}    event {record.get('name')} [{record.get('status')}]{link} run={record.get('run_id')}"
-            )
+            lines.append(f"{stamp}    event {record.get('name')} [{record.get('status')}]{link} run={record.get('run_id')}")
         elif kind == "disclosure":
-            lines.append(
-                f"{stamp}  ** DISCLOSURE {record.get('reason')}: {json.dumps({k: v for k, v in record.items() if k not in ('v', 'type', 'ts')}, sort_keys=True, default=str)}"
-            )
+            lines.append(f"{stamp}  ** DISCLOSURE {record.get('reason')}: {json.dumps({k: v for k, v in record.items() if k not in ('v', 'type', 'ts')}, sort_keys=True, default=str)}")
         else:
             lines.append(f"{stamp}  ?? unknown record type {kind!r}")
         attribute_text = _format_attributes(dict(record.get("attributes") or {}))
@@ -277,11 +249,7 @@ def render_text(
 
 def _base_timestamp(records: list[dict[str, Any]]) -> float:
     """Return the earliest known position, used as the timeline's zero point."""
-    stamps = [
-        value
-        for value in (record_time(record) for record in records)
-        if value is not None
-    ]
+    stamps = [value for value in (record_time(record) for record in records) if value is not None]
     return min(stamps) if stamps else 0.0
 
 
@@ -420,18 +388,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="ends",
         help="which records to keep when the bound bites (default: ends)",
     )
-    parser.add_argument(
-        "--run-id", default=None, help="render only records with this run id"
-    )
-    parser.add_argument(
-        "--trace-id", default=None, help="render only records with this trace id"
-    )
-    parser.add_argument(
-        "--name", default=None, help="render only records with this event/span name"
-    )
-    parser.add_argument(
-        "--status", default=None, help="render only records with this status"
-    )
+    parser.add_argument("--run-id", default=None, help="render only records with this run id")
+    parser.add_argument("--trace-id", default=None, help="render only records with this trace id")
+    parser.add_argument("--name", default=None, help="render only records with this event/span name")
+    parser.add_argument("--status", default=None, help="render only records with this status")
     return parser
 
 

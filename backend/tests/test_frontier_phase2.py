@@ -54,7 +54,7 @@ class TestVisualVerificationTool:
 </html>""",
             encoding="utf-8",
         )
-        res_raw = visual_verify_artifact.invoke({"artifact_path": str(html_file), "expected_elements": ["main-content", "chart"]})
+        res_raw = visual_verify_artifact.invoke({"artifact_path": str(html_file), "root_path": str(tmp_path), "expected_elements": ["main-content", "chart"]})
         res = json.loads(res_raw)
         assert res["passed"] is True
         assert res["score"] >= 80
@@ -64,7 +64,7 @@ class TestVisualVerificationTool:
         assert res["checks"]["expected_elements_present"] is True
 
     def test_verify_missing_file(self, tmp_path: Path):
-        res_raw = visual_verify_artifact.invoke({"artifact_path": str(tmp_path / "non_existent.html")})
+        res_raw = visual_verify_artifact.invoke({"artifact_path": str(tmp_path / "non_existent.html"), "root_path": str(tmp_path)})
         res = json.loads(res_raw)
         assert res["passed"] is False
         assert "not found" in res["error"]
@@ -73,7 +73,7 @@ class TestVisualVerificationTool:
     def test_verify_malformed_html_missing_viewport_and_doctype(self, tmp_path: Path):
         html_file = tmp_path / "bad.html"
         html_file.write_text("<div>Just a floating div with no html tag</div>", encoding="utf-8")
-        res_raw = visual_verify_artifact.invoke({"artifact_path": str(html_file)})
+        res_raw = visual_verify_artifact.invoke({"artifact_path": str(html_file), "root_path": str(tmp_path)})
         res = json.loads(res_raw)
         assert res["passed"] is False
         assert res["checks"]["valid_html_structure"] is False
@@ -83,7 +83,7 @@ class TestVisualVerificationTool:
     def test_verify_valid_svg_artifact(self, tmp_path: Path):
         svg_file = tmp_path / "graphic.svg"
         svg_file.write_text('<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="blue"/></svg>', encoding="utf-8")
-        res_raw = visual_verify_artifact.invoke({"artifact_path": str(svg_file)})
+        res_raw = visual_verify_artifact.invoke({"artifact_path": str(svg_file), "root_path": str(tmp_path)})
         res = json.loads(res_raw)
         assert res["passed"] is True
         assert res["checks"]["valid_svg"] is True
@@ -99,7 +99,7 @@ class TestVisualVerificationTool:
             '<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body><div class=\'c\'>hi</div></body></html>',
             encoding="utf-8",
         )
-        res = json.loads(visual_verify_artifact.invoke({"artifact_path": str(html_file)}))
+        res = json.loads(visual_verify_artifact.invoke({"artifact_path": str(html_file), "root_path": str(tmp_path)}))
         assert res["checks"]["doctype_declared"] is False
         assert res["checks"]["valid_html_structure"] is True
         assert any("DOCTYPE" in w for w in res["warnings"])
@@ -110,7 +110,7 @@ class TestVisualVerificationTool:
             '<!DOCTYPE html>\n<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body><div class=\'c\'>hi</div></body></html>',
             encoding="utf-8",
         )
-        res = json.loads(visual_verify_artifact.invoke({"artifact_path": str(html_file)}))
+        res = json.loads(visual_verify_artifact.invoke({"artifact_path": str(html_file), "root_path": str(tmp_path)}))
         assert res["checks"]["doctype_declared"] is True
         assert not any("DOCTYPE" in w for w in res["warnings"])
 
@@ -118,7 +118,7 @@ class TestVisualVerificationTool:
         """A non-visual file must never score 100/PASS from a mere non-empty check."""
         txt_file = tmp_path / "notes.txt"
         txt_file.write_text("some notes that are definitely non-empty", encoding="utf-8")
-        res_raw = visual_verify_artifact.invoke({"artifact_path": str(txt_file)})
+        res_raw = visual_verify_artifact.invoke({"artifact_path": str(txt_file), "root_path": str(tmp_path)})
         res = json.loads(res_raw)
         assert res["status"] == "NOT_APPLICABLE"
         assert res["score"] is None
@@ -144,6 +144,7 @@ class TestVisualVerificationTool:
         res_raw = visual_verify_artifact.invoke(
             {
                 "artifact_path": str(html_file),
+                "root_path": str(tmp_path),
                 "expected_elements": ["main-content", "sidebar-drawer"],
             }
         )

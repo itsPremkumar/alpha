@@ -8,6 +8,7 @@ evaluation — plus the trust rules that make it safe:
 * an untrusted source (MCP / client-supplied) never classifies itself;
 * an operator config entry wins over every tool-side declaration;
 * every malformed declaration fails closed with ``GovernanceError``;
+* a partial operator entry (missing a required policy key) is malformed;
 * a tool that declares nothing keeps the pre-registry behaviour exactly.
 """
 
@@ -38,6 +39,22 @@ class _StubTool:
     def __init__(self, metadata: dict[str, Any] | None = None, name: str = "stub_tool") -> None:
         self.metadata = metadata or {}
         self.name = name
+
+
+def _complete_entry(**overrides: Any) -> dict[str, Any]:
+    """A complete operator entry: every required policy key is present.
+
+    The registry refuses a partial declaration, so each malformed-config case
+    below starts from a complete entry and breaks exactly one thing.
+    """
+    entry: dict[str, Any] = {
+        "risk_class": "read",
+        "confirmation": "auto",
+        "reversibility": "reversible",
+        "verification_method": "none",
+    }
+    entry.update(overrides)
+    return entry
 
 
 # ---------------------------------------------------------------- defaults --
@@ -184,27 +201,37 @@ def test_from_mapping_accepts_none_and_empty(spec: Any) -> None:
 @pytest.mark.parametrize(
     "spec",
     [
-        {"tool": {"risk_clas": "read"}},  # unknown key (typo) fails closed
-        {"tool": {"risk_class": "nope"}},  # unknown enum value
-        {"tool": {"confirmation": "maybe"}},
-        {"tool": {"reversibility": "sometimes"}},
-        {"tool": {"verification_method": " vibes"}},
-        {"tool": {"timeout_seconds": -5}},
-        {"tool": {"timeout_seconds": "soon"}},
-        {"tool": {"retry": {"max_attempts": 0}}},
-        {"tool": {"retry": {"max_attempts": "many"}}},
-        {"tool": {"retry": {"backoff_seconds": -1}}},
-        {"tool": {"retry": {"unknown_key": 1}}},
-        {"tool": {"permissions": "network"}},  # not a list
-        {"tool": {"permissions": [""]}},  # empty string entry
+        {"tool": _complete_entry(risk_clas="read")},  # unknown key (typo) fails closed
+        {"tool": _complete_entry(risk_class="nope")},  # unknown enum value
+        {"tool": _complete_entry(confirmation="maybe")},
+        {"tool": _complete_entry(reversibility="sometimes")},
+        {"tool": _complete_entry(verification_method=" vibes")},
+        {"tool": _complete_entry(timeout_seconds=-5)},
+        {"tool": _complete_entry(timeout_seconds="soon")},
+        {"tool": _complete_entry(retry={"max_attempts": 0})},
+        {"tool": _complete_entry(retry={"max_attempts": "many"})},
+        {"tool": _complete_entry(retry={"backoff_seconds": -1})},
+        {"tool": _complete_entry(retry={"unknown_key": 1})},
+        {"tool": _complete_entry(permissions="network")},  # not a list
+        {"tool": _complete_entry(permissions=[""])},  # empty string entry
         {"tool": "execute"},  # not a mapping
-        {"": {"risk_class": "read"}},  # empty tool name
-        {"tool": {"side_effects": [1, 2]}},  # non-string entry
+        {"": _complete_entry()},  # empty tool name
+        {"tool": _complete_entry(side_effects=[1, 2])},  # non-string entry
     ],
 )
 def test_malformed_config_fails_closed(spec: dict[str, Any]) -> None:
     with pytest.raises(GovernanceError):
         GovernanceRegistry.from_mapping(spec)
+
+
+@pytest.mark.parametrize("missing", ["risk_class", "confirmation", "reversibility", "verification_method"])
+def test_partial_operator_entry_fails_closed_naming_the_missing_key(missing: str) -> None:
+    # A policy that silently defaults a security-relevant key is an unreadable
+    # audit, so the partial declaration is refused and names what it lacked.
+    entry = _complete_entry()
+    entry.pop(missing)
+    with pytest.raises(GovernanceError, match=missing):
+        GovernanceRegistry.from_mapping({"tool": entry})
 
 
 def test_from_mapping_rejects_non_mapping_root() -> None:
@@ -241,9 +268,24 @@ def test_governance_from_tool_metadata_requires_a_name() -> None:
 def test_evaluate_passes_declared_confirmation_through() -> None:
     registry = GovernanceRegistry.from_mapping(
         {
-            "read_only": {"risk_class": "read", "confirmation": "auto"},
-            "writer": {"risk_class": "write", "confirmation": "ask"},
-            "nuclear": {"risk_class": "destructive", "confirmation": "block"},
+            "read_only": {
+                "risk_class": "read",
+                "confirmation": "auto",
+                "reversibility": "reversible",
+                "verification_method": "none",
+            },
+            "writer": {
+                "risk_class": "write",
+                "confirmation": "ask",
+                "reversibility": "reversible",
+                "verification_method": "none",
+            },
+            "nuclear": {
+                "risk_class": "destructive",
+                "confirmation": "block",
+                "reversibility": "irreversible",
+                "verification_method": "manual",
+            },
         }
     )
     auto = registry.evaluate("read_only")
@@ -258,7 +300,17 @@ def test_evaluate_passes_declared_confirmation_through() -> None:
 
 
 def test_evaluate_reports_side_effects_and_irreversibility() -> None:
-    registry = GovernanceRegistry.from_mapping({"d": {"risk_class": "destructive", "side_effects": ["delete"], "reversibility": "irreversible"}})
+    registry = GovernanceRegistry.from_mapping(
+        {
+            "d": {
+                "risk_class": "destructive",
+                "side_effects": ["delete"],
+                "reversibility": "irreversible",
+                "confirmation": "auto",
+                "verification_method": "none",
+            }
+        }
+    )
     decision = registry.evaluate("d")
     assert any("side_effects=delete" in r for r in decision.reasons)
     assert any("reversibility=irreversible" in r for r in decision.reasons)

@@ -519,6 +519,7 @@ def _build_runtime_middlewares(
     authorization_infrastructure_tool_names: frozenset[str] = frozenset(),
     available_skills: set[str] | None = None,
     owns_agent_skill_projection: bool = True,
+    trajectory_store=None,
 ) -> list[AgentMiddleware]:
     """Build shared base middlewares for agent execution."""
     from alpha.agents.middlewares.deepagent_context_middleware import DeepAgentContextMiddleware
@@ -593,6 +594,16 @@ def _build_runtime_middlewares(
     # enforced at the same tool seam as authorization and guardrails. Ordinary
     # runs remain unchanged because this middleware is a no-op without that key.
     tail.append(ApexContractToolMiddleware())
+
+    # The fleet stop. It sits immediately inside the receipt layer so a refusal
+    # is still recorded, and outside every other tool gate so a stopped fleet
+    # never spends a guardrail policy call or a sandbox slot on work it has
+    # already refused. Registered unconditionally: a stop mechanism is not a
+    # feature, and a config flag that can switch it off would be a way to run
+    # the fleet past an engaged stop.
+    from alpha.agents.middlewares.fleet_stop_middleware import FleetStopMiddleware
+
+    tail.append(FleetStopMiddleware())
 
     # Authorization uses the existing GuardrailMiddleware so execution-time
     # deny, audit, and fail-closed handling stay in one proven implementation.
@@ -686,6 +697,14 @@ def _build_runtime_middlewares(
 
     tail.append(ToolErrorHandlingMiddleware(app_config=app_config))
 
+    # The lead builder supplies the Gateway-initialized project store. Keep the
+    # recorder opt-in at this shared seam so delegated subagents do not append
+    # their internal turns into the parent's thread-level trajectory.
+    if trajectory_store is not None:
+        from alpha.agents.middlewares.trajectory_middleware import TrajectoryRecorderMiddleware
+
+        tail.append(TrajectoryRecorderMiddleware(store=trajectory_store))
+
     # HooksBridgeMiddleware is the innermost wrap_tool_call layer: PreToolUse
     # fires only for calls that survived every guard above (no hook runs for
     # short-circuited calls), and PostToolUse observes the final converted
@@ -714,8 +733,15 @@ def build_lead_runtime_middlewares(
     deferred_setup: "DeferredToolSetup | None" = None,
     available_skills: set[str] | None = None,
     owns_agent_skill_projection: bool = True,
+    trajectory_store=None,
 ) -> list[AgentMiddleware]:
     """Middlewares shared by lead agent runtime before lead-only middlewares."""
+    if trajectory_store is None:
+        # Gateway lifespan initializes this singleton before requests begin;
+        # resolving through the same accessor also supports embedded callers.
+        from alpha.trajectory.store import get_trajectory_store
+
+        trajectory_store = get_trajectory_store()
     return _build_runtime_middlewares(
         app_config=app_config,
         include_uploads=True,
@@ -727,6 +753,7 @@ def build_lead_runtime_middlewares(
         authorization_provider=authorization_provider,
         available_skills=available_skills,
         owns_agent_skill_projection=owns_agent_skill_projection,
+        trajectory_store=trajectory_store,
         authorization_infrastructure_tool_names=(frozenset({deferred_setup.tool_search_tool.name}) if authorization_provider is not None and deferred_setup is not None and deferred_setup.tool_search_tool is not None else frozenset()),
     )
 

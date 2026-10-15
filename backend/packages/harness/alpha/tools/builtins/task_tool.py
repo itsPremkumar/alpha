@@ -762,6 +762,24 @@ def _task_result_command(
     )
 
 
+def _fleet_stop_refusal() -> str:
+    """Fleet-stop refusal text evaluated off the event loop; ``""`` when running.
+
+    The predicate reads the ESTOP sentinel and the generation-fenced control
+    state from disk. ``task_tool`` is an async entry point on the event loop, so
+    this is dispatched with ``asyncio.to_thread`` like ``runs/worker.py``'s run
+    admission. Inline, the disk read stalls every other run in the process, and
+    under the strict blocking-IO gate the raise is caught by the predicate's
+    fail-closed handler and every delegation is refused for an emergency stop
+    nobody tripped.
+    """
+    from alpha.runtime.fleet_stop import fleet_stop_reason, is_fleet_stopped
+
+    if not is_fleet_stopped():
+        return ""
+    return f"FLEET_STOPPED: {fleet_stop_reason()}"
+
+
 @tool("task", parse_docstring=True)
 async def task_tool(
     runtime: Runtime,
@@ -885,6 +903,15 @@ async def task_tool(
             The child keeps its own role/tools; later parent turns are not synced.
             Historical tool actions are not evidence of child completion.
     """
+    # The fleet-stop predicate reads files; evaluate it in a worker thread so
+    # the read never runs on the event loop (see ``_fleet_stop_refusal``).
+    fleet_stop_error = await asyncio.to_thread(_fleet_stop_refusal)
+    if fleet_stop_error:
+        return _task_result_command(
+            tool_call_id=tool_call_id,
+            status="failed",
+            error=fleet_stop_error,
+        )
     if context_mode not in {"isolated", "snapshot"}:
         return _task_result_command(tool_call_id=tool_call_id, status="failed", error=f"Unknown context_mode '{context_mode}'. Use isolated or snapshot.")
     runtime_app_config = _get_runtime_app_config(runtime)

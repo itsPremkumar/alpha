@@ -10,7 +10,9 @@ from alpha.agents.lead_agent import prompt as prompt_module
 def test_rendered_prompt_display_identity_preserves_boundaries(monkeypatch, agent_name):
     monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda *args, **kwargs: "")
     monkeypatch.setattr(prompt_module, "get_agent_soul", lambda *args, **kwargs: "")
-    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda **kwargs: "")
+    from alpha.tools.builtins import tool_search
+
+    monkeypatch.setattr(tool_search, "get_deferred_tools_prompt_section", lambda **kwargs: "")
     monkeypatch.setattr(prompt_module, "_build_acp_section", lambda **kwargs: "")
     monkeypatch.setattr(prompt_module, "_build_custom_mounts_section", lambda **kwargs: "")
     monkeypatch.setattr(prompt_module, "_build_memory_tool_section", lambda **kwargs: "")

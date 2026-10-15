@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from alpha.runtime import goal
 
@@ -79,6 +79,30 @@ def test_format_visible_conversation_excludes_hidden_and_system_messages():
     assert "visible assistant" in formatted
     assert "hidden control" not in formatted
     assert "internal" not in formatted
+
+
+def test_format_goal_evidence_includes_successful_tool_receipts_but_rejects_errors():
+    messages = [
+        HumanMessage(content="Write and read back the file."),
+        ToolMessage(content="Wrote /tmp/result.txt", tool_call_id="write-1", name="write_file"),
+        ToolMessage(content="alpha-verified", tool_call_id="read-1", name="read_file"),
+        ToolMessage(content="Error: File not found", tool_call_id="bad-1", name="str_replace"),
+        AIMessage(content="The file was read back as alpha-verified."),
+    ]
+
+    formatted = goal.format_visible_conversation(messages)
+
+    assert "Successful tool receipt (write_file): Wrote /tmp/result.txt" in formatted
+    assert "Successful tool receipt (read_file): alpha-verified" in formatted
+    assert "Error: File not found" not in formatted
+    assert "bad-1" not in formatted
+
+
+def test_goal_evidence_signature_changes_when_successful_tool_receipt_changes():
+    before = [HumanMessage(content="Read the file."), AIMessage(content="Done.")]
+    after = [*before, ToolMessage(content="verified content", tool_call_id="read-1", name="read_file")]
+
+    assert goal.visible_conversation_signature(before) != goal.visible_conversation_signature(after)
 
 
 def test_should_continue_goal_respects_completion_and_cap():
@@ -304,6 +328,31 @@ def test_no_progress_count_resets_when_evidence_advances():
 
     # Identical evaluator wording, but the agent produced NEW visible evidence -> progress.
     assert goal.compute_no_progress_count(prior, first, evidence_signature="step 2 done") == 0
+
+
+def test_successful_tool_receipt_counts_as_goal_progress_when_assistant_text_repeats():
+    from langchain_core.messages import ToolMessage
+
+    first_messages = [HumanMessage(content="go"), AIMessage(content="I am still working."), ToolMessage(content="created file A", tool_call_id="a", name="write_file")]
+    second_messages = [HumanMessage(content="go"), AIMessage(content="I am still working."), ToolMessage(content="created file B", tool_call_id="b", name="write_file")]
+    first = goal.GoalEvaluation(satisfied=False, blocker="goal_not_met_yet", reason="continue", evidence_summary="unmet")
+    prior = goal.attach_goal_evaluation(
+        goal.build_goal_state("Finish"),
+        first,
+        run_id="r1",
+        no_progress_count=1,
+        evidence_signature=goal.visible_conversation_signature(first_messages),
+    )
+
+    assert goal.latest_visible_assistant_signature(first_messages) == goal.latest_visible_assistant_signature(second_messages)
+    assert (
+        goal.compute_no_progress_count(
+            prior,
+            first,
+            evidence_signature=goal.visible_conversation_signature(second_messages),
+        )
+        == 0
+    )
 
 
 def test_parse_goal_command_status_for_empty_and_whitespace():

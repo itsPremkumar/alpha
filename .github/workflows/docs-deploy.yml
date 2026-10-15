@@ -1,0 +1,64 @@
+name: Deploy Documentation
+
+# This workflow used to live at `docs-site/.github/workflows/deploy.yml`.
+# GitHub only reads workflow files under the repository root
+# `.github/workflows/`, so it never ran: the docs site was never deployed by
+# CI. The content below is unchanged except for the deploy gate.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs-site/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs-site/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: docs-site
+        run: npm ci
+
+      - name: Build
+        working-directory: docs-site
+        run: npm run build
+
+      # The repository documents a Vercel deployment for the docs site, but a
+      # bare Vercel step fails every main-branch push until the operator
+      # configures the secrets. Skip it explicitly instead of failing, and say
+      # so in the run log.
+      - name: Check Vercel credentials
+        id: credentials
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Vercel deploy skipped: set VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID repository secrets to enable it."
+          fi
+
+      - name: Deploy to Vercel
+        if: github.ref == 'refs/heads/main' && steps.credentials.outputs.configured == 'true'
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
