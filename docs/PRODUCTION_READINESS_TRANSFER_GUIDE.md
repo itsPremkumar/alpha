@@ -37,7 +37,7 @@ checkout and remote before editing.
   after two consecutive failed readiness checks. Health fields are scoped to
   their observation phase so a healthy record cannot retain stale boot-wait
   errors.
-- Current-turn checks: 38 launcher/watchdog tests passed; Python `compileall`,
+- Current-turn checks: 41 launcher/watchdog tests passed; Python `compileall`,
   Ruff lint/format, `git diff --check`, and the generated docs-index check
   passed. A separate live UI task used Alpha's `write_file` and `read_file`
   tools against `/mnt/user-data/workspace/alpha-live-verification-20261015.txt`;
@@ -93,9 +93,9 @@ docs/PRODUCTION_READINESS_TRANSFER_GUIDE.md plus
 docs/PRODUCTION_READINESS_INVENTORY.md. Follow the owning subsystem guide.
 
 First inspect git status, branch, HEAD, remotes, current processes, ports 3000
-and 8001, logs/alpha_health.json, and the newest logs/diagnostics archive. The
-last verified main commit is 1ffdbae, pushed to origin/main. It hardens Windows
-launcher recovery for a missing Gateway listener, a bound but unready Gateway,
+and 8001, logs/alpha_health.json, and the newest logs/diagnostics archive. At
+the previous handoff, `main` was at 1ffdbae, pushed to origin/main. That change
+hardens Windows launcher recovery for a missing Gateway listener, a bound but unready Gateway,
 and consecutive port-up readiness failures; it also fixes stale health fields.
 The current local stack returned HTTP 200 from Gateway readiness and the frontend,
 and its health file reported `status=healthy`, `phase=running`. A bounded live UI

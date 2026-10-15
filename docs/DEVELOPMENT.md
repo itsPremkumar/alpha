@@ -1011,7 +1011,9 @@ HTTP readiness probes, so an unresponsive frontend cannot postpone recovery of
 a Gateway that never bound its port. The health file's `elapsed_seconds` is
 wall-clock time from launcher start (with a boot-wait fallback), not an estimate
 based on loop iterations; the HTTP probes still determine whether each service
-is ready.
+is ready. During steady state, two consecutive failed HTTP readiness checks
+also restart a service even when its port remains bound; a successful check
+resets that service's failure counter.
 
 After initial readiness, the launcher also treats the listening port as the
 service liveness signal. If a Gateway or frontend process remains alive but no

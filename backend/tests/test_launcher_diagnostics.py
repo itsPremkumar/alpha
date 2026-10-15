@@ -503,8 +503,12 @@ Invoke-Expression ($src.Substring($from, $to - $from))
 $GatewayPort  = 8001
 $FrontendPort = 3000
 $ports  = $env:ALPHA_LS_PORTS -split ','
-$gwCode = $env:ALPHA_LS_MON_GW
-$feCode = $env:ALPHA_LS_MON_FE
+$gwCodes = $env:ALPHA_LS_MON_GW -split ','
+$feCodes = $env:ALPHA_LS_MON_FE -split ','
+$script:GwIndex = 0
+$script:FeIndex = 0
+$script:GatewayUnhealthyChecks = 0
+$script:FrontendUnhealthyChecks = 0
 $script:LastStatus = ''
 $script:LastDetail = ''
 
@@ -512,7 +516,15 @@ function Test-PortListening { param([int]$Port) return ($ports -contains "$Port"
 function Invoke-WebRequest {
     [CmdletBinding()]
     param([string]$Uri, [switch]$UseBasicParsing, [int]$TimeoutSec = 5)
-    $code = if ($Uri -like '*:3000/*') { $feCode } else { $gwCode }
+    if ($Uri -like '*:3000/*') {
+        $index = [Math]::Min($script:FeIndex, $feCodes.Count - 1)
+        $code = $feCodes[$index]
+        $script:FeIndex++
+    } else {
+        $index = [Math]::Min($script:GwIndex, $gwCodes.Count - 1)
+        $code = $gwCodes[$index]
+        $script:GwIndex++
+    }
     if ($code -ne '200') { throw "($code) Service Unavailable" }
     return [pscustomobject]@{ StatusCode = 200; Content = '' }
 }
@@ -522,13 +534,22 @@ function Write-HealthFile {
     $script:LastDetail = $Detail
 }
 
-Write-MonitorHeartbeat
+for ($i = 0; $i -lt [int]$env:ALPHA_LS_MON_REPEATS; $i++) { Write-MonitorHeartbeat }
 Write-Output ("RESULT_STATUS=" + $script:LastStatus)
 Write-Output ("RESULT_DETAIL=" + $script:LastDetail)
+Write-Output ("RESULT_GW_FAILURES=" + $script:GatewayUnhealthyChecks)
+Write-Output ("RESULT_FE_FAILURES=" + $script:FrontendUnhealthyChecks)
 """
 
 
-def _monitor(tmp_path: Path, *, ports: str, gw: str, fe: str) -> dict[str, str]:
+def _monitor(
+    tmp_path: Path,
+    *,
+    ports: str,
+    gw: str,
+    fe: str,
+    repeats: int = 1,
+) -> dict[str, str]:
     return _run(
         HARNESS_MONITOR,
         tmp_path,
@@ -536,6 +557,7 @@ def _monitor(tmp_path: Path, *, ports: str, gw: str, fe: str) -> dict[str, str]:
             "ALPHA_LS_PORTS": ports,
             "ALPHA_LS_MON_GW": gw,
             "ALPHA_LS_MON_FE": fe,
+            "ALPHA_LS_MON_REPEATS": str(repeats),
         },
     )
 
@@ -564,10 +586,51 @@ def test_a_down_port_still_reports_degraded(tmp_path: Path) -> None:
     assert "waiting for gateway/frontend to return" in out["RESULT_DETAIL"]
 
 
+def test_consecutive_gateway_failures_accumulate_for_restart_gate(tmp_path: Path) -> None:
+    """A bound but unresponsive Gateway reaches the steady-state recovery gate."""
+    out = _monitor(
+        tmp_path,
+        ports=f"{GW_PORT},{FE_PORT}",
+        gw="503",
+        fe="200",
+        repeats=2,
+    )
+    assert out["RESULT_GW_FAILURES"] == "2"
+    assert out["RESULT_STATUS"] == "degraded"
+
+
+def test_healthy_gateway_probe_resets_the_consecutive_failure_count(tmp_path: Path) -> None:
+    """A transient failure followed by recovery must not trigger a restart."""
+    out = _monitor(
+        tmp_path,
+        ports=f"{GW_PORT},{FE_PORT}",
+        gw="503,200",
+        fe="200,200",
+        repeats=2,
+    )
+    assert out["RESULT_GW_FAILURES"] == "0"
+    assert out["RESULT_STATUS"] == "healthy"
+
+
 def test_the_monitor_loop_actually_calls_the_serving_heartbeat() -> None:
     """The function must be wired into the loop, not exist as dead code."""
     launcher = _launcher_source()
     assert launcher.count("Write-MonitorHeartbeat") >= 2, "Write-MonitorHeartbeat must be defined and called from the monitor loop; a heartbeat that only checks ports reintroduces the healthy-while-starting lie"
+
+
+def test_two_failed_serving_heartbeats_reach_the_service_restart_path() -> None:
+    """The counter needs a consumer in the live monitor loop, not just tests."""
+    launcher = _launcher_source()
+    threshold = re.search(r"(?m)^\$script:UnhealthyProbeRestartThreshold\s*=\s*(\d+)", launcher)
+    assert threshold and int(threshold.group(1)) == 2
+    loop_anchor = launcher.index("# launcher NEVER gives up")
+    loop_start = launcher.index("while ($true) {", loop_anchor)
+    loop_end = launcher.index("} finally {", loop_start)
+    monitor_loop = launcher[loop_start:loop_end]
+    assert "$script:GatewayUnhealthyChecks -ge $script:UnhealthyProbeRestartThreshold" in monitor_loop
+    assert "$script:FrontendUnhealthyChecks -ge $script:UnhealthyProbeRestartThreshold" in monitor_loop
+    assert "Restart-GatewayService -Attempt $script:gatewayRestarts" in monitor_loop
+    assert "Restart-FrontendService -Attempt $script:frontendRestarts" in monitor_loop
 
 
 HARNESS_SERVICE_LIVENESS = r"""
