@@ -1,5 +1,153 @@
 # Alpha Production Readiness and Transfer Guide
 
+## Current work handoff — 2026-10-15
+
+This section is the continuation brief for an agent taking over the active
+production-readiness work. Treat repository state and live test output as
+authoritative; earlier chat summaries are context, not proof. Work resumed on
+branch `main` from baseline commit `3d95eb1` (`fix: harden approval grants and
+run evidence`), which was pushed to `origin/main` at that time. Confirm the
+checkout and remote before editing.
+
+### Recent verified changes
+
+- Slash-command HTTP approval flags are no longer trusted as authorization.
+  Command execution, auto-trigger, and phase-transition paths sanitize
+  client-controlled approval context and bind grants to an authenticated admin
+  actor; personal access tokens do not receive admin authority.
+- Run-scoped artifact readback acceptance evidence now requires a successful,
+  correlated write/read in the same complete run, the exact declared path, a
+  non-empty artifact, and a bounded digest. Stale, ambiguous, oversized, absent,
+  or unsupported evidence stays unverified; empty readback is not met.
+- Targeted verification reported at handoff: 80 command safety/honesty tests,
+  34 acceptance/evidence tests, 27 Gateway health tests, and 4 documentation
+  honesty tests passed. Ruff lint/format checks passed. The frontend unit suite
+  previously passed 2,764 tests, `pnpm typecheck` passed, and a replay-backed
+  browser E2E passed for file read/write plus goal CRUD/detail/edit/clear. That
+  replay E2E is not a live-provider task. Re-run relevant checks against the
+  current checkout before relying on these historical results.
+- These changes do not complete the general typed evidence collector registry,
+  re-verification history, durable long-running conversational goals, or
+  production multi-process guarantees. See
+  [`PRODUCTION_READINESS_INVENTORY.md`](PRODUCTION_READINESS_INVENTORY.md).
+- Current-turn Windows launcher changes: startup recovery checks an expired
+  no-listener deadline and a listener that never becomes ready before blocking
+  HTTP probes; boot health reports wall-clock `elapsed_seconds`. Steady-state
+  monitoring marks port-up but unresponsive services degraded and restarts them
+  after two consecutive failed readiness checks. Health fields are scoped to
+  their observation phase so a healthy record cannot retain stale boot-wait
+  errors.
+- Current-turn checks: 38 launcher/watchdog tests passed; Python `compileall`,
+  Ruff lint/format, `git diff --check`, and the generated docs-index check
+  passed. A separate live UI task used Alpha's `write_file` and `read_file`
+  tools against `/mnt/user-data/workspace/alpha-live-verification-20261015.txt`;
+  the exact content `alpha-live-task-receipt-20261015` was read back and
+  matched. It did not inspect the repository, use the internet, or delegate.
+  This verifies one bounded real tool task through the local UI, not every mode
+  or general production readiness.
+
+### Runtime incident and current status
+
+The old local stack had listening ports but both HTTP endpoints timed out. Its
+health file falsely said `healthy` with stale `phase=boot_wait` fields. Archived
+logs show readiness SQLite probe timeouts and slow startup. The repository's
+`stop.ps1` and `start.ps1 -NoBrowser -WatchdogMode -Prod` sequence stopped the
+stuck process tree and loaded the current launcher. The restarted frontend and
+Gateway both returned HTTP 200; `logs/alpha_health.json` reported
+`status=healthy`, `phase=running`, and both readiness fields true. Cold-start
+latency and the earlier SQLite readiness timeouts remain follow-up items. Keep
+checking readiness and monitor logs; one healthy sample does not establish
+sustained stability. Do not expose secrets or paste config values into reports.
+
+### Honest acceptance boundaries
+
+- Thread goals currently have bounded in-run continuation (up to eight rounds),
+  not a durable scheduler that wakes indefinitely after an ordinary run stops.
+  Do not advertise years-long autonomous work. A durable goal dispatcher needs
+  owner/generation fencing for edit, clear, completion, restart, and admission,
+  and must use the Gateway `RunManager` as the sole run owner.
+- The UI replay E2E proves deterministic behavior against replay fixtures only.
+  The one live UI task above proves a bounded file write/read round-trip; it does
+  not prove bot/subagent modes, coding tasks, natural-language acceptance, or
+  sustained long-running autonomy.
+- The configured deployment is intended to stay free-provider/auto-router only.
+  Do not add paid credentials or silently switch provider mode. A free model that
+  emits tool-call JSON as prose cannot substantiate a real tool-execution claim.
+- A successful run, a green health check, module presence, a demo, or an agent's
+  completion message is not proof of production readiness. Record the exact path,
+  fixture/provider mode, command, exit status, and evidence for every acceptance
+  claim.
+- Existing untracked scratch files at handoff are `.tmp_head_temh.py`,
+  `backend/.test_durations`, `backend/.tmp_dbg_mw.py`, and
+  `backend/tests/test_zz_debug_tmp.py`. Inspect `git status` before staging and
+  do not stage or remove them as part of unrelated work.
+
+### Copy/paste continuation prompt
+
+```text
+You are taking over production-readiness work in the Alpha repository at
+C:\Users\PREM KUMAR\Videos\alpha. Continue the existing work; do not restart
+from scratch or claim completion based on earlier chat. Read the root AGENTS.md,
+backend/AGENTS.md or frontend/AGENTS.md for the area you touch, and
+docs/PRODUCTION_READINESS_TRANSFER_GUIDE.md plus
+docs/PRODUCTION_READINESS_INVENTORY.md. Follow the owning subsystem guide.
+
+First inspect git status, branch, HEAD, remotes, current processes, ports 3000
+and 8001, logs/alpha_health.json, and the newest logs/diagnostics archive. The
+last observed state had frontend :3000 returning HTTP 200 while Gateway :8001
+was absent; Windows launcher recovery had spawned a new Uvicorn process. Prior
+diagnostics showed SQLite readiness timeouts and client resets; watchdog logs
+also showed no-op restarts because the Gateway port was free. A launcher source
+fix now moves the no-listener deadline check ahead of HTTP probes and reports
+wall-clock elapsed time; tests passed, but the running launcher predates that
+edit. Check the live state before acting. Preserve logs and do not kill an active
+recovery attempt. Diagnose and reproduce the
+Gateway startup/readiness failure before changing code. Measure import/startup
+time and SQLite probe contention on the current checkout; historical measurements
+are clues, not current evidence.
+
+Keep Alpha's Gateway RunManager as the only run lifecycle owner. Do not add a
+parallel scheduler/executor or claim cross-process exactly-once semantics for
+single-process JSON/JSONL stores. Thread goals only have bounded in-run
+continuation; durable wake/reschedule is still a gap and requires owner plus
+generation fencing across edit/clear/complete/restart and RunManager admission.
+The latest reported main commit is 3d95eb1, which hardened approval grants and
+added exact-path, run-correlated artifact readback evidence. Re-inspect current
+code and tests rather than assuming summaries are current. General typed
+command/HTTP/reviewer evidence collectors and re-verification history remain
+incomplete. Never mark arbitrary language criteria verified without a supported
+collector or owner evidence.
+
+Keep the selected free-provider/auto-router configuration. Do not add paid
+credentials, expose secrets, or quietly change provider selection. Distinguish
+replay-backed browser tests from live-provider tests. A model response claiming
+that it used a tool is not proof; inspect correlated Gateway tool receipts and
+resulting artifacts. If free-provider tool calling is unavailable, report the
+live task as blocked/unverified with the concrete provider response.
+
+Work in small, reviewable vertical slices. Add regression tests before fixing a
+bug; run targeted checks and the relevant full suite, typecheck/lint, schema
+checks, generated-doc checks, and UI/E2E checks according to the repository
+guides. Do not add or run extra tests unless needed to validate your changes.
+For UI work, use the existing goal UI and reuse its top status strip/detail dialog
+instead of adding a duplicate goal surface. Exercise actual visible controls and
+capture screenshots when the app is available. Assign a bounded real coding task
+through the UI only after the Gateway and provider are healthy; verify it using
+run IDs, tool receipts, changed files, and test output, not narrative claims.
+
+Before committing, inspect the complete diff, run git diff --check, stage only
+the intended explicit paths, and never include config.yaml,
+extensions_config.json, secrets, or pre-existing scratch files. Follow the repo's
+commit/push rules and report whether changes were committed or pushed. Update the
+production inventory and relevant docs whenever implementation status changes.
+
+Deliver a concise evidence report: current HEAD/branch, root cause, changed files,
+checks with exact commands and results, UI/provider mode, run and artifact IDs,
+screenshot paths if captured, remaining partial/unverified gaps, and the next
+measurable acceptance gate. Do not call Alpha production-ready until the actual
+release gates pass.
+```
+
 ## Current assessment
 
 Alpha already has significant production foundations: durable run records and

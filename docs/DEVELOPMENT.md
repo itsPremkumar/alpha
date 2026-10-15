@@ -1006,6 +1006,13 @@ instead of invoking the WSL shim through bare `bash`.
 without it the launcher starts a second Gateway (`WinError 10048`) that leaves
 the frontend unable to proxy API requests.
 
+During initial boot, the no-listener Gateway import deadline is checked before
+HTTP readiness probes, so an unresponsive frontend cannot postpone recovery of
+a Gateway that never bound its port. The health file's `elapsed_seconds` is
+wall-clock time from launcher start (with a boot-wait fallback), not an estimate
+based on loop iterations; the HTTP probes still determine whether each service
+is ready.
+
 After initial readiness, the launcher also treats the listening port as the
 service liveness signal. If a Gateway or frontend process remains alive but no
 longer owns a listener, it is restarted; otherwise a live wrapper could prevent

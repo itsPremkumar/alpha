@@ -40,11 +40,31 @@ $script:LastGatewayProbeError = ""
 # the launcher is inside a 3-300 s backoff - emitted a record with no `phase`
 # and no `gateway_last_error`, so the one moment an operator most needs the
 # reason is the moment the file lost it.
+#
+# Carrying fields forward is only truthful WITHIN one observation phase. They
+# describe a specific moment ("boot_wait, gateway not ready, last probe error"),
+# so a record that leaves that phase must not keep asserting its fields. The
+# measured lie (2026-10-15): after a successful gateway restart the launcher
+# wrote `status=healthy` from Restart-GatewayService with no `Extra`, which
+# carried forward the boot-wait snapshot and produced
+# `{"status":"healthy","phase":"boot_wait","gateway_ready":false,
+#   "frontend_ready":false,"gateway_last_error":"nothing is listening on port 8001"}`
+# - a record that contradicts itself in three fields at once. The boot-wait
+# fields are therefore dropped when the status leaves the boot wait (see
+# Write-HealthFile), and only a same-phase refresh keeps them.
 $script:LastHealthExtra = $null
+# The phase the retained $script:LastHealthExtra describes, or $null when the
+# extra fields do not belong to a named observation phase. A refresh with no
+# `Extra` keeps them only while the caller stays in this phase.
+$script:LastHealthExtraPhase = $null
 # When the CURRENT gateway incarnation was spawned, or $null if none is up yet.
 # Set at every gateway spawn site and read by the boot wait to tell a slow import
 # from a wedged one. See $GatewayNoListenerSeconds.
 $script:GatewaySpawnedUtc = $null
+$script:GatewayListeningSinceUtc = $null
+$script:GatewayUnhealthyChecks = 0
+$script:FrontendUnhealthyChecks = 0
+$script:UnhealthyProbeRestartThreshold = 2
 function Write-HealthFile {
     param(
         [string]$Status = "healthy",
@@ -59,10 +79,34 @@ function Write-HealthFile {
     }
     if ($Extra) {
         $script:LastHealthExtra = $Extra
+        # The phase these fields describe, if the caller named one. A later
+        # refresh that names a DIFFERENT phase (or leaves the phase vocabulary
+        # entirely) must not inherit them.
+        if ($Extra.ContainsKey("phase")) { $script:LastHealthExtraPhase = [string]$Extra["phase"] }
+        else { $script:LastHealthExtraPhase = $null }
     } elseif ($Status -in @("failed", "stopped", "stale")) {
         # Terminal states describe a different situation; carrying forward a
         # boot-wait phase would be a fresh lie in the other direction.
         $script:LastHealthExtra = $null
+        $script:LastHealthExtraPhase = $null
+    } elseif ($script:LastHealthExtra) {
+        # A refresh with no `Extra` (a heartbeat, or a recovery-success write)
+        # may keep the retained fields ONLY while it stays inside the exact
+        # observation phase those fields describe. Every other transition drops
+        # them, because a field set is an assertion about one moment: keeping
+        # `phase=boot_wait` and `gateway_ready=false` under `status=healthy`
+        # produced a self-contradicting record (measured 2026-10-15, see the
+        # $script:LastHealthExtra comment).
+        #
+        # `Refresh-Heartbeat` re-writes the status it last recorded, so a
+        # backoff heartbeat keeps its `recovering` diagnostics: the phase it
+        # re-asserts is the one retained, and the fields survive. A transition
+        # to `healthy` (or `degraded`) is a different phase and drops them.
+        $staysInPhase = $script:LastHealthExtraPhase -and ($Status -eq $script:LastHealthStatus)
+        if (-not $staysInPhase) {
+            $script:LastHealthExtra = $null
+            $script:LastHealthExtraPhase = $null
+        }
     }
     $script:LastHealthStatus = $Status
     $script:LastHealthDetail = $Detail
@@ -89,6 +133,13 @@ function Write-HealthFile {
 # Keep the heartbeat timestamp moving during long blocking waits (health waits,
 # backoff sleeps) so the watchdog never mistakes a working launcher for a
 # frozen one. Same status/detail, fresh timestamp.
+#
+# It re-asserts the status it last recorded, which is what makes the retained
+# machine-readable fields survive a backoff: Write-HealthFile keeps them only
+# while the status is unchanged (see there), so a heartbeat stays inside its
+# observation phase by construction. Any writer that CHANGES the status must
+# pass its own `-Extra`; the phase-scoped retention turns a forgotten one into
+# a dropped field rather than a stale assertion.
 function Refresh-Heartbeat {
     Write-HealthFile -Status $script:LastHealthStatus -Detail $script:LastHealthDetail
 }
@@ -711,6 +762,7 @@ Write-Host "  logs: logs\gateway.log, logs\gateway.err.log" -ForegroundColor Gra
 # wait instead of decorating it. Pinned by
 # backend/tests/test_launcher_watchdog_budget.py.
 $GatewayNoListenerSeconds = 300
+$GatewayUnreadySeconds = 300
 
 Stop-ServiceChainOrphans -Service "gateway"
 Archive-ServiceLogs -Service "gateway" -Reason "gateway start"
@@ -842,18 +894,41 @@ function Write-MonitorHeartbeat {
     $gwPortUp = Test-PortListening -Port $GatewayPort
     $fePortUp = Test-PortListening -Port $FrontendPort
     if (-not $gwPortUp -or -not $fePortUp) {
-        Write-HealthFile -Status "degraded" -Detail "waiting for gateway/frontend to return"
+        if (-not $gwPortUp) { $script:GatewayUnhealthyChecks = 0 }
+        if (-not $fePortUp) { $script:FrontendUnhealthyChecks = 0 }
+        Write-HealthFile -Status "degraded" -Detail "waiting for gateway/frontend to return" `
+            -Extra @{
+                phase              = "running"
+                gateway_ready      = [bool]$gwPortUp
+                frontend_ready     = [bool]$fePortUp
+                gateway_last_error = $(if ($gwPortUp) { "" } else { "nothing is listening on port $GatewayPort" })
+            }
         return
     }
     $gwServing = Test-Serving -Port $GatewayPort -Path "/health/ready"
     $feServing = Test-Serving -Port $FrontendPort -Path "/"
+    if ($gwServing) { $script:GatewayUnhealthyChecks = 0 } else { $script:GatewayUnhealthyChecks++ }
+    if ($feServing) { $script:FrontendUnhealthyChecks = 0 } else { $script:FrontendUnhealthyChecks++ }
     if ($gwServing -and $feServing) {
-        Write-HealthFile -Status "healthy"
+        # The steady-state heartbeat owns the `running` phase, so it never
+        # inherits a stale boot-wait snapshot (see Write-HealthFile).
+        Write-HealthFile -Status "healthy" -Extra @{
+            phase              = "running"
+            gateway_ready      = $true
+            frontend_ready     = $true
+            gateway_last_error = ""
+        }
     } else {
         # Both ports bound but not answering, after a boot that already
         # succeeded, is a regression - "degraded" with the probe results is
         # the truthful label, never "healthy".
-        Write-HealthFile -Status "degraded" -Detail "ports up but not serving (gateway=$gwServing frontend=$feServing)"
+        Write-HealthFile -Status "degraded" -Detail "ports up but not serving (gateway=$gwServing frontend=$feServing)" `
+            -Extra @{
+                phase              = "running"
+                gateway_ready      = [bool]$gwServing
+                frontend_ready     = [bool]$feServing
+                gateway_last_error = $(if ($gwServing) { "" } else { "bound but /health/ready is not answering 200" })
+            }
     }
 }
 
@@ -891,6 +966,8 @@ function Start-SleepWithHeartbeat {
 
 function Restart-GatewayService {
     param([int]$Attempt)
+    $script:GatewayUnhealthyChecks = 0
+    $script:GatewayListeningSinceUtc = $null
     $backoff = Get-BackoffSeconds -Attempt $Attempt
     Write-Host "`n[WARN] Gateway API died — auto-restarting (attempt $Attempt, backoff ${backoff}s)..." -ForegroundColor Yellow
     Show-LogTail $gatewayLogErr
@@ -912,7 +989,19 @@ function Restart-GatewayService {
     if ($ok) {
         Write-Host "  [OK] Gateway is healthy after restart." -ForegroundColor Green
         $script:gatewayLastStable = [DateTime]::UtcNow
-        Write-HealthFile -Status "healthy" -Detail "gateway restarted OK"
+        # State this phase's own facts rather than relying on carry-forward: a
+        # bare `healthy` here used to inherit the boot-wait snapshot, producing
+        # `status=healthy` next to `gateway_last_error="nothing is listening on
+        # port 8001"` (measured 2026-10-15). `running` is the post-boot phase,
+        # and the readiness facts are re-probed, not restated.
+        Write-HealthFile -Status "healthy" -Detail "gateway restarted OK" `
+            -Extra @{
+                phase               = "running"
+                gateway_ready       = $true
+                gateway_restarted   = $true
+                gateway_restarts    = $script:gatewayRestarts
+                gateway_last_error  = ""
+            }
     } else {
         Write-Host "  [WARN] Gateway did not become healthy within 240s - will retry." -ForegroundColor Yellow
     }
@@ -920,6 +1009,7 @@ function Restart-GatewayService {
 
 function Restart-FrontendService {
     param([int]$Attempt)
+    $script:FrontendUnhealthyChecks = 0
     $backoff = Get-BackoffSeconds -Attempt $Attempt
     Write-Host "`n[WARN] Frontend UI died — auto-restarting (attempt $Attempt, backoff ${backoff}s)..." -ForegroundColor Yellow
     Show-LogTail $frontendLogErr
@@ -956,7 +1046,14 @@ function Restart-FrontendService {
     if ($ok) {
         Write-Host "  [OK] Frontend is healthy after restart." -ForegroundColor Green
         $script:frontendLastStable = [DateTime]::UtcNow
-        Write-HealthFile -Status "healthy" -Detail "frontend restarted OK"
+        # Same rule as the gateway reboot above: name this phase's facts.
+        Write-HealthFile -Status "healthy" -Detail "frontend restarted OK" `
+            -Extra @{
+                phase               = "running"
+                frontend_ready      = $true
+                frontend_restarted  = $true
+                frontend_restarts   = $script:frontendRestarts
+            }
     } else {
         Write-Host "  [WARN] Frontend did not become healthy within 1200s - will retry." -ForegroundColor Yellow
     }
@@ -977,9 +1074,63 @@ $frontendReady = $false
 # pass, so without these flags "[OK] ..." would print up to 449 times.
 $gatewayOkLogged = $false
 $frontendOkLogged = $false
+$bootWaitStartedUtc = [DateTime]::UtcNow
+try {
+    $bootWaitStartedUtc = [DateTime]::Parse($LauncherStartedUtc).ToUniversalTime()
+} catch {
+    # Test harnesses and partial launcher contexts may not have the timestamp.
+    # Keep the fallback honest: measure from the start of this boot wait.
+    $bootWaitStartedUtc = [DateTime]::UtcNow
+}
 
 for ($i = 1; $i -le $maxAttempts; $i++) {
     if (Test-MaintenanceMode) { Stop-OnMaintenance }
+
+    $gatewayPortUpBeforeProbe = Test-PortListening -Port $GatewayPort
+    if (-not $gatewayPortUpBeforeProbe) {
+        $script:GatewayListeningSinceUtc = $null
+    } elseif (-not $script:GatewayListeningSinceUtc) {
+        $script:GatewayListeningSinceUtc = [DateTime]::UtcNow
+    }
+
+    # A listener is not enough: the app can bind before lifespan/readiness
+    # settles, or its event loop can stop answering while the socket remains
+    # open. Give a newly bound Gateway a full startup window, then recover it
+    # by command-line match if readiness has never succeeded.
+    if ($gatewayPortUpBeforeProbe -and $script:GatewayListeningSinceUtc -and -not $gatewayReady) {
+        $unreadyFor = ([DateTime]::UtcNow - $script:GatewayListeningSinceUtc).TotalSeconds
+        if ($unreadyFor -gt $GatewayUnreadySeconds) {
+            Write-Host "`n[WARN] Gateway listener is open but never became ready in $([int]$unreadyFor)s (budget ${GatewayUnreadySeconds}s); restarting its process chain." -ForegroundColor Yellow
+            Write-HealthFile -Status "recovering" -Detail "gateway listener open but readiness failed after $([int]$unreadyFor)s"
+            Show-LogTail $gatewayLogErr
+            Stop-ServiceChainOrphans -Service "gateway"
+            Reset-GatewayBackoffIfStable
+            $script:gatewayRestarts += 1
+            Restart-GatewayService -Attempt $script:gatewayRestarts
+            continue
+        }
+    }
+
+    # Detect an import that never bound its listener BEFORE either HTTP probe.
+    # Invoke-WebRequest's timeout is not a reliable upper bound on the time spent
+    # in all Windows networking paths; an unresponsive frontend used to delay
+    # this recovery branch by minutes even after the Gateway exceeded its budget.
+    # The age is measured from the current incarnation's spawn, and the
+    # command-line sweep is required because this process has no listening port.
+    if ($script:GatewaySpawnedUtc -and -not (Test-PortListening -Port $GatewayPort)) {
+        $noListenerFor = ([DateTime]::UtcNow - $script:GatewaySpawnedUtc).TotalSeconds
+        if ($noListenerFor -gt $GatewayNoListenerSeconds) {
+            Write-Host "`n[WARN] Gateway API bound no listener in $([int]$noListenerFor)s (budget ${GatewayNoListenerSeconds}s) - the import is wedged; killing the chain by command line and respawning..." -ForegroundColor Yellow
+            Write-HealthFile -Status "recovering" -Detail "gateway import hung: no listener after $([int]$noListenerFor)s (budget ${GatewayNoListenerSeconds}s); killing by command line and respawning"
+            Show-LogTail $gatewayLogErr
+            Stop-ServiceChainOrphans -Service "gateway"
+            Reset-GatewayBackoffIfStable
+            $script:gatewayRestarts += 1
+            Restart-GatewayService -Attempt $script:gatewayRestarts
+            continue
+        }
+    }
+
     Start-Sleep -Seconds 2
 
     # Probe FIRST, then record. Writing the heartbeat before the probes meant
@@ -1082,13 +1233,17 @@ for ($i = 1; $i -le $maxAttempts; $i++) {
     # `gateway_last_error` (the actual failure of the readiness probe) are
     # machine-readable so scripts/deploy_status.py and any dashboard can say
     # "the gateway has not answered for 372s: <reason>" instead of "starting".
+    $elapsedSeconds = 0
+    if ($bootWaitStartedUtc -is [DateTime]) {
+        $elapsedSeconds = [int][Math]::Max(0, ([DateTime]::UtcNow - $bootWaitStartedUtc).TotalSeconds)
+    }
     Write-HealthFile -Status "starting" `
         -Detail ("waiting for services (gateway=$gatewayReady frontend=$frontendReady, attempt $i/$maxAttempts)") `
         -Extra @{
             phase              = "boot_wait"
             attempt            = $i
             max_attempts       = $maxAttempts
-            elapsed_seconds    = [int]($i * 2)
+            elapsed_seconds    = $elapsedSeconds
             gateway_ready      = [bool]$gatewayReady
             frontend_ready     = [bool]$frontendReady
             gateway_last_error = $script:LastGatewayProbeError
@@ -1123,37 +1278,6 @@ for ($i = 1; $i -le $maxAttempts; $i++) {
         continue
     }
 
-    # A gateway that is ALIVE but has never bound its port is either still
-    # importing or wedged, and `$gatewayGone` above cannot tell them apart -
-    # the wrapper process never exits. $GatewayNoListenerSeconds is above the
-    # import time this launcher already budgets for, so inside the window this
-    # is a normal boot; past it, the only honest reading is a wedged import.
-    #
-    # This state is the one failure no port-based recovery can reach: uvicorn
-    # binds 8001 only after the import completes, so the process holds no
-    # listener, Free-PortOrExit finds nothing, and the watchdog's Tier-2 restart
-    # is a permanent no-op against it (that is the "already free before kill"
-    # no-op recorded on 2026-10-14). Only a command-line match names it, which is
-    # exactly what Stop-ServiceChainOrphans does. Before this branch the boot
-    # wait simply ran out its full 15-minute budget and FAILed the whole startup
-    # (exit 1) - a recoverable hang turned into a terminal failure.
-    if ($script:GatewaySpawnedUtc -and -not (Test-PortListening -Port $GatewayPort)) {
-        $noListenerFor = ([DateTime]::UtcNow - $script:GatewaySpawnedUtc).TotalSeconds
-        if ($noListenerFor -gt $GatewayNoListenerSeconds) {
-            Write-Host "`n[WARN] Gateway API bound no listener in $([int]$noListenerFor)s (budget ${GatewayNoListenerSeconds}s) - the import is wedged; killing the chain by command line and respawning..." -ForegroundColor Yellow
-            Write-HealthFile -Status "recovering" -Detail "gateway import hung: no listener after $([int]$noListenerFor)s (budget ${GatewayNoListenerSeconds}s); killing by command line and respawning"
-            Show-LogTail $gatewayLogErr
-            # Kill first, before the restart's own backoff sleep: this process
-            # holds no port, so nothing else can name it, and leaving it alive
-            # through the backoff means it can still bind later and collide with
-            # its own replacement.
-            Stop-ServiceChainOrphans -Service "gateway"
-            Reset-GatewayBackoffIfStable
-            $script:gatewayRestarts += 1
-            Restart-GatewayService -Attempt $script:gatewayRestarts
-            continue
-        }
-    }
     if ($frontendGone) {
         $code = ""
         try { $code = $frontendProcess.ExitCode } catch {}
@@ -1195,7 +1319,19 @@ Write-Host "http://127.0.0.1:$GatewayPort/health" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Green
 Write-Host "Press [Ctrl+C] to stop all services cleanly.`n" -ForegroundColor Yellow
 
-Write-HealthFile -Status "healthy" -Detail "all services healthy"
+# The boot wait is over: this is the ONE transition that must not inherit the
+# boot-wait snapshot. Both services answered /health/ready and / on this pass
+# (the loop breaks only then), so the readiness facts are re-asserted here as
+# the `running` phase. A bare `healthy` write would inherit
+# `phase=boot_wait, gateway_ready=false, gateway_last_error=...` and ship a
+# record that contradicts itself (measured 2026-10-15).
+Write-HealthFile -Status "healthy" -Detail "all services healthy" `
+    -Extra @{
+        phase           = "running"
+        gateway_ready   = $true
+        frontend_ready  = $true
+        gateway_last_error = ""
+    }
 $script:gatewayLastStable  = [DateTime]::UtcNow
 $script:frontendLastStable = [DateTime]::UtcNow
 
@@ -1235,14 +1371,24 @@ try {
         # so a missing listener must trigger recovery here.
         $gatewayGone  = Test-ServiceListenerMissing -Port $GatewayPort
         $frontendGone = Test-ServiceListenerMissing -Port $FrontendPort
+        $gatewayUnresponsive = -not $gatewayGone -and ($script:GatewayUnhealthyChecks -ge $script:UnhealthyProbeRestartThreshold)
+        $frontendUnresponsive = -not $frontendGone -and ($script:FrontendUnhealthyChecks -ge $script:UnhealthyProbeRestartThreshold)
 
-        if ($gatewayGone -or $frontendGone) {
-            if ($gatewayGone) {
+        if ($gatewayGone -or $frontendGone -or $gatewayUnresponsive -or $frontendUnresponsive) {
+            if ($gatewayUnresponsive) {
+                Write-Host "`n[WARN] Gateway listener is open but readiness failed for $($script:GatewayUnhealthyChecks) consecutive health checks; restarting." -ForegroundColor Yellow
+                Show-LogTail $gatewayLogErr
+            }
+            if ($frontendUnresponsive) {
+                Write-Host "`n[WARN] Frontend listener is open but HTTP readiness failed for $($script:FrontendUnhealthyChecks) consecutive health checks; restarting." -ForegroundColor Yellow
+                Show-LogTail $frontendLogErr
+            }
+            if ($gatewayGone -or $gatewayUnresponsive) {
                 Reset-GatewayBackoffIfStable
                 $script:gatewayRestarts += 1
                 Restart-GatewayService -Attempt $script:gatewayRestarts
             }
-            if ($frontendGone) {
+            if ($frontendGone -or $frontendUnresponsive) {
                 Reset-FrontendBackoffIfStable
                 $script:frontendRestarts += 1
                 Restart-FrontendService -Attempt $script:frontendRestarts

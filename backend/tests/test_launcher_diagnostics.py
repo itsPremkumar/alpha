@@ -327,10 +327,15 @@ $loop = $src.Substring($from, $to - $from)
 $GatewayPort  = 8001
 $FrontendPort = 3000
 $maxAttempts       = [int]$env:ALPHA_LS_MAX_ATTEMPTS
+$GatewayNoListenerSeconds = 300
+$GatewayUnreadySeconds = 300
+$script:GatewaySpawnedUtc = [DateTime]::UtcNow
+$script:GatewayListeningSinceUtc = [DateTime]::UtcNow
 $gatewayReady      = $false
 $frontendReady     = $false
 $gatewayOkLogged   = $false
 $frontendOkLogged  = $false
+$bootWaitStartedUtc = [DateTime]::UtcNow.AddSeconds(-65)
 $gatewayProcess    = $null
 $frontendProcess   = $null
 $script:LastGatewayProbeError  = ''
@@ -366,7 +371,7 @@ function Stop-OnMaintenance {}
 function Start-Sleep { param([int]$Seconds) }
 function Write-HealthFile {
     param([string]$Status = 'healthy', [string]$Detail = '', [hashtable]$Extra = $null)
-    $script:HealthWrites += "$Status|$Detail"
+    $script:HealthWrites += "$Status|$Detail|elapsed=$($Extra.elapsed_seconds)"
 }
 function Update-TrackedProcess { param($Process, $Port) return $Process }
 function Test-PortListening { param([int]$Port) return $true }
@@ -434,6 +439,8 @@ def test_the_boot_wait_still_breaks_out_on_success(tmp_path: Path) -> None:
     assert out["RESULT_FE"] == "true"
     assert out["RESULT_I"] == "1", "the loop must break at pass 1, not run to maxAttempts"
     assert out["RESULT_HEALTH_WRITES"], "the boot-wait record must still be written every pass"
+    match = re.search(r"elapsed=(\d+)", out["RESULT_HEALTH_WRITES"])
+    assert match and int(match.group(1)) >= 65, f"elapsed time must use the wall clock, got {out['RESULT_HEALTH_WRITES']!r}"
 
 
 def test_boot_wait_probes_are_not_latched_in_source() -> None:
@@ -643,11 +650,17 @@ if (-not $m.Success) {
     exit 3
 }
 $GatewayNoListenerSeconds = [int]$m.Groups[1].Value
+$m = [regex]::Match($src, '(?m)^\s*\$GatewayUnreadySeconds\s*=\s*(\d+)')
+if (-not $m.Success) {
+    Write-Output 'HARNESS_BROKEN: $GatewayUnreadySeconds is not a literal int in start.ps1'
+    exit 3
+}
+$GatewayUnreadySeconds = [int]$m.Groups[1].Value
 
 $GatewayPort  = 8001
 $FrontendPort = 3000
 $maxAttempts       = [int]$env:ALPHA_LS_MAX_ATTEMPTS
-$gatewayReady      = $false
+$gatewayReady      = ($env:ALPHA_LS_GW_READY -eq '1')
 $frontendReady     = $false
 $gatewayOkLogged   = $false
 $frontendOkLogged  = $false
@@ -658,15 +671,18 @@ $script:LastGatewayProbeError  = ''
 $script:HealthWrites           = @()
 $script:Swept                  = @()
 $script:Restarts               = @()
+$script:ProbeCalls              = 0
 $script:GatewayPortUp          = ($env:ALPHA_LS_GW_PORT -eq '1')
 # How long the current gateway incarnation has been up. A hang is measured from
 # the spawn, so the test back-dates it rather than sleeping through the budget.
 $script:GatewaySpawnedUtc      = [DateTime]::UtcNow.AddSeconds(-([double]$env:ALPHA_LS_GW_AGE))
+$script:GatewayListeningSinceUtc = if ($script:GatewayPortUp) { $script:GatewaySpawnedUtc } else { $null }
 
 # Nothing is serving: every readiness probe fails, exactly as during a hang.
 function Invoke-WebRequest {
     [CmdletBinding()]
     param([string]$Uri, [switch]$UseBasicParsing, [int]$TimeoutSec = 5)
+    $script:ProbeCalls += 1
     throw 'nothing is listening'
 }
 function Test-MaintenanceMode { return $false }
@@ -692,6 +708,7 @@ Write-Output ("RESULT_SWEEP=" + [string]::Join(',', $script:Swept))
 Write-Output ("RESULT_RESTARTS=" + [string]::Join(',', $script:Restarts))
 Write-Output ("RESULT_I=" + $i)
 Write-Output ("RESULT_HEALTH=" + [string]::Join(',', $script:HealthWrites))
+Write-Output ("RESULT_PROBES=" + $script:ProbeCalls)
 """
 
 
@@ -718,6 +735,46 @@ def test_a_gateway_that_never_binds_its_port_is_killed_and_respawned(tmp_path: P
 
     assert out["RESULT_SWEEP"] == "gateway", f"the hung chain holds no port, so only a command-line match can find it; got {out!r}"
     assert out["RESULT_RESTARTS"] != "", "killing it is only useful if a replacement is spawned"
+
+
+def test_expired_hung_gateway_is_recovered_before_http_probes(tmp_path: Path) -> None:
+    """An unresponsive frontend must not delay the no-listener recovery gate."""
+    out = _hung_gateway(tmp_path, age_seconds=10_000, attempts=1)
+
+    assert out["RESULT_SWEEP"] == "gateway"
+    assert out["RESULT_PROBES"] == "0", f"HTTP probes ran before recovery: {out!r}"
+
+
+def test_expired_unready_gateway_listener_is_recovered_before_http_probes(tmp_path: Path) -> None:
+    """A bound but unresponsive Gateway also needs bounded boot recovery."""
+    out = _run(
+        HARNESS_HUNG_GATEWAY,
+        tmp_path,
+        {
+            "ALPHA_LS_GW_AGE": "10000",
+            "ALPHA_LS_GW_PORT": "1",
+            "ALPHA_LS_GW_READY": "0",
+            "ALPHA_LS_MAX_ATTEMPTS": "1",
+        },
+    )
+
+    assert out["RESULT_SWEEP"] == "gateway"
+    assert out["RESULT_PROBES"] == "0", f"HTTP probes ran before unready recovery: {out!r}"
+
+
+def test_recently_bound_unready_gateway_gets_its_boot_budget(tmp_path: Path) -> None:
+    out = _run(
+        HARNESS_HUNG_GATEWAY,
+        tmp_path,
+        {
+            "ALPHA_LS_GW_AGE": "45",
+            "ALPHA_LS_GW_PORT": "1",
+            "ALPHA_LS_GW_READY": "0",
+            "ALPHA_LS_MAX_ATTEMPTS": "1",
+        },
+    )
+
+    assert out["RESULT_SWEEP"] == ""
 
 
 def test_a_slow_but_normal_gateway_import_is_not_killed(tmp_path: Path) -> None:
@@ -747,7 +804,8 @@ def test_the_hung_gateway_rule_needs_a_visible_listener_to_not_fire(tmp_path: Pa
         {
             "ALPHA_LS_GW_AGE": "10000",
             "ALPHA_LS_GW_PORT": "1",
-            "ALPHA_LS_MAX_ATTEMPTS": "2",
+            "ALPHA_LS_GW_READY": "1",
+            "ALPHA_LS_MAX_ATTEMPTS": "1",
         },
     )
 
@@ -763,3 +821,164 @@ def test_the_hung_gateway_rule_is_wired_into_the_boot_wait() -> None:
     assert "Stop-ServiceChainOrphans" in boot_wait, "the boot wait must reach the hung-import case by command-line match; a port-based check can never observe a process that is still importing"
     assert "GatewaySpawnedUtc" in boot_wait, "the hang must be measured from the spawn, not from the process start time"
     assert launcher.count("GatewaySpawnedUtc = [DateTime]::UtcNow") >= 2, "every gateway spawn site must reset the clock, or a respawned gateway inherits the previous incarnation's age and is killed the instant it boots"
+
+
+# ===========================================================================
+# 6. The health record must not contradict its own status
+# ===========================================================================
+#
+# Measured live 2026-10-15 21:58 (logs/alpha_health.json), after a successful
+# gateway restart:
+#
+#   {"status":"healthy","detail":"gateway restarted OK","phase":"boot_wait",
+#    "gateway_ready":false,"frontend_ready":false,"attempt":16,
+#    "elapsed_seconds":32,
+#    "gateway_last_error":"nothing is listening on port 8001"}
+#
+# `status` says healthy; four other fields in the same record say the gateway
+# has never been reachable. The cause is `Write-HealthFile`'s carry-forward of
+# `$script:LastHealthExtra`: the machine-readable boot-wait fields were retained
+# so a heartbeat during a backoff keeps its diagnosis, but the retention was
+# keyed to nothing. `Restart-GatewayService` writes `healthy` with no `Extra`
+# when a restart verifies, so it inherited the entire boot-wait snapshot -
+# including `gateway_last_error`, which is the ONE field a reader keys on to
+# decide whether the gateway is up.
+#
+# The fix scopes retention to the observation phase: fields survive a refresh
+# that re-asserts the same status (which is exactly what `Refresh-Heartbeat`
+# does inside a backoff), and are dropped by any real transition.
+
+HARNESS_HEALTH_TRUTHFULNESS = r"""
+$src = Get-Content -LiteralPath $env:ALPHA_LS_SRC -Raw
+
+# The retained-extra state variables live above the function, so the harness
+# re-declares exactly the ones Write-HealthFile reads rather than pulling in the
+# whole launcher head (which has side effects: New-Item, Set-Location, ...).
+#
+# The range must cover BOTH Write-HealthFile and the Write-StateFile it calls.
+# Write-StateFile is defined later in the same head block, so the end marker is
+# the next section banner (`# -- Helpers`), not the next function.
+$from = $src.IndexOf('function Write-HealthFile')
+$to   = $src.IndexOf('# -- Helpers', $from)
+if ($from -lt 0 -or $to -le $from) {
+    Write-Output "HARNESS_BROKEN: health-writer markers missing ($from/$to)"
+    exit 3
+}
+
+$HealthFile       = Join-Path $env:ALPHA_LS_ROOT 'alpha_health.json'
+$GatewayPort      = 8001
+$FrontendPort     = 3000
+$RepoRoot         = $env:ALPHA_LS_ROOT
+$LauncherStartedUtc = '2026-10-15T16:00:00.0000000Z'
+$script:LastHealthStatus     = 'starting'
+$script:LastHealthDetail     = 'launcher initialising'
+$script:LastHealthExtra      = $null
+$script:LastHealthExtraPhase = $null
+
+# Real body, real state machine, real JSON writer.
+Invoke-Expression ($src.Substring($from, $to - $from))
+
+function Read-Health { return (Get-Content -LiteralPath $HealthFile -Raw | ConvertFrom-Json) }
+
+# --- The live sequence, reproduced in order -------------------------------
+# 1. The boot wait records its machine-readable snapshot.
+Write-HealthFile -Status 'starting' `
+    -Detail 'waiting for services (gateway=False frontend=False, attempt 16/450)' `
+    -Extra @{
+        phase = 'boot_wait'; attempt = 16; max_attempts = 450
+        elapsed_seconds = 32; gateway_ready = $false; frontend_ready = $false
+        gateway_last_error = 'nothing is listening on port 8001'
+    }
+
+# 2. A backoff heartbeat while still recovering: same status, FEWER fields.
+#    This is the case retention exists for - the diagnosis must survive.
+Write-HealthFile -Status 'starting' -Detail 'gateway restart attempt 1 backoff 3s'
+
+# 3. The restart verifies and the recovery path writes healthy with no Extra.
+Write-HealthFile -Status 'healthy' -Detail 'gateway restarted OK'
+
+$rec = Read-Health
+Write-Output ("RESULT_STATUS=" + [string]$rec.status)
+Write-Output ("RESULT_DETAIL=" + [string]$rec.detail)
+$recNames = @($rec.PSObject.Properties.Name)
+$bootFields = @(
+    'phase', 'attempt', 'max_attempts', 'elapsed_seconds',
+    'gateway_ready', 'frontend_ready', 'gateway_last_error'
+) | Where-Object { $recNames -contains $_ }
+Write-Output ("RESULT_BOOT_WAIT_FIELDS=" + [string]::Join(',', @($bootFields)))
+Write-Output ("RESULT_HAS_STALE_ERROR=" + $(if ($recNames -contains 'gateway_last_error') { 1 } else { 0 }))
+
+# The backoff-heartbeat record from step 2, captured live: re-run the sequence
+# and stop before the healthy write so the retained diagnosis can be inspected.
+$script:LastHealthExtra      = $null
+$script:LastHealthExtraPhase = $null
+Write-HealthFile -Status 'starting' `
+    -Detail 'waiting for services (gateway=False frontend=False, attempt 16/450)' `
+    -Extra @{ phase = 'boot_wait'; gateway_ready = $false; gateway_last_error = 'nothing is listening on port 8001' }
+Write-HealthFile -Status 'starting' -Detail 'gateway restart attempt 1 backoff 3s'
+$hb = Read-Health
+Write-Output ("RESULT_HEARTBEAT_KEEPS_PHASE=" + $(if ($hb.PSObject.Properties.Name -contains 'phase') { [string]$hb.phase } else { '' }))
+Write-Output ("RESULT_HEARTBEAT_KEEPS_ERROR=" + $(if ($hb.PSObject.Properties.Name -contains 'gateway_last_error') { [string]$hb.gateway_last_error } else { '' }))
+
+# A degraded transition is also a phase change and must drop the boot fields.
+Write-HealthFile -Status 'degraded' -Detail 'ports up but not serving (gateway=False frontend=True)'
+$deg = Read-Health
+Write-Output ("RESULT_DEGRADED_HAS_BOOT_FIELDS=" + $(if ($deg.PSObject.Properties.Name -contains 'phase' -or $deg.PSObject.Properties.Name -contains 'gateway_ready') { 1 } else { 0 }))
+"""
+
+
+def test_a_healthy_record_never_carries_the_boot_wait_snapshot(tmp_path: Path) -> None:
+    """The live 2026-10-15 lie: status=healthy in a record whose own fields say down.
+
+    `gateway_last_error` is the field a reader keys on to decide whether the
+    gateway is reachable, so shipping it under `status=healthy` is worse than
+    omitting it - it inverts the record's meaning.
+    """
+    out = _run(HARNESS_HEALTH_TRUTHFULNESS, tmp_path, {})
+    assert out["RESULT_STATUS"] == "healthy"
+    assert out["RESULT_DETAIL"] == "gateway restarted OK"
+    assert out["RESULT_BOOT_WAIT_FIELDS"] == "", f"a healthy record retained boot-wait fields ({out['RESULT_BOOT_WAIT_FIELDS']!r}); status and its own fields disagree"
+    assert out["RESULT_HAS_STALE_ERROR"] == "0", "gateway_last_error survived into a healthy record; a reader keys on that field to decide the gateway is up"
+
+
+def test_a_backoff_heartbeat_keeps_its_diagnosis(tmp_path: Path) -> None:
+    """Retention must still work where it was designed to: same status, fewer fields.
+
+    `Refresh-Heartbeat` writes the last status with no `Extra` while the launcher
+    sleeps up to 300 s in a restart backoff. Dropping the phase there would make
+    the one moment an operator most needs the reason the moment the file loses it.
+    """
+    out = _run(HARNESS_HEALTH_TRUTHFULNESS, tmp_path, {})
+    assert out["RESULT_HEARTBEAT_KEEPS_PHASE"] == "boot_wait", "a refresh that re-asserts the same status must keep the retained phase"
+    assert out["RESULT_HEARTBEAT_KEEPS_ERROR"] == "nothing is listening on port 8001", "a backoff heartbeat must keep the recorded probe error"
+
+
+def test_a_degraded_record_drops_the_boot_wait_fields(tmp_path: Path) -> None:
+    """`degraded` after a completed boot is a different phase than `boot_wait`."""
+    out = _run(HARNESS_HEALTH_TRUTHFULNESS, tmp_path, {})
+    assert out["RESULT_DEGRADED_HAS_BOOT_FIELDS"] == "0", "a post-boot degraded record must not assert phase=boot_wait / gateway_ready=false"
+
+
+def test_every_healthy_write_from_a_recovery_path_states_its_own_evidence() -> None:
+    """A recovery that writes `healthy` must not rely on inherited fields.
+
+    This is the source-level half: `Restart-GatewayService` and the steady-state
+    monitor heartbeat are the two paths that announce health after a boot, and
+    neither may silently depend on the carry-forward rule to describe itself.
+    """
+    launcher = _launcher_source()
+
+    # Restart-GatewayService: the pre-fix version wrote healthy with no Extra and
+    # inherited the boot snapshot. It must now state the phase it is in.
+    restart_start = launcher.index("function Restart-GatewayService")
+    restart_end = launcher.index("function Restart-FrontendService", restart_start)
+    restart_body = launcher[restart_start:restart_end]
+    healthy_writes = [line.strip() for line in restart_body.splitlines() if 'Write-HealthFile -Status "healthy"' in line]
+    assert healthy_writes, "Restart-GatewayService must still announce a verified restart"
+    for line in healthy_writes:
+        phase_extra = line + restart_body.split(line, 1)[1][:400]
+        assert "phase" in phase_extra or "-Extra" in phase_extra, f"a post-restart healthy write must declare its own phase/detail rather than inherit the boot-wait snapshot: {line!r}"
+
+    # The retained-extra mechanism must be phase-scoped, not status-scoped:
+    # a plain `elseif ($script:LastHealthExtra)` retention is the bug.
+    assert "LastHealthExtraPhase" in launcher, "the carry-forward must be keyed to the observation phase; without that key any write with no Extra inherits whatever was last recorded"
