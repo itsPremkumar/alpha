@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { listAgents, createAgent, updateAgent, deleteAgent, fetchUserProfile, saveUserProfile, CustomAgent } from "@/lib/agents";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Field, SkeletonList, inputCls } from "@/components/ui";
-import { errMsg } from "@/lib/http";
+import { isAgentsApiDisabled, serverReason, AGENTS_API_DISABLED_VIEW } from "@/lib/server-reasons";
 import { Plus, Trash2, RefreshCw } from "lucide-react";
 
 export function AgentsSection(props: { enabled: boolean | null }) {
@@ -15,10 +15,21 @@ export function AgentsSection(props: { enabled: boolean | null }) {
   const [showForm, setShowForm] = useState(false);
   const [profile, setProfile] = useState("");
   const [profileLoaded, setProfileLoaded] = useState(false);
+  /**
+   * The Gateway answered the read with its own "this API is off" 403.
+   *
+   * `/features` can report the API enabled while the route itself refuses — a
+   * stale feature read, or a Gateway restarted with `agents_api.enabled=false`
+   * under the open page. Trusting the flag over the route would leave this
+   * section claiming agents exist behind an error box, so the refusal wins and
+   * is classified as the configuration state it is.
+   */
+  const [disabledByConfig, setDisabledByConfig] = useState(false);
 
   const load = async () => {
     setLoading(true);
     setError(null);
+    setDisabledByConfig(false);
     try {
       const [a, p] = await Promise.all([listAgents(), fetchUserProfile()]);
       setAgents(a);
@@ -27,7 +38,12 @@ export function AgentsSection(props: { enabled: boolean | null }) {
         setProfileLoaded(true);
       }
     } catch (e) {
-      setError(errMsg(e));
+      if (isAgentsApiDisabled(e)) {
+        setDisabledByConfig(true);
+        setAgents([]);
+      } else {
+        setError(serverReason(e));
+      }
     } finally {
       setLoading(false);
     }
@@ -56,28 +72,26 @@ export function AgentsSection(props: { enabled: boolean | null }) {
       flash("Agent created.");
       await load();
     } catch (e) {
-      setError(errMsg(e));
+      setError(serverReason(e));
     }
   };
 
-  if (!props.enabled) {
+  if (!props.enabled || disabledByConfig) {
+    // `enabled` is tri-state, and a live 403 refusal counts as "off" too.
+    // A failed `/features` read used to arrive as `false`, so an unreachable
+    // Gateway was described as "switched off" with an instruction to edit
+    // config.yaml — a diagnosis the server never made, aimed at a problem the
+    // operator may not have. "Not reported" is the honest rendering of an
+    // unanswered question.
+    const notReported = props.enabled === null && !disabledByConfig;
     return (
       <Section title="Custom agents" hint="Build your own persistent personas with their own instructions.">
-        {/* `enabled` is tri-state. A failed `/features` read used to arrive as
-            `false`, so an unreachable Gateway was described as "switched off"
-            with an instruction to edit config.yaml — a diagnosis the server
-            never made, aimed at a problem the operator may not have. "Not
-            reported" is the honest rendering of an unanswered question. */}
         <EmptyState
-          title={
-            props.enabled === null
-              ? "Agent management status was not reported"
-              : "Agent management is switched off"
-          }
+          title={notReported ? "Agent management status was not reported" : AGENTS_API_DISABLED_VIEW.title}
           hint={
-            props.enabled === null
+            notReported
               ? "The Gateway did not answer which capabilities are enabled, so Alpha cannot tell whether this is on or off. Check the Gateway connection, then reload."
-              : "Ask your administrator to set agents_api.enabled=true in config.yaml and restart the server — then this page unlocks."
+              : AGENTS_API_DISABLED_VIEW.hint
           }
         />
       </Section>
@@ -141,7 +155,7 @@ export function AgentsSection(props: { enabled: boolean | null }) {
         <p className="text-xs font-semibold">About you (USER.md)</p>
         <p className="text-[11px] text-muted-foreground">One profile injected into every custom agent — background, preferences, how to address you.</p>
         <textarea value={profile} onChange={(e) => { setProfile(e.target.value); setProfileLoaded(true); }} rows={4} placeholder="I am… I prefer…" className={inputCls} />
-        <Btn onClick={() => saveUserProfile(profile).then(() => flash("Profile saved.")).catch((e) => setError(errMsg(e)))} disabled={!profileLoaded && !profile}>
+        <Btn onClick={() => saveUserProfile(profile).then(() => flash("Profile saved.")).catch((e) => setError(serverReason(e)))} disabled={!profileLoaded && !profile}>
           Save profile
         </Btn>
       </div>
@@ -160,7 +174,7 @@ function AgentCard(props: { agent: CustomAgent; onChanged: () => void; onError: 
       setEditing(false);
       props.onChanged();
     } catch (e) {
-      props.onError(errMsg(e));
+      props.onError(serverReason(e));
     }
   };
 
@@ -174,7 +188,7 @@ function AgentCard(props: { agent: CustomAgent; onChanged: () => void; onError: 
           {props.agent.soul && <p className="text-[11px] text-muted-foreground mt-1.5 line-clamp-3 whitespace-pre-wrap">{props.agent.soul}</p>}
           <div className="flex gap-2 mt-2.5">
             <Btn variant="ghost" onClick={() => { setDesc(props.agent.description); setSoul(props.agent.soul); setEditing(true); }}>Edit</Btn>
-            <Btn variant="danger" onClick={() => window.confirm(`Delete agent "${props.agent.name}" and all its files?`) && deleteAgent(props.agent.name).then(props.onChanged).catch((e) => props.onError(errMsg(e)))}>
+            <Btn variant="danger" onClick={() => window.confirm(`Delete agent "${props.agent.name}" and all its files?`) && deleteAgent(props.agent.name).then(props.onChanged).catch((e) => props.onError(serverReason(e)))}>
               <Trash2 className="size-3.5" /> Delete
             </Btn>
           </div>

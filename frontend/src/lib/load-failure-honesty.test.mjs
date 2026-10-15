@@ -434,7 +434,11 @@ test("KanbanSection surfaces project and server-board fetch failures", () => {
   assert.doesNotMatch(src, /\.catch\(\(\) => setProjects\(\[\]\)\)/);
   assert.match(src, /projectsError/);
   assert.match(src, /serverBoardError/);
-  assert.match(src, /e instanceof Error \? e\.message : errMsg\(e\)/);
+  // `errMsg` rewrites a 404 to "Not found — it may have been deleted.", so the
+  // Gateway's own "No active organizations found." setup instruction was lost.
+  // `serverReason` keeps it, and the no-company 404 renders as its own state.
+  assert.match(src, /serverReason\(e\)/);
+  assert.match(src, /isNoCompanyConfigured\(e\)/);
   assert.match(src, /\$\{serverBoardError\}/);
   assert.match(src, /showing local cards only/i);
 });

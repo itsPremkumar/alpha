@@ -1051,10 +1051,26 @@ test("the Team Ops company box no longer vanishes on a 404", () => {
     /The Gateway did not report a company/,
     "the box must render the server's reason",
   );
+  // `errMsg` rewrites ANY 404 to "Not found — it may have been deleted.", so
+  // the Gateway's own "No active organizations found. Bootstrap a company
+  // first." — its setup instruction — never reached the operator, who was told
+  // instead that a company they never created had gone missing. `serverReason`
+  // keeps the server's sentence, and the no-company 404 additionally renders
+  // the explicit "not configured" state rather than a generic failure.
   assert.match(
     box,
-    /errMsg\(e\)/,
-    "the reason must be the server's, not a fixed string",
+    /serverReason\(e\)/,
+    "the reason must be the server's, not a fixed string and not errMsg's rewrite",
+  );
+  assert.match(
+    box,
+    /isNoCompanyConfigured\(e\)/,
+    "the no-company 404 must be classified as the configuration state it is",
+  );
+  assert.match(
+    box,
+    /NO_COMPANY_CONFIGURED_VIEW/,
+    "the classified state renders its own explicit copy",
   );
   // It is not a catch-and-empty: a failure has to produce a rendered state, so
   // the failure branch is checked before the `!status` early return.

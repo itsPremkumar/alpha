@@ -33,6 +33,7 @@ import {
   Modal,
 } from "@/components/ui";
 import { errMsg } from "@/lib/http";
+import { isNoCompanyConfigured, serverReason, NO_COMPANY_CONFIGURED_VIEW } from "@/lib/server-reasons";
 import {
   Plus,
   Search,
@@ -95,6 +96,15 @@ export function KanbanSection(props: {
   // degrade to local-only cards without saying so.
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [serverBoardError, setServerBoardError] = useState<string | null>(null);
+  /**
+   * The server board is absent because no company was bootstrapped.
+   *
+   * The Gateway answers the legacy board route with 404 "No active
+   * organizations found." — a setup fact, not a failed read. Rendering it as
+   * the generic "board unavailable" banner sends the operator hunting for a
+   * network problem instead of the bootstrap step the server named.
+   */
+  const [boardNotConfigured, setBoardNotConfigured] = useState(false);
   const [search, setSearch] = useState("");
   const [botFilter, setBotFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
@@ -110,6 +120,7 @@ export function KanbanSection(props: {
     setError(null);
     setProjectsError(null);
     setServerBoardError(null);
+    setBoardNotConfigured(false);
     try {
       const local = loadCards();
       listProjects()
@@ -131,7 +142,8 @@ export function KanbanSection(props: {
         // intentionally turns some common HTTP statuses into generic copy,
         // which would hide actionable setup failures such as a missing active
         // organization behind a vague "board unavailable" banner.
-        setServerBoardError(e instanceof Error ? e.message : errMsg(e));
+        setBoardNotConfigured(isNoCompanyConfigured(e));
+        setServerBoardError(serverReason(e));
       }
     } catch (e) {
       setError(errMsg(e));
@@ -329,12 +341,15 @@ export function KanbanSection(props: {
           onRetry={load}
         />
       )}
-      {serverBoardError && (
-        <ErrorBox
-          message={`Server board unavailable — showing local cards only. Server-synced tasks may be missing. ${serverBoardError}`}
-          onRetry={load}
-        />
-      )}
+      {serverBoardError &&
+        (boardNotConfigured ? (
+          <EmptyState title={NO_COMPANY_CONFIGURED_VIEW.title} hint={NO_COMPANY_CONFIGURED_VIEW.hint} />
+        ) : (
+          <ErrorBox
+            message={`Server board unavailable — showing local cards only. Server-synced tasks may be missing. ${serverBoardError}`}
+            onRetry={load}
+          />
+        ))}
 
       <div className="flex flex-col lg:flex-row gap-2">
         <div className="relative flex-1">

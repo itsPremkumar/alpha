@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 
 import { Section, Btn, Badge, EmptyState, ErrorBox, Field, Notice, inputCls } from "@/components/ui";
+import { serverReason } from "@/lib/server-reasons";
 import * as api from "@/lib/company";
 import type { CompanySummary, Overview, TickRecord } from "@/lib/company";
 
@@ -64,7 +65,12 @@ const PANELS: Array<{ id: Panel; label: string }> = [
 ];
 
 function reasonOf(err: unknown): string {
-  return err instanceof Error && err.message.trim() ? err.message : "The Gateway gave no reason.";
+  // `serverReason` strips the "Request failed (HTTP 404). " wrapper the API
+  // client adds and keeps the Gateway's own sentence; anything without a
+  // message falls back to the standing "no reason" text rather than the
+  // generic "Something went wrong.".
+  const reason = serverReason(err);
+  return reason.trim() ? reason : "The Gateway gave no reason.";
 }
 
 export function CompanySection(props: {
