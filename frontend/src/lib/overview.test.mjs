@@ -17,8 +17,9 @@ test("overview reads every domain independently", () => {
 });
 
 test("a failed domain keeps its server reason and a null count", () => {
-  assert.match(SRC, /error: errMsg\(e\)/, "failure carries the server reason");
-  assert.match(SRC, /count: null, error/, "failure count is null, not zero");
+  assert.match(SRC, /error: serverReason\(e\)/, "failure carries the server reason");
+  // The failure branch may wrap; what matters is that the count is null.
+  assert.match(SRC, /count: null,/, "failure count is null, not zero");
 });
 
 test("fetchOverview never rejects — failures are data", () => {
@@ -33,7 +34,7 @@ test("unmeasured counts are null, not zero", () => {
 });
 
 test("the client uses only get (read-only atlas)", () => {
-  assert.match(SRC, /import \{ get, asList, errMsg \} from "\.\/http"/);
+  assert.match(SRC, /import \{ get, asList \} from "\.\/http"/);
   assert.doesNotMatch(SRC, /\bsend\s*\(/, "atlas performs no mutations");
 });
 

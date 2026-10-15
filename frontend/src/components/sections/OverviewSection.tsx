@@ -154,7 +154,7 @@ export function OverviewSection(props: { onOpenView: (v: WorkspaceView) => void 
   }, []);
 
   const byDomain = useMemo(() => {
-    const map = new Map<OverviewDomainId, { count: number | null; error: string | null; detail: string | null; preview: string[] }>();
+    const map = new Map<OverviewDomainId, { count: number | null; error: string | null; configuredOff: boolean; detail: string | null; preview: string[] }>();
     for (const d of snapshot?.domains ?? []) map.set(d.id, d);
     return map;
   }, [snapshot]);
@@ -280,6 +280,10 @@ export function OverviewSection(props: { onOpenView: (v: WorkspaceView) => void 
                   const detail = sample ? sample.detail : (live?.detail ?? null);
                   const preview = sample ? sample.preview : (live?.preview ?? []);
                   const error = !demo ? live?.error ?? null : null;
+                  // A subsystem switched off in configuration answered; it just
+                  // said "off". Rendering that as "Did not answer" would report
+                  // a deliberate refusal as a broken read.
+                  const configuredOff = !demo ? live?.configuredOff ?? false : false;
                   return (
                     <article
                       key={card.view}
@@ -291,8 +295,8 @@ export function OverviewSection(props: { onOpenView: (v: WorkspaceView) => void 
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="text-[13px] font-semibold leading-tight">{card.title}</h4>
                             {card.domain && (
-                              <Badge tone={error ? "amber" : count === null ? "gray" : "blue"} title={error ?? detail ?? (demo ? "Sample count" : "Live count")}>
-                                {demo ? `${count} sample` : count === null ? "— not reported" : `${count} live`}
+                              <Badge tone={error ? (configuredOff ? "gray" : "amber") : count === null ? "gray" : "blue"} title={error ?? detail ?? (demo ? "Sample count" : "Live count")}>
+                                {demo ? `${count} sample` : configuredOff ? "off by config" : count === null ? "— not reported" : `${count} live`}
                               </Badge>
                             )}
                           </div>
@@ -300,9 +304,15 @@ export function OverviewSection(props: { onOpenView: (v: WorkspaceView) => void 
                         </div>
                       </div>
                       {error ? (
-                        <p className="text-[11px] text-amber-700 dark:text-amber-300 rounded-lg bg-amber-500/10 px-2.5 py-1.5">
-                          Did not answer — {error}
-                        </p>
+                        configuredOff ? (
+                          <p className="text-[11px] text-muted-foreground rounded-lg bg-muted/50 px-2.5 py-1.5">
+                            Off by configuration — {error}
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-amber-700 dark:text-amber-300 rounded-lg bg-amber-500/10 px-2.5 py-1.5">
+                            Did not answer — {error}
+                          </p>
+                        )
                       ) : (
                         <>
                           {detail && <p className="text-[11px] font-mono text-muted-foreground">{detail}</p>}

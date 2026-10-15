@@ -1,4 +1,5 @@
-import { get, asList, errMsg } from "./http";
+import { get, asList } from "./http";
+import { isAgentsApiDisabled, isNoCompanyConfigured, serverReason } from "./server-reasons";
 
 /**
  * Honest, per-subsystem snapshot for the Overview atlas.
@@ -26,6 +27,12 @@ export interface OverviewDomain {
   count: number | null;
   /** Server reason when the domain did not answer; null on success. */
   error: string | null;
+  /**
+   * The Gateway refused on purpose: the subsystem exists but is switched off
+   * in configuration. Distinct from a failed read — a configured-off domain
+   * is not "did not answer", it is "off until you turn it on".
+   */
+  configuredOff: boolean;
   /** Short human detail, e.g. "3 active, 1 paused" or "5 enabled". */
   detail: string | null;
   /** Up to 3 preview labels for the card (names/titles), never fabricated. */
@@ -85,11 +92,23 @@ async function readDomain(
       id,
       count: countOf(body, listKeys),
       error: null,
+      configuredOff: false,
       detail: detailOf ? detailOf(body) : null,
       preview: previewOf(body, listKeys, nameKeys),
     };
   } catch (e) {
-    return { id, count: null, error: errMsg(e), detail: null, preview: [] };
+    // `serverReason` keeps the Gateway's own sentence, and the two
+    // configuration refusals are flagged so the card can say "off by
+    // configuration" rather than "did not answer" — a subsystem switched off
+    // on purpose is not a subsystem that failed to reply.
+    return {
+      id,
+      count: null,
+      error: serverReason(e),
+      configuredOff: isAgentsApiDisabled(e) || isNoCompanyConfigured(e),
+      detail: null,
+      preview: [],
+    };
   }
 }
 

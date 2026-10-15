@@ -23,6 +23,7 @@ import { swarmProgressView } from "@/lib/teamops-progress";
 import { ArenaPanel } from "@/components/sections/ArenaPanel";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
+import { isNoCompanyConfigured, serverReason, NO_COMPANY_CONFIGURED_VIEW } from "@/lib/server-reasons";
 import { absoluteStamp, clockTime, type TimeInput } from "@/lib/time";
 import { Plus, Send, Play, RefreshCw, Ban, ChevronLeft, ChevronRight, CircleSlash, User } from "lucide-react";
 
@@ -191,10 +192,13 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
       }
 
       const [d, k] = await Promise.allSettled([executiveDigest(), companyKpis()]);
+      // `serverReason` keeps the Gateway's own sentence. Both reads 404 with
+      // "No active organizations found" when no company is bootstrapped, and
+      // `errMsg` would print "it may have been deleted" — a different claim.
       if (d.status === "fulfilled") { setDigest(d.value); markRead("digest", null); }
-      else { setDigest(""); markRead("digest", errMsg(d.reason)); }
+      else { setDigest(""); markRead("digest", serverReason(d.reason)); }
       if (k.status === "fulfilled") { setKpis(k.value); markRead("kpis", null); }
-      else { setKpis([]); markRead("kpis", errMsg(k.reason)); }
+      else { setKpis([]); markRead("kpis", serverReason(k.reason)); }
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -953,15 +957,22 @@ function CompanyDigest(props: { digest: string }) {
 function CompanyStatusBox() {
   const [status, setStatus] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notConfigured, setNotConfigured] = useState(false);
   useEffect(() => {
     companyStatus().then(
       (s) => {
         setStatus(s);
         setError(null);
+        setNotConfigured(false);
       },
       (e) => {
         setStatus(null);
-        setError(errMsg(e));
+        // The 404 "No active organizations found. Bootstrap a company first."
+        // is the server's own setup instruction. `errMsg` rewrites any 404 to
+        // "Not found — it may have been deleted.", which would tell the operator
+        // their company was lost when the truth is it was never created.
+        setNotConfigured(isNoCompanyConfigured(e));
+        setError(serverReason(e));
       },
     );
   }, []);
@@ -969,13 +980,22 @@ function CompanyStatusBox() {
     return (
       <div className="rounded-2xl border border-border/60 bg-card p-4">
         <p className="text-xs font-semibold mb-1">Company status</p>
-        <p className="text-[11px] text-muted-foreground">
-          The Gateway did not report a company. It said: {error}
-        </p>
-        <p className="text-[11px] text-muted-foreground mt-1">
-          This is a server answer, not a failure to read: nothing here is a
-          measurement of a running company, and no company has been set up.
-        </p>
+        {notConfigured ? (
+          <>
+            <p className="text-[11px] text-muted-foreground">{NO_COMPANY_CONFIGURED_VIEW.title}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">{NO_COMPANY_CONFIGURED_VIEW.hint}</p>
+          </>
+        ) : (
+          <>
+            <p className="text-[11px] text-muted-foreground">
+              The Gateway did not report a company. It said: {error}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              This is a server answer, not a failure to read: nothing here is a
+              measurement of a running company.
+            </p>
+          </>
+        )}
       </div>
     );
   }
@@ -1018,6 +1038,8 @@ function KanbanBoard(props: { onError: (m: string) => void }) {
   const [tasks, setTasks] = useState<KanbanTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** The board is absent because no company was bootstrapped, not broken. */
+  const [notConfigured, setNotConfigured] = useState(false);
   /** Card id whose move is in flight — a double-click must not double-post. */
   const [busyCard, setBusyCard] = useState<string | null>(null);
 
@@ -1026,11 +1048,15 @@ function KanbanBoard(props: { onError: (m: string) => void }) {
     try {
       setTasks(await listKanbanTasks());
       setLoadError(null);
+      setNotConfigured(false);
     } catch (e) {
       // Own error state, not only the section's: `listKanbanTasks` rejects, and
       // a section-wide banner does not say which of the four reads failed.
-      setLoadError(errMsg(e));
-      props.onError(`Work board unavailable — ${errMsg(e)}`);
+      const reason = serverReason(e);
+      const missing = isNoCompanyConfigured(e);
+      setNotConfigured(missing);
+      setLoadError(reason);
+      props.onError(missing ? NO_COMPANY_CONFIGURED_VIEW.title : `Work board unavailable — ${reason}`);
     } finally {
       setLoading(false);
     }
@@ -1058,10 +1084,17 @@ function KanbanBoard(props: { onError: (m: string) => void }) {
 
   if (loading) return <SkeletonList rows={2} />;
   if (loadError) {
+    // "No company configured" is a setup fact, not a fetch failure — calling it
+    // one would send the operator looking for a broken network instead of the
+    // bootstrap step the Gateway named.
     return (
       <div className="rounded-2xl border border-border/60 bg-card p-4">
         <p className="text-xs font-semibold mb-1.5">Work board</p>
-        <ErrorBox message={`Work board could not be read — this is a fetch failure, not an empty board. (${loadError})`} onRetry={load} />
+        {notConfigured ? (
+          <EmptyState title={NO_COMPANY_CONFIGURED_VIEW.title} hint={NO_COMPANY_CONFIGURED_VIEW.hint} />
+        ) : (
+          <ErrorBox message={`Work board could not be read — this is a fetch failure, not an empty board. (${loadError})`} onRetry={load} />
+        )}
       </div>
     );
   }
