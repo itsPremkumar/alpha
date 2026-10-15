@@ -57,6 +57,33 @@ test("task_running records the latest step, its position, and the reported total
   assert.equal(state.tasks[0].description, "Research", "a step must not erase the label it started with");
 });
 
+test("task_running projects text from the structured LangChain message used by the Gateway", () => {
+  const state = run([
+    OPEN,
+    taskFrame({
+      type: "task_running",
+      task_id: "t1",
+      message: { type: "ai", content: [{ type: "text", text: "Reading the thread list loader" }] },
+      message_index: 1,
+      total_messages: 2,
+    }),
+  ]);
+  assert.equal(state.tasks[0].message, "Reading the thread list loader");
+});
+
+test("task_running describes tool-call-only messages instead of rendering an empty step", () => {
+  const state = run([
+    OPEN,
+    taskFrame({
+      type: "task_running",
+      task_id: "t1",
+      message: { type: "ai", content: "", tool_calls: [{ name: "read_file" }, { function: { name: "search" } }] },
+      message_index: 1,
+    }),
+  ]);
+  assert.equal(state.tasks[0].message, "Calling read_file, search");
+});
+
 test("a mid-run subscription still tracks a task whose start it missed", () => {
   const state = run([OPEN, taskFrame({ type: "task_running", task_id: "t2", message: "compiling", message_index: 1 })]);
   assert.equal(state.tasks.length, 1);

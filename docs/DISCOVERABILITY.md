@@ -158,6 +158,8 @@ one command. That verifiability *is* the authority signal.
 The repository practices what it ships:
 
 - **Primary sources** are linked, not paraphrased.
+- **UI behavior claims** are tied to the Gateway fields actually reported and
+  the frontend projection that renders them; absent measurements remain absent.
 - **Upstream provenance** is credited explicitly in the README's *Project
   provenance* section and in `docs/THIRD_PARTY_MEMORY_NOTICES.md`.
 - **Machine-readable citation** is available as `CITATION.cff` and a BibTeX block

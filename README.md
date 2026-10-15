@@ -542,6 +542,9 @@ make doctor    # verify the environment
   custom competitor counts and the explicit spend-confirmation gate; Workflows
   exposes the seven execution paradigms declared by the backend. Unsupported
   Arena modes stay unavailable rather than being presented as executable.
+- **Live subagent progress cards** — task events show status, a readable latest
+  step or tool-call summary, reported step count and measured usage; structured
+  messages remain available to durable run receipts.
 - **Live collaborative Kanban** — agents create, assign, transition, and audit
   cards on a shared board.
 - **Agent-to-Agent (A2A) messaging** — structured protocol for peer requests and

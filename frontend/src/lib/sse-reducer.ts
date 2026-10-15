@@ -224,6 +224,30 @@ function textContent(value: unknown): string {
   }).join("");
 }
 
+/**
+ * Subagent `task_running` frames carry the LangChain message object so the
+ * Gateway can persist a complete, typed step. Project a bounded human-readable
+ * summary for the live card instead of silently dropping that object.
+ */
+function taskMessageText(value: unknown): string | undefined {
+  if (typeof value === "string") return boundedTaskText(value);
+  const message = record(value);
+  const content = textContent(message.content).trim();
+  if (content) return boundedTaskText(content);
+
+  // An assistant tool-call step often has no prose. Name the reported tools
+  // so the card still shows what the subagent is doing.
+  const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  const names = calls
+    .map((value) => {
+      const call = record(value);
+      const fn = record(call.function);
+      return typeof call.name === "string" ? call.name : typeof fn.name === "string" ? fn.name : "";
+    })
+    .filter(Boolean);
+  return names.length ? boundedTaskText(`Calling ${[...new Set(names)].join(", ")}`) : undefined;
+}
+
 /** Clip an over-long payload and say so, so nothing reads as silently short. */
 function truncate(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max)} [+${value.length - max} chars truncated]`;
@@ -391,7 +415,7 @@ function withTaskEvent(state: SseState, data: Record<string, unknown>): SseState
     const knownIndex = next.messageIndex ?? 0;
     // Only a step at least as advanced as the one on screen may overwrite it.
     if (reportedIndex === undefined || reportedIndex >= knownIndex) {
-      const message = boundedTaskText(data.message);
+      const message = taskMessageText(data.message_text ?? data.message);
       if (message) next.message = message;
       if (reportedIndex !== undefined) next.messageIndex = reportedIndex;
       const reportedTotal = typeof data.total_messages === "number" && Number.isSafeInteger(data.total_messages) && data.total_messages > 0 ? data.total_messages : undefined;

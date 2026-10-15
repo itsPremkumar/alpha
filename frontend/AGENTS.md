@@ -106,6 +106,10 @@ mane-vs-face crop rule, and the desktop/installer surfaces are in the
   the history is partial. The idempotent thread-list read may retry one network
   failure, or a 30s timeout with a 2s bounded retry; do not retry HTTP failures,
   malformed responses, or local cancellation, and keep the final failure visible.
+- Subagent chat cards fold the root `task_*` custom-event stream. The Gateway's
+  `task_running.message` is a structured LangChain message; project its text or
+  tool-call names into the bounded card summary instead of assuming the wire
+  field is a string. Keep raw messages intact for durable step receipts.
 - Every bot profile exposes project creation and attaches that bot as lead via
   `projects.ts -> createProject(..., agents)`. The Projects view owns multi-bot
   membership through the real presence/attach/detach routes, then re-reads the
