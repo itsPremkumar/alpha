@@ -1222,6 +1222,22 @@ test("the run inspector displays measured acceptance and evidence", () => {
   assert.match(markup, /evidence measured/);
 });
 
+test("a successful run without declared acceptance criteria does not offer a recheck", () => {
+  const markup = renderView({
+    ...BASE_STATE,
+    record: inspector.toRunRecord(SUCCESS_RUN),
+    verification: {
+      status: "not_requested",
+      reason: "No acceptance criteria were declared for this run.",
+      evaluator: null,
+      criteria: [],
+      history: [],
+    },
+  });
+  assert.match(markup, /No acceptance criteria were declared/);
+  assert.doesNotMatch(markup, /Recheck evidence/);
+});
+
 /* ══ 11. The whole view, on a real run ══════════════════════════════════════ */
 
 test("the assembled view shows the prompt, the answer, the tool call and the events", async () => {

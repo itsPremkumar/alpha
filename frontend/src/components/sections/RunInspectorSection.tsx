@@ -1549,7 +1549,11 @@ export function RunInspectorView(props: {
             <RunVerificationPanel
               verification={state.verification}
               error={state.errors.verification ?? null}
-              canRecheck={isTerminalSuccess(state.record.status)}
+              canRecheck={
+                isTerminalSuccess(state.record.status) &&
+                state.verification !== null &&
+                state.verification.status !== "not_requested"
+              }
               onRecheck={props.onRecheckVerification}
             />
             <ConversationPanel record={state.record} transcript={state.transcript} error={state.errors.transcript ?? null} />

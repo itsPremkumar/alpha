@@ -22,6 +22,11 @@ invents backend facts.
 4. **Silence is not success.** A component that is loading, empty, or
    unavailable says which one it is.
 
+The Run Inspector's acceptance panel offers a recheck only after the Gateway
+returns an existing verification state for a successful run. A `not_requested`
+state means the run declared no acceptance criteria; display the Gateway's
+reason and do not show an action the API must reject.
+
 ## Branding
 
 `src/assets/images/alpha.png` is the one real logo, and `src/lib/branding.ts` is
