@@ -1329,6 +1329,16 @@ function RecentApexSessions({ reloadKey }: { reloadKey: number }) {
                       <dt className="text-neutral-500">Run dispatch state</dt>
                       <dd>{session.dispatch_state ?? "Not reported"}</dd>
                     </div>
+                    <div>
+                      <dt className="text-neutral-500">Session ceilings</dt>
+                      <dd>
+                        {quota(session.token_limit)} tokens · {quota(session.tool_call_limit)} tool calls · {session.runtime_limit_minutes === null
+                          ? "Unlimited"
+                          : session.runtime_limit_minutes === undefined
+                            ? "Unknown"
+                            : `${session.runtime_limit_minutes.toLocaleString()} min`}
+                      </dd>
+                    </div>
                     {session.run_id &&
                       ["error", "interrupted", "timeout", "cancelled"].includes(session.run_status ?? "") && (
                         <SessionRunDiagnostic

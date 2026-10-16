@@ -240,7 +240,7 @@ HTTP-check collector.
 APEX profiles inherit unlimited token, tool-call, and runtime spending ceilings.
 The APEX UI's create-and-dispatch form narrows new sessions to editable defaults
 of 100,000 tokens, 200 tool calls, and 60 minutes. Token use is observed after a
-provider response, so one in-flight model call can exceed the token ceiling.
+provider response, so one in-flight model call can exceed the token ceiling. Expanded session history displays the persisted ceilings beside measured use.
 These token limits are not currency hard limits. Engine capacity, approvals, and
 the emergency stop remain. The ordinary
 `task` tool enforces persisted active-agent and parallel-task ceilings. An

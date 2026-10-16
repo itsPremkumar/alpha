@@ -16,8 +16,9 @@ This section accumulates work toward the **2.1.0** milestone
   per-session defaults of 100,000 tokens, 200 tool calls, and 60 minutes when it
   creates and dispatches a mission. These limits narrow the selected profile;
   token usage is observed after provider calls, so an in-flight call may exceed
-  the token ceiling. API callers that omit a budget still inherit the profile's
-  unlimited limits.
+  the token ceiling. Expanded session history shows frozen per-session ceilings
+  beside measured usage. API callers that omit a budget still inherit the
+  profile's unlimited limits.
 
 - **scenario-conditioned-memory-recall:** When the default-off
   `memory.scenarios.enabled` gate is enabled, the lead prompt deterministically

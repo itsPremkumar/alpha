@@ -635,8 +635,9 @@ session.
 The APEX panel also lists the latest 50 owner-scoped sessions separately from
 the active-session controls. Each history row reports the session state, linked
 run status, and persisted acceptance verdict; expanding a row shows its report
-id, criterion verdicts and submitted evidence, run id, dispatch state, and
-measured usage. A missing report is shown as **not verified**. Historical rows
+id, criterion verdicts and submitted evidence, run id, dispatch state, measured
+usage, and the frozen token, tool-call, and runtime ceilings. A missing report
+is shown as **not verified**. Historical rows
 are read-only, so selecting one cannot redirect pause, resume, stop, or steering
 actions away from the server-designated active session. Expanding a failed,
 interrupted, timed-out, or cancelled run lazily reads its RunManager record and

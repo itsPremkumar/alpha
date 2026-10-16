@@ -1304,7 +1304,7 @@ const SESSION_RECORD = {
   thread_id: "thread-1",
   blocked_reason: "",
   cycle_count: 4,
-  contract_snapshot: { budget: { max_total_tokens: 500000 } },
+  contract_snapshot: { budget: { max_total_tokens: 500000, max_tool_calls: 200, max_runtime_minutes: 60 } },
   usage: {
     tool_calls: 8,
     llm_calls: 3,
@@ -1414,6 +1414,9 @@ test("session history uses the bounded owner-scoped list route and maps real run
   assert.equal(result.sessions[0].session_id, "apx-1");
   assert.equal(result.sessions[0].state, "completed");
   assert.equal(result.sessions[0].run_status, "success");
+  assert.equal(result.sessions[0].token_limit, 500000);
+  assert.equal(result.sessions[0].tool_call_limit, 200);
+  assert.equal(result.sessions[0].runtime_limit_minutes, 60);
   assert.equal(result.sessions[0].usage.total_tokens, 1500);
   assert.equal(result.sessions[0].acceptance?.report_id, "acc-1");
   assert.equal(result.sessions[0].acceptance?.passed, true);
@@ -1442,6 +1445,9 @@ test("APEX renders recent history separately from active-session controls", () =
   assert.match(source, /function RecentApexSessions\(/);
   assert.match(source, /<RecentApexSessions reloadKey=\{reloadKey\} \/>/);
   assert.match(source, /Read-only owner-scoped history/);
+  assert.match(source, /Session ceilings/);
+  assert.match(source, /session\.tool_call_limit/);
+  assert.match(source, /session\.runtime_limit_minutes/);
   assert.match(source, /A run status is not acceptance verification/);
   assert.match(source, /session\.acceptance\?\.passed === true[\s\S]{0,120}"passed"/);
   assert.match(source, /Evaluated criteria and evidence/);

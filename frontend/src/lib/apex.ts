@@ -699,6 +699,8 @@ export interface ApexSessionRecord {
   cycle_count: number | null;
   replan_limit: number | null | undefined;
   token_limit: number | null | undefined;
+  tool_call_limit: number | null | undefined;
+  runtime_limit_minutes: number | null | undefined;
   usage: {
     tool_calls: number | null;
     llm_calls: number | null;
@@ -828,6 +830,8 @@ function mapSessionRecord(v: unknown): ApexSessionRecord {
     cycle_count: optNum(r.cycle_count),
     replan_limit: budgetNum(budget, "max_replans"),
     token_limit: budgetNum(budget, "max_total_tokens"),
+    tool_call_limit: budgetNum(budget, "max_tool_calls"),
+    runtime_limit_minutes: budgetNum(budget, "max_runtime_minutes"),
     usage: {
       tool_calls: optNum(usage.tool_calls),
       llm_calls: optNum(usage.llm_calls),
