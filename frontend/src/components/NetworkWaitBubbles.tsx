@@ -96,7 +96,13 @@ export function NetworkWaitBubbles({ threadId }: { threadId: string | null }) {
     return () => window.clearInterval(id);
   }, [hasOpenWait]);
 
-  const bubbles = networkWaitTimeline(data, error !== null, nowMs);
+  // `null` with no error is the initial/in-flight state, not an unreported
+  // backend timeline. Do not turn a normal first request into a false warning;
+  // the first successful response or a real read failure below determines the
+  // visible state.
+  const bubbles = data === null && error === null
+    ? []
+    : networkWaitTimeline(data, error !== null, nowMs);
   if (bubbles.length === 0) return null;
 
   return (

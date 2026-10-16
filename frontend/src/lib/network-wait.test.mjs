@@ -455,6 +455,11 @@ test("the component renders the derived bubbles rather than branching on a state
   );
 });
 
+test("an in-flight initial read does not claim the backend omitted network status", () => {
+  const component = readComponent("../components/NetworkWaitBubbles.tsx");
+  assert.match(component, /data === null && error === null[\s\S]*?\? \[\][\s\S]*?:\s*networkWaitTimeline/);
+});
+
 test("a failed read keeps its error visible instead of rendering an empty timeline", () => {
   const component = readComponent("../components/NetworkWaitBubbles.tsx");
   assert.match(component, /setError\(/);
