@@ -6,12 +6,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from alpha.agents.memory.backends.deermem.deermem.config import DeerMemConfig
+from alpha.agents.memory.backends.deermem.deermem.core.extraction_health import (
+    get_memory_update_health,
+    reset_memory_update_health,
+)
 from alpha.agents.memory.backends.deermem.deermem.core.prompt import format_conversation_for_update
 from alpha.agents.memory.backends.deermem.deermem.core.storage import (
     MemoryManifestRevisionConflict,
     MemoryStorage,
 )
 from alpha.agents.memory.backends.deermem.deermem.core.updater import (
+    EmptyMemoryUpdateResponse,
     MemoryUpdater,
     _build_staleness_section,
     _coerce_source_confidence,
@@ -1913,3 +1918,139 @@ class TestParseMemoryUpdateFactsToRemoveGate:
         except json.JSONDecodeError:
             return
         raise AssertionError('decoy object {"user": "alice"} must be rejected')
+
+
+# ---------------------------------------------------------------------------
+# parse-failure classification + the bounded empty-response retry
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryUpdateParseFailurePolicy:
+    """Unparseable extraction responses fail closed, are classified without
+    leaking content, and only the (usually transient) empty shape gets one
+    in-call retry."""
+
+    _VALID_JSON = '{"user": {}, "history": {}, "newFacts": [], "factsToRemove": []}'
+
+    class _Response:
+        def __init__(self, content: object) -> None:
+            self.content = content
+
+    @pytest.fixture(autouse=True)
+    def _fresh_health_record(self):
+        # extraction_health is a process-global singleton: every failure/success
+        # recorded here must not leak into (or stale-read from) other suites.
+        reset_memory_update_health()
+        yield
+        reset_memory_update_health()
+
+    def _make_model(self, responses: object):
+        model = MagicMock()
+        if isinstance(responses, BaseException):
+            model.invoke = MagicMock(side_effect=responses)
+            model.ainvoke = AsyncMock(side_effect=responses)
+            return model
+        payloads = [self._Response(content) for content in responses]
+        model.invoke = MagicMock(side_effect=payloads)
+        model.ainvoke = AsyncMock(side_effect=payloads)
+        return model
+
+    def _run(self, model):
+        storage = _MemoryStorage()
+        updater = _make_updater(
+            config=_memory_config(fact_confidence_threshold=0.7, max_facts=100),
+            storage=storage,
+            llm=model,
+        )
+        msg = MagicMock()
+        msg.type = "human"
+        msg.content = "Remember that I prefer concise updates."
+        ai_msg = MagicMock()
+        ai_msg.type = "ai"
+        ai_msg.content = "Got it."
+        ai_msg.tool_calls = []
+        return updater.update_memory([msg, ai_msg], thread_id="thread-parse-policy"), storage
+
+    # -- classification of empty responses --------------------------------
+
+    def test_parse_empty_response_raises_distinct_json_error(self):
+        import json
+
+        for content in ("", "   ", [{"type": "text", "text": " "}]):
+            with pytest.raises(json.JSONDecodeError) as exc_info:
+                _parse_memory_update_response(content)
+            assert isinstance(exc_info.value, EmptyMemoryUpdateResponse)
+            assert "no extractable text" in str(exc_info.value)
+
+    def test_retry_exhaustion_records_the_distinct_type(self):
+        model = self._make_model(["", "   \n"])
+        result, _ = self._run(model)
+
+        assert result is False
+        assert model.invoke.call_count == 2  # retried exactly once, no loop
+        health = get_memory_update_health().as_dict()
+        assert health["last_error_type"] == "EmptyMemoryUpdateResponse"
+        assert health["consecutive_failures"] == 1
+
+    def test_empty_response_is_retried_once_and_recovers(self):
+        model = self._make_model(["", self._VALID_JSON])
+        result, _ = self._run(model)
+
+        assert result is True
+        assert model.invoke.call_count == 2
+        assert get_memory_update_health().as_dict()["consecutive_failures"] == 0
+
+    # -- rows that must NOT trigger the empty-response retry ---------------
+
+    def test_provider_error_is_never_retried(self):
+        model = self._make_model(RuntimeError("provider down"))
+        result, _ = self._run(model)
+
+        assert result is False
+        assert model.invoke.call_count == 1
+
+    def test_nonempty_unparseable_response_is_never_retried(self):
+        model = self._make_model(["the user asked me to remember this, thanks"])
+        result, _ = self._run(model)
+
+        assert result is False
+        assert model.invoke.call_count == 1
+        health = get_memory_update_health().as_dict()
+        assert health["last_error_type"] == "JSONDecodeError"
+        assert health["consecutive_failures"] == 1
+
+    def test_valid_json_missing_required_keys_is_never_retried(self):
+        model = self._make_model(['{"user": "alice"}'])
+        result, _ = self._run(model)
+
+        assert result is False
+        assert model.invoke.call_count == 1
+        # The undecodable-position "1:0" tail must be gone: the message now
+        # carries the shape instead of a meaningless position.
+        health = get_memory_update_health().as_dict()
+        assert health["last_error"] is not None and "characters" in health["last_error"]
+
+    # -- content-free failure messages --------------------------------------
+
+    def test_parse_garbage_failure_message_is_content_free(self):
+        import json
+
+        garbage = "I cannot return JSON today. SECRET-CONVERSATION-ECHO {oops"
+        with pytest.raises(json.JSONDecodeError) as exc_info:
+            _parse_memory_update_response(garbage)
+
+        assert not isinstance(exc_info.value, EmptyMemoryUpdateResponse)
+        message = str(exc_info.value)
+        assert "SECRET-CONVERSATION-ECHO" not in message
+        assert "characters" in message  # length descriptor
+        assert "probed 1" in message  # the single trailing '{'
+
+    def test_parse_truncated_json_fails_closed_with_truncation_hint(self):
+        import json
+
+        truncated = '{"user": {"workContext": {"summary": "prior work'
+        with pytest.raises(json.JSONDecodeError) as exc_info:
+            _parse_memory_update_response(truncated)
+
+        assert not isinstance(exc_info.value, EmptyMemoryUpdateResponse)
+        assert "truncated" in str(exc_info.value)

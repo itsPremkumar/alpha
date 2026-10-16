@@ -279,4 +279,13 @@ def record_failure(exc: BaseException, *, scope: str | None = None, reason: str 
         _health.last_error_scope = _clip(scope, MAX_SCOPE_CHARS)
         _health.consecutive_failures += 1
         _health.total_failures += 1
-        _health._reason = reason or f"the last memory update failed: {_health.last_error_type}: {_health.last_error}"
+        # The server-owned reason (`reason`) wins verbatim. Otherwise an
+        # operator reading "the last memory update failed" must be able to tell
+        # a one-off blip from a repeated failure: when attempts have failed
+        # back-to-back, the reason says how many in a row.
+        if reason:
+            _health._reason = reason
+        elif _health.consecutive_failures > 1:
+            _health._reason = f"the last {_health.consecutive_failures} memory update attempts all failed: {_health.last_error_type}: {_health.last_error}"
+        else:
+            _health._reason = f"the last memory update failed: {_health.last_error_type}: {_health.last_error}"

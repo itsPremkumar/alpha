@@ -209,6 +209,13 @@ Custom prompt directories must include the same classification fields.
 Old templates cause extraction writes to fail closed.
 The rejection counter and high-rejection warning expose this condition.
 
+Model response parsing is fail closed.
+The updater extracts the first safely parseable JSON object and never repairs truncated or malformed JSON.
+An empty extraction response raises `EmptyMemoryUpdateResponse` (a `json.JSONDecodeError`) and gets exactly one immediate same-call retry; non-empty unparseable responses and provider errors are not retried in-call, because next-turn re-feeds replay the same turns after a failure.
+Parse-failure messages carry only content-free shape descriptors (lengths and brace counts, plus a truncation hint), never model output or conversation content.
+`empty_response_invocations` in the extraction metrics records when the empty-retry fired.
+The health record's `reason` states the consecutive-failure count once attempts fail back-to-back; repeated identical `JSONDecodeError` failures on `/api/memory/status` point at a systematic model-output problem (check the extraction model and its max output tokens), not a transient outage.
+
 #### Capacity and review
 
 All automatic, manual, tool, and import paths use `deermem/core/eviction.py`.

@@ -412,17 +412,63 @@ def _normalize_memory_update_data(update_data: dict[str, Any]) -> dict[str, Any]
     }
 
 
+class EmptyMemoryUpdateResponse(json.JSONDecodeError):
+    """The extraction LLM returned no extractable text at all.
+
+    Subclasses ``json.JSONDecodeError`` so every existing ``except
+    json.JSONDecodeError`` keeps working unchanged; the distinct type exists so
+    the health record (`last_error_type` on the status surface) can name "the
+    provider returned nothing" — usually transient — apart from "the provider
+    returned something unparseable", which is usually a systematic
+    model-output problem.
+    """
+
+
+def _describe_response_shape(response_text: str, candidates_probed: int) -> str:
+    """Content-free structural summary of an unparseable extraction response.
+
+    The model's text may echo conversation data, so it must never travel into
+    the raised error (which reaches logs and the operator-facing
+    ``/api/memory/status`` error field). Only lengths and brace counts travel,
+    plus a truncation hint when more ``{`` than ``}`` suggests the response was
+    cut off mid-object (e.g. by a max-output-tokens limit).
+    """
+    length = len(response_text)
+    opening = response_text.count("{")
+    closing = response_text.count("}")
+    hint = ""
+    if opening > closing:
+        hint = "; opening braces outnumber closing braces, output may have been truncated (check the model's max output tokens)"
+    elif opening == 0:
+        hint = "; the response contains no '{' at all"
+    fence = "; the response begins with a markdown code fence" if response_text.startswith("```") else ""
+    return f"response was {length} characters, probed {candidates_probed} '{{' position(s), {opening} '{{' vs {closing} '}}'{hint}{fence}"
+
+
 def _parse_memory_update_response(response_content: Any) -> dict[str, Any]:
     """Parse the first valid memory-update JSON object from an LLM response.
 
     Some providers may wrap JSON in thinking traces, prose, or markdown fences
     even when prompted to return JSON only. This parser accepts safely
-    extractable JSON objects but does not repair truncated or malformed JSON.
+    extractable JSON objects but does not repair truncated or malformed JSON:
+    the update fails closed (nothing is stored, the watermark does not
+    advance, and the caller records the failure).
+
+    A response with no extractable text raises
+    :class:`EmptyMemoryUpdateResponse`; any other unparseable response raises
+    ``json.JSONDecodeError`` whose message carries a content-free structural
+    shape summary (lengths and brace counts only — never the model's text,
+    which may echo conversation data).
     """
     response_text = _extract_text(response_content).strip()
+    if not response_text:
+        raise EmptyMemoryUpdateResponse("No valid memory update JSON object found: the response contained no extractable text (empty completion, filtered stop, or a reasoning-only response)", "", 0)
+
     decoder = json.JSONDecoder()
+    candidates_probed = 0
 
     for match in re.finditer(r"\{", response_text):
+        candidates_probed += 1
         try:
             parsed, _end = decoder.raw_decode(response_text[match.start() :])
         except json.JSONDecodeError:
@@ -430,7 +476,11 @@ def _parse_memory_update_response(response_content: Any) -> dict[str, Any]:
         if isinstance(parsed, dict) and _REQUIRED_MEMORY_UPDATE_TOP_LEVEL_KEYS.issubset(parsed):
             return _normalize_memory_update_data(parsed)
 
-    raise json.JSONDecodeError("No valid memory update JSON object found", response_text, 0)
+    raise json.JSONDecodeError(
+        f"No valid memory update JSON object found ({_describe_response_shape(response_text, candidates_probed)})",
+        response_text,
+        0,
+    )
 
 
 # Matches sentences that describe a file-upload *event* rather than general
@@ -1693,34 +1743,58 @@ class MemoryUpdater:
                 )
             logger.info("Invoking memory-update LLM (thread=%s trace_id=%s)", thread_id, trace_id)
             attempted = True
-            started = time.monotonic()
-            try:
-                response = model.invoke(prompt, config=invoke_config)
-            # Deliberately broader than `Exception` so no terminal path of the
-            # provider call goes unobserved. This is NOT about asyncio
-            # cancellation: this whole method runs on a worker thread (the
-            # debounce timer, or the executor `update_memory` offloads to), and
-            # cancelling the awaiting side never interrupts a running thread, so
-            # `CancelledError` cannot arrive here. Reporting costs nothing on
-            # this path either way — the hook below is a non-blocking submit.
-            except BaseException as exc:
+            empty_invocations = 0
+            for _invoke_attempt in range(2):
+                started = time.monotonic()
+                try:
+                    response = model.invoke(prompt, config=invoke_config)
+                # Deliberately broader than `Exception` so no terminal path of the
+                # provider call goes unobserved. This is NOT about asyncio
+                # cancellation: this whole method runs on a worker thread (the
+                # debounce timer, or the executor `update_memory` offloads to), and
+                # cancelling the awaiting side never interrupts a running thread, so
+                # `CancelledError` cannot arrive here. Reporting costs nothing on
+                # this path either way — the hook below is a non-blocking submit.
+                except BaseException as exc:
+                    self._notify_llm_result(
+                        invoke_config,
+                        prompt=prompt,
+                        response=None,
+                        error=exc,
+                        started=started,
+                        model_name=model_name,
+                    )
+                    raise
                 self._notify_llm_result(
                     invoke_config,
                     prompt=prompt,
-                    response=None,
-                    error=exc,
+                    response=response,
+                    error=None,
                     started=started,
                     model_name=model_name,
                 )
-                raise
-            self._notify_llm_result(
-                invoke_config,
-                prompt=prompt,
-                response=response,
-                error=None,
-                started=started,
-                model_name=model_name,
-            )
+                response_content = getattr(response, "content", None)
+                response_text = _extract_text(response_content).strip() if response_content is not None else ""
+                if response_text:
+                    break
+                empty_invocations += 1
+                if _invoke_attempt == 0:
+                    # An empty response is the one unparseable shape that is
+                    # usually transient (empty completion, content-filter
+                    # stop, a streaming glitch): one immediate retry of the
+                    # same prompt is strictly bounded and can save the whole
+                    # extraction, because this attempt is the tail's last
+                    # chance — the watermark does not advance on failure, but
+                    # the user may simply stop talking. A provider exception
+                    # or a non-empty unparseable response is treated as
+                    # deterministic and is NOT retried here (next turn re-feeds
+                    # replaying the same turns) — this stays a single extra
+                    # call, never a retry loop.
+                    logger.warning("Memory-update LLM returned an empty response (thread=%s trace_id=%s); retrying once", thread_id, trace_id)
+            if empty_invocations:
+                metrics["empty_response_invocations"] = empty_invocations
+                if empty_invocations > 1:
+                    logger.warning("Memory-update LLM returned an empty response again after retry (thread=%s trace_id=%s)", thread_id, trace_id)
             success = self._finalize_update(
                 current_memory=current_memory,
                 response_content=response.content,
@@ -1841,7 +1915,9 @@ class MemoryUpdater:
             True if the update persisted. False on any failure (no content,
             unparseable response, LLM error); failures are swallowed (best-effort)
             -- a failed update is re-fed on the next conversation turn because the
-            watermark does not advance on failure.
+            watermark does not advance on failure. An empty model response is
+            retried once in-call before parsing (the one usually-transient
+            shape); no other failure is retried in-call.
         """
         try:
             loop = asyncio.get_running_loop()
