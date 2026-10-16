@@ -576,10 +576,13 @@ exactly-once execution.
 - **Continuous goal engine & integrity gate** — enforces verifiable completion
   criteria and blocks premature or hallucinated exits.
 - **Run acceptance evidence** — the Run Inspector shows measured exact-text
-  file readback and explicit non-empty artifact readback (for example,
+  file readback, explicit non-empty artifact readback (for example,
   `File artifact at "/workspace/report.json" exists and is non-empty.`). The
   digest is derived from a successful `read_file` result after the latest
-  successful write in that run, if any. Other criterion types remain unverified; see
+  successful write in that run, if any. It also supports the exact criterion
+  `Auto-detected project test suite passes.` only when a correlated
+  `auto_test_and_repair` result reports an auto-detected argv command with exit
+  code 0 and zero failures. Other criterion types remain unverified; see
   [the verification API](docs/API.md#read-run-acceptance-verification).
 - **Ralph loop** — test-driven iterative self-healing until the suite passes and
   architectural invariants hold.

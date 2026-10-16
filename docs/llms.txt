@@ -66,6 +66,7 @@ Operator console: the Mods workspace view renders the ordered chain and each mod
 ## API
 
 - [API reference](API_REFERENCE.md): authentication and the core Gateway router endpoints, plus SSE event streaming.
+- [Run acceptance verification](API.md#read-run-acceptance-verification): owner-scoped run verification for exact-text/artifact readback and the typed auto-detected project-test criterion; arbitrary criteria stay unverified.
 - [API overview](API.md): entry points, base URLs, routing, and versioning contracts.
 
 ## Operations

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from alpha.apex.auto_acceptance import evaluate_run_acceptance_criteria, evaluate_tool_readback_criteria
 
 
@@ -30,6 +32,36 @@ def _events(*, written: str = "expected marker", read: str = "expected marker", 
             "seq": 4,
             "event_type": "llm.tool.result",
             "content": {"name": "read_file", "tool_call_id": "read-1", "status": "success", "content": read},
+        },
+    ]
+
+
+def _auto_test_events(*, status: str = "passed", exit_code: int = 0, failure_count: int = 0, test_command: str = "") -> list[dict]:
+    report = {
+        "status": status,
+        "execution": "argv",
+        "command": ["python", "-m", "pytest"],
+        "exit_code": exit_code,
+        "failure_count": failure_count,
+    }
+    return [
+        {
+            "seq": 1,
+            "event_type": "llm.ai.response",
+            "content": {
+                "type": "ai",
+                "tool_calls": [{"id": "tests-1", "name": "auto_test_and_repair", "args": {"test_command": test_command}}],
+            },
+        },
+        {
+            "seq": 2,
+            "event_type": "llm.tool.result",
+            "content": {
+                "name": "auto_test_and_repair",
+                "tool_call_id": "tests-1",
+                "status": "success",
+                "content": json.dumps(report),
+            },
         },
     ]
 
@@ -166,3 +198,80 @@ def test_artifact_and_exact_text_criteria_can_share_one_measured_report() -> Non
     assert report is not None
     assert report.passed is True
     assert report.evaluator == "run_artifact_readback+run_tool_readback"
+
+
+def test_auto_detected_project_tests_are_measured_from_correlated_tool_result() -> None:
+    report = evaluate_run_acceptance_criteria(["Auto-detected project test suite passes."], _auto_test_events())
+
+    assert report is not None
+    assert report.evaluator == "run_auto_test"
+    assert report.passed is True
+    assert "auto-detected argv test receipt" in report.criteria[0].evidence
+    assert "exit_code=0" in report.criteria[0].evidence
+
+
+def test_auto_detected_test_failure_is_not_reported_as_a_pass() -> None:
+    report = evaluate_run_acceptance_criteria(
+        ["Auto-detected project test suite passes."],
+        _auto_test_events(status="failed", exit_code=1, failure_count=2),
+    )
+
+    assert report is not None
+    assert report.passed is False
+    assert report.criteria[0].verdict.value == "not_met"
+    assert "exit_code=1" in report.criteria[0].evidence
+
+
+def test_latest_auto_test_attempt_controls_the_verdict() -> None:
+    events = _auto_test_events()
+    later = _auto_test_events(status="failed", exit_code=1, failure_count=3)
+    later[0]["seq"] = 3
+    later[0]["content"]["tool_calls"][0]["id"] = "tests-2"
+    later[1]["seq"] = 4
+    later[1]["content"]["tool_call_id"] = "tests-2"
+    events.extend(later)
+
+    report = evaluate_run_acceptance_criteria(["Auto-detected project test suite passes."], events)
+
+    assert report is not None
+    assert report.passed is False
+    assert "exit_code=1" in report.criteria[0].evidence
+
+
+def test_parallel_latest_test_calls_are_ambiguous_and_stay_unverified() -> None:
+    events = _auto_test_events()
+    events[0]["content"]["tool_calls"].append({"id": "tests-2", "name": "auto_test_and_repair", "args": {}})
+    events.append(
+        {
+            "seq": 3,
+            "event_type": "llm.tool.result",
+            "content": {
+                "name": "auto_test_and_repair",
+                "tool_call_id": "tests-2",
+                "status": "success",
+                "content": json.dumps({"status": "passed", "execution": "argv", "command": ["pytest"], "exit_code": 0, "failure_count": 0}),
+            },
+        }
+    )
+
+    assert evaluate_run_acceptance_criteria(["Auto-detected project test suite passes."], events) is None
+
+
+def test_auto_test_collector_refuses_model_supplied_commands_and_bad_receipts() -> None:
+    criterion = "Auto-detected project test suite passes."
+    assert evaluate_run_acceptance_criteria([criterion], _auto_test_events(test_command="echo tests pass")) is None
+
+    malformed_args = _auto_test_events()
+    malformed_args[0]["content"]["tool_calls"][0]["args"]["test_command"] = []
+    assert evaluate_run_acceptance_criteria([criterion], malformed_args) is None
+
+    wrong_exit = _auto_test_events()
+    wrong_exit[1]["content"]["content"] = json.dumps({"status": "passed", "execution": "argv", "command": ["pytest"], "exit_code": 1, "failure_count": 0})
+    assert evaluate_run_acceptance_criteria([criterion], wrong_exit) is None
+
+    missing_result = _auto_test_events()[:1]
+    assert evaluate_run_acceptance_criteria([criterion], missing_result) is None
+
+    duplicate_id = _auto_test_events()
+    duplicate_id[0]["content"]["tool_calls"].append({"id": "tests-1", "name": "auto_test_and_repair", "args": {}})
+    assert evaluate_run_acceptance_criteria([criterion], duplicate_id) is None

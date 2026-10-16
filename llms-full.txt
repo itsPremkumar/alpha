@@ -269,6 +269,15 @@ persisted successful tool receipts. Failed or uncorrelated results are excluded;
 tool output is treated as untrusted data. Its model judgment is not a measured
 APEX acceptance verdict.
 
+The owner-scoped run acceptance endpoint is a separate verifier from the APEX
+session loop. It can measure exact-text file readback, explicit non-empty artifact
+readback, and the exact `Auto-detected project test suite passes.` criterion
+from a correlated successful `auto_test_and_repair` receipt only when Alpha
+auto-detected the argv command (no caller-supplied test command), exit code is
+zero, and the report has zero failures. The latest test attempt determines the
+result; ambiguous or malformed receipts remain unverified. This does not add
+test-suite verification to APEX session auto-verification.
+
 ### 5.10 Alpha Mod Kernel
 The native Mod Kernel runs ordered middleware on lead-agent tool/model lifecycle
 events and run admission. First-party emergency-stop, blast-radius, verification,

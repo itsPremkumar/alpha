@@ -9,6 +9,7 @@ path.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import time
 from collections.abc import Mapping, Sequence
@@ -21,6 +22,7 @@ _MAX_EXPECTED_TEXT = 16_384
 _MAX_ARTIFACT_PATH = 1_024
 _MAX_ARTIFACT_BYTES = 1 << 20
 _ARTIFACT_CRITERION = re.compile(r"\bfile\s+artifact\s+(?:at|path\s+is)\s+[`\"']([^`\"']+)[`\"']\s+(?:exists|is\s+present)\s+and\s+(?:is\s+)?non-empty\b", re.IGNORECASE)
+_AUTO_TEST_CRITERION = re.compile(r"^\s*auto-detected project test suite passes\.?\s*$", re.IGNORECASE)
 
 
 def _criterion_expected_text(criterion: str) -> str | None:
@@ -205,6 +207,93 @@ def _artifact_readback_result(path: str, events: Sequence[Mapping[str, Any]]) ->
     return len(encoded) > 0, detail
 
 
+def _auto_test_result(events: Sequence[Mapping[str, Any]]) -> tuple[bool, str] | None:
+    """Measure the latest auto-detected test run from its correlated receipt.
+
+    A caller-supplied command can be an arbitrary program, so it cannot prove
+    that the project's tests ran. Only calls with an omitted/empty
+    ``test_command`` are eligible; Alpha's detector chooses the project harness
+    and executes it as argv. The result must correlate by tool-call id and be
+    ordered after its request.
+    """
+    calls: dict[str, tuple[int, Mapping[str, Any]]] = {}
+    for event in events:
+        if event.get("event_type") != "llm.ai.response":
+            continue
+        content = _content(event)
+        seq = event.get("seq")
+        tool_calls = content.get("tool_calls") if content is not None and content.get("type") == "ai" else None
+        if not isinstance(seq, int) or isinstance(seq, bool) or not isinstance(tool_calls, list):
+            continue
+        for call in tool_calls:
+            if not isinstance(call, Mapping) or call.get("name") != "auto_test_and_repair":
+                continue
+            call_id, args = call.get("id"), call.get("args")
+            if not isinstance(call_id, str) or not call_id or not isinstance(args, Mapping) or call_id in calls:
+                return None
+            calls[call_id] = (seq, args)
+    if not calls:
+        return None
+
+    latest_seq = max(call_seq for call_seq, _args in calls.values())
+    latest_calls = [(call_id, args) for call_id, (call_seq, args) in calls.items() if call_seq == latest_seq]
+    if len(latest_calls) != 1:
+        return None
+    latest_call_id, args = latest_calls[0]
+    call_seq = latest_seq
+    supplied_command = args.get("test_command")
+    if supplied_command is not None and (not isinstance(supplied_command, str) or supplied_command != ""):
+        return None
+
+    results: list[tuple[int, Mapping[str, Any]]] = []
+    for event in events:
+        if event.get("event_type") != "llm.tool.result":
+            continue
+        result = _content(event)
+        seq = event.get("seq")
+        if result is None or result.get("tool_call_id") != latest_call_id:
+            continue
+        if not isinstance(seq, int) or isinstance(seq, bool) or seq <= call_seq:
+            continue
+        results.append((seq, result))
+    if len(results) != 1:
+        return None
+
+    result_seq, tool_result = results[0]
+    if tool_result.get("name") != "auto_test_and_repair" or tool_result.get("status") != "success":
+        return None
+    raw_report = tool_result.get("content")
+    if not isinstance(raw_report, str):
+        return None
+    try:
+        report = json.loads(raw_report)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(report, dict) or report.get("execution") != "argv":
+        return None
+    command = report.get("command")
+    if not isinstance(command, list) or not command or not all(isinstance(part, str) and part for part in command):
+        return None
+    status = report.get("status")
+    exit_code = report.get("exit_code")
+    failure_count = report.get("failure_count")
+    if status == "passed":
+        if type(exit_code) is not int or exit_code != 0 or type(failure_count) is not int or failure_count != 0:
+            return None
+        passed = True
+        outcome = "passed; exit_code=0; failure_count=0"
+    elif status == "failed" and type(exit_code) is int and exit_code != 0 and type(failure_count) is int and failure_count >= 0:
+        passed = False
+        outcome = f"failed; exit_code={exit_code}; failure_count={failure_count}"
+    else:
+        # Refusal, skip, timeout, malformed and unknown outcomes are not a
+        # completed measurement and must not be converted into a pass/failure.
+        return None
+    # Do not persist the project-controlled command text in the evidence report:
+    # test scripts can include secrets or sensitive paths in their arguments.
+    return passed, f"auto-detected argv test receipt; {outcome} (event {result_seq})"
+
+
 def evaluate_tool_readback_criteria(
     criteria: Sequence[str],
     events: Sequence[Mapping[str, Any]],
@@ -249,16 +338,20 @@ def evaluate_run_acceptance_criteria(
 ) -> AcceptanceReport | None:
     """Dispatch supported run evidence checks without interpreting free-form prose.
 
-    Supported checks are exact-text file readback and the explicit form
-    ``File artifact at `/path` exists and is non-empty``. Every declared
-    criterion must match one supported form; unknown or ambiguous criteria
-    leave the complete report unverified.
+    Supported checks are exact-text file readback, explicit non-empty artifact
+    readback, and the exact criterion ``Auto-detected project test suite passes.``
+    The latter only accepts a correlated, successful `auto_test_and_repair`
+    call with no caller-supplied command. Unknown or ambiguous criteria leave
+    the complete report unverified.
     """
     if not criteria or not events:
         return None
     parsed: list[tuple[str, str, str]] = []
     for criterion in criteria:
         text = str(criterion)
+        if _AUTO_TEST_CRITERION.fullmatch(text):
+            parsed.append((text, "auto_test", ""))
+            continue
         expected = _criterion_expected_text(text)
         if expected is not None:
             parsed.append((text, "exact_text", expected))
@@ -277,11 +370,17 @@ def evaluate_run_acceptance_criteria(
                 return None
             met, evidence = measured
             evaluators.add("run_tool_readback")
-        else:
+        elif kind == "artifact":
             measured = _artifact_readback_result(expected, events)
             if measured is None:
                 return None
             met, evidence = measured
             evaluators.add("run_artifact_readback")
+        else:
+            measured = _auto_test_result(events)
+            if measured is None:
+                return None
+            met, evidence = measured
+            evaluators.add("run_auto_test")
         results.append(CriterionResult(criterion=criterion, verdict=CriterionVerdict.MET if met else CriterionVerdict.NOT_MET, evidence=evidence, evaluated_at=time.time()))
     return AcceptanceReport(criteria=results, evaluator="+".join(sorted(evaluators)))

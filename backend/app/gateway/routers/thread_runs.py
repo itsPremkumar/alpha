@@ -1275,11 +1275,12 @@ async def get_run_verification(thread_id: ThreadId, run_id: str, request: Reques
     """Return a measured acceptance projection for the run's declared criteria.
 
     Automatic verification is intentionally limited to evidence measured from
-    run-scoped tool events: exact-text file readback and an explicitly declared
-    non-empty artifact readback. General criteria stay unverified; neither a
-    successful run status nor the model's final prose is evidence. The first
-    complete measurement is persisted as a run event and reused on subsequent
-    reads; the source events remain the basis for that measurement.
+    run-scoped tool events: exact-text file readback, explicitly declared
+    non-empty artifact readback, and a successful auto-detected project test
+    suite receipt. General criteria stay unverified; neither a successful run
+    status nor the model's final prose is evidence. The first complete
+    measurement is persisted as a run event and reused on subsequent reads; the
+    source events remain the basis for that measurement.
     """
     run_manager = get_run_manager(request)
     user_id = await get_current_user(request)
@@ -1325,7 +1326,7 @@ async def get_run_verification(thread_id: ThreadId, run_id: str, request: Reques
     if report is None:
         result = {
             "status": "unverified",
-            "reason": "These criteria need evidence beyond the supported exact-text or explicit artifact file readback checks.",
+            "reason": "These criteria need evidence beyond the supported exact-text, explicit artifact readback, or auto-detected project test checks.",
             "report": None,
         }
     else:
