@@ -2542,9 +2542,13 @@ def test_start_run_session_caller_anti_forgery(_stub_app_config):
             record = await start_run(body, "thread-session-authz", request)
             await record.task
 
-        return captured_context
+        return record.user_id, captured_context
 
-    context = asyncio.run(_scenario())
+    run_owner_id, context = asyncio.run(_scenario())
+
+    # Run records must keep the same authenticated owner as the thread. This
+    # is required for owner-scoped project context in the background worker.
+    assert run_owner_id == "u1"
 
     # is_internal must be False (server-derived from auth_source="session")
     assert context["is_internal"] is False
@@ -2555,6 +2559,16 @@ def test_start_run_session_caller_anti_forgery(_stub_app_config):
     # Agent Server's reserved auth fields are never valid on the Gateway path.
     assert context.get("langgraph_auth_user") is None
     assert context.get("langgraph_auth_user_id") is None
+
+
+def test_run_owner_resolution_uses_server_principal_but_not_unowned_internal_identity():
+    from types import SimpleNamespace
+
+    from app.gateway.services import _resolve_run_owner_user_id
+
+    assert _resolve_run_owner_user_id(SimpleNamespace(state=SimpleNamespace(auth_source="session", user=SimpleNamespace(id="user-1")))) == "user-1"
+    assert _resolve_run_owner_user_id(SimpleNamespace(state=SimpleNamespace(auth_source="auth_disabled", user=SimpleNamespace(id="default")))) == "default"
+    assert _resolve_run_owner_user_id(SimpleNamespace(state=SimpleNamespace(auth_source=AUTH_SOURCE_INTERNAL, user=SimpleNamespace(id="default")))) is None
 
 
 def test_launch_scheduled_thread_run_marks_context_non_interactive(_stub_app_config):

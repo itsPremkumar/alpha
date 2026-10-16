@@ -101,6 +101,32 @@ def _format_apex_budget(value: int | None) -> str:
     return "unlimited" if value is None else f"{value:,}"
 
 
+def _resolve_run_owner_user_id(request: Request) -> str | None:
+    """Resolve the server-authenticated owner that the durable run belongs to.
+
+    Browser sessions, PATs and the explicitly local auth-disabled operator are
+    authenticated principals too. Persisting only the trusted internal
+    channel-owner override left their run rows ownerless, so project-scoped
+    worker context could not be loaded for an otherwise authorized thread.
+    Internal service calls remain ownerless unless they carry the validated
+    owner header; client request bodies are never consulted here.
+    """
+    owner_user_id = get_trusted_internal_owner_user_id(request)
+    if owner_user_id is not None:
+        return owner_user_id
+
+    state = getattr(request, "state", None)
+    if getattr(state, "auth_source", None) == AUTH_SOURCE_INTERNAL:
+        return None
+
+    user = getattr(state, "user", None)
+    raw_user_id = getattr(user, "id", None)
+    if raw_user_id is None:
+        return None
+    user_id = str(raw_user_id).strip()
+    return user_id or None
+
+
 @asynccontextmanager
 async def reserve_checkpoint_write(
     request: Request,
@@ -1753,7 +1779,7 @@ async def start_run(
                 detail=f"Model {model_name!r} is not in the configured model allowlist",
             )
 
-    owner_user_id = get_trusted_internal_owner_user_id(request)
+    owner_user_id = _resolve_run_owner_user_id(request)
     # Stateless run endpoints carry thread_id in the request *body*, so the
     # @require_permission(owner_check=True) decorator -- which resolves ownership
     # from the path param -- cannot protect them. Enforce thread ownership here,

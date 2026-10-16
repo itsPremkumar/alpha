@@ -75,6 +75,12 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
 - `RunManager` is the sole Gateway run-lifecycle owner; durable event streams,
   context trust, recovery, and run-acceptance behavior are owned by
   [`packages/harness/alpha/runtime/AGENTS.md`](packages/harness/alpha/runtime/AGENTS.md).
+- HTTP run ownership comes from the Gateway-stamped principal (`request.state.user`)
+  for sessions, PATs and the explicitly local auth-disabled operator. A trusted
+  internal adapter uses only its validated owner header; an internal service
+  principal without that header remains unowned. Persist this owner on the run
+  record so the background worker can perform the same owner-scoped project
+  lookup as the thread. Never derive it from request-body context.
 - APEX is a bounded control plane over that run path, not a second executor.
   Its executive contract and UI/API controls are documented in
   [`docs/APEX_AUTOPILOT.md`](../docs/APEX_AUTOPILOT.md) and
