@@ -214,6 +214,23 @@ Unsupported criteria remain unverified. Persistence and restart guarantees
 follow the configured run-event backend; the memory backend is process-local.
 This endpoint does not change run status.
 
+To deliberately scan the complete evidence stream again, use:
+
+```http
+POST /api/threads/{thread_id}/runs/{run_id}/verification/recheck
+```
+
+The run must have successful terminal status and declared criteria. Each call
+appends a `run.verification.attempt` event with a unique attempt id; it does not
+replace the original `run.verification` measurement. Both reads include up to
+the latest 100 history entries. `history_count` reports how many entries were
+scanned, and `history_complete` is false when the bounded 10,000-event scan
+could not reach the end. Concurrent
+calls can create separate attempts; the event history is append-only but does
+not promise cross-worker exactly-once behavior. The recheck uses the same
+supported evidence types and is not a reviewer judgment or an HTTP health
+probe.
+
 #### Resume Run from Checkpoint
 
 Automatic safe recovery handles model-only pending checkpoints. This endpoint

@@ -483,6 +483,7 @@ test("automatic readback verification maps its measured provenance for the inspe
         evaluator: "run_tool_readback",
         criteria: [{ criterion: 'Read the file back and verify it contains exactly "expected marker".', verdict: "met", evidence: "write_file and later read_file succeeded", evaluated: true, holds: true }],
       },
+      history: [{ attempt_id: "attempt-1", measured_at: "2026-10-16T10:00:00Z", status: "verified", reason: null }],
     },
   });
   const result = await inspector.fetchRunVerification("t-1", "r-1");
@@ -490,6 +491,28 @@ test("automatic readback verification maps its measured provenance for the inspe
   assert.equal(result.evaluator, "run_tool_readback");
   assert.equal(result.criteria?.[0]?.verdict, "met");
   assert.match(result.criteria?.[0]?.evidence ?? "", /read_file succeeded/);
+  assert.deepEqual(result.history, [{ attemptId: "attempt-1", measuredAt: "2026-10-16T10:00:00Z", status: "verified", reason: null }]);
+});
+
+test("an explicit acceptance recheck uses the POST endpoint and returns append-only history", async () => {
+  const calls = route({
+    "/runs/r-1/verification/recheck": {
+      status: "verified",
+      reason: null,
+      report: null,
+      attempt_id: "attempt-2",
+      measured_at: "2026-10-16T10:02:00Z",
+      history: [
+        { attempt_id: null, measured_at: "2026-10-16T10:00:00Z", status: "unverified", reason: "Initial" },
+        { attempt_id: "attempt-2", measured_at: "2026-10-16T10:02:00Z", status: "verified", reason: null },
+      ],
+    },
+  });
+  const result = await inspector.recheckRunVerification("t-1", "r-1");
+  assert.equal(result.status, "verified");
+  assert.deepEqual(calls, ["POST /threads/t-1/runs/r-1/verification/recheck"]);
+  assert.equal(result.history.length, 2);
+  assert.equal(result.history[1].attemptId, "attempt-2");
 });
 
 test("a failed run keeps its own error, stop reason and real zero token counts", async () => {
@@ -1187,12 +1210,16 @@ test("the run inspector displays measured acceptance and evidence", () => {
       reason: null,
       evaluator: "run_tool_readback",
       criteria: [{ criterion: "Read the file back", verdict: "met", evidence: "read_file returned the exact written text", evaluated: true, holds: true }],
+      history: [{ attemptId: "attempt-visible", measuredAt: "2026-10-16T10:00:00Z", status: "verified", reason: "evidence measured" }],
     },
   });
   assert.match(markup, /Acceptance verification/);
   assert.match(markup, />verified</);
   assert.match(markup, /read_file returned the exact written text/);
   assert.match(markup, /run success alone is not acceptance evidence/);
+  assert.match(markup, /Recheck evidence/);
+  assert.match(markup, /Measurement history/);
+  assert.match(markup, /evidence measured/);
 });
 
 /* ══ 11. The whole view, on a real run ══════════════════════════════════════ */

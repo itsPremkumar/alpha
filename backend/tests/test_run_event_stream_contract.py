@@ -723,6 +723,33 @@ async def _proof_run_verification(_tmp_path: Path) -> dict:
     return (await store.list_events("thread-verification", "run-verification", event_types=["run.verification"]))[0]
 
 
+async def _proof_run_verification_attempt(_tmp_path: Path) -> dict:
+    from _router_auth_helpers import make_authed_test_app
+    from fastapi.testclient import TestClient
+
+    from alpha.runtime.runs.manager import RunManager
+    from alpha.runtime.runs.schemas import RunStatus
+    from alpha.runtime.runs.store.memory import MemoryRunStore
+    from app.gateway.routers import thread_runs
+
+    store = MemoryRunEventStore()
+    manager = RunManager(store=MemoryRunStore(), event_store=store)
+    run = await manager.create(
+        thread_id="thread-verification-attempt",
+        user_id="verification-owner",
+        metadata={"acceptance_criteria": [{"id": "unsupported", "description": "The implementation is production ready."}]},
+    )
+    await manager.set_status(run.run_id, RunStatus.success)
+    app = make_authed_test_app()
+    app.include_router(thread_runs.router)
+    app.state.run_manager = manager
+    app.state.run_event_store = store
+    with TestClient(app) as client:
+        response = client.post(f"/api/threads/{run.thread_id}/runs/{run.run_id}/verification/recheck")
+    assert response.status_code == 200, response.text
+    return (await store.list_events(run.thread_id, run.run_id, event_types=["run.verification.attempt"]))[0]
+
+
 async def _proof_llm_human_input(_tmp_path: Path) -> dict:
     journal, store = _new_journal()
     journal.on_chat_model_start({}, [[HumanMessage(content="question", id="human-1")]], run_id=uuid4(), tags=["lead_agent"])
@@ -808,6 +835,7 @@ _EMITTER_PROOFS: dict[str, Any] = {
     "run.end": _proof_run_end,
     "run.error": _proof_run_error,
     "run.verification": _proof_run_verification,
+    "run.verification.attempt": _proof_run_verification_attempt,
     "llm.human.input": _proof_llm_human_input,
     "llm.ai.response": _proof_llm_ai_response,
     "llm.tool.result": _proof_llm_tool_result,

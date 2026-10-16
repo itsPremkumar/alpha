@@ -33,7 +33,7 @@ from alpha.authz.sandbox_authz import safe_app_config_async
 from alpha.config.paths import get_paths, make_safe_user_id
 from alpha.persistence.network_waits.model import OPEN_NETWORK_WAIT_STATES
 from alpha.runtime import CancelOutcome, ConflictError, RunRecord, RunStatus, ThreadOperationKind, serialize_channel_values_for_api
-from alpha.runtime.events.catalog import RUN_VERIFICATION_EVENT
+from alpha.runtime.events.catalog import RUN_VERIFICATION_ATTEMPT_EVENT, RUN_VERIFICATION_EVENT
 from alpha.runtime.runs.store.base import format_run_cursor_created_at, normalize_run_created_at_iso
 from alpha.runtime.secret_context import redact_config_secrets, redact_metadata_secrets
 from alpha.runtime.user_context import get_effective_user_id
@@ -1310,7 +1310,8 @@ async def get_run_verification(thread_id: ThreadId, run_id: str, request: Reques
         logger.exception("Could not read persisted verification result for run %s", sanitize_log_param(run_id))
         return {"status": "unverified", "reason": "The persisted verification result could not be read.", "report": None}
     if stored is not None:
-        return stored
+        history, history_complete, history_count = await _run_verification_history(event_store, thread_id=str(thread_id), run_id=run_id)
+        return {**stored, "history": history, "history_complete": history_complete, "history_count": history_count}
 
     events = await _complete_verification_event_scan(
         event_store,
@@ -1336,10 +1337,135 @@ async def get_run_verification(thread_id: ThreadId, run_id: str, request: Reques
             "report": report.to_dict(),
         }
     try:
-        return await _persist_run_verification_result(event_store, thread_id=str(thread_id), run_id=run_id, result=result, criteria_digest=criteria_digest)
+        persisted = await _persist_run_verification_result(event_store, thread_id=str(thread_id), run_id=run_id, result=result, criteria_digest=criteria_digest)
+        history, history_complete, history_count = await _run_verification_history(event_store, thread_id=str(thread_id), run_id=run_id)
+        return {**persisted, "history": history, "history_complete": history_complete, "history_count": history_count}
     except Exception:
         logger.exception("Could not persist verification result for run %s", sanitize_log_param(run_id))
         return {"status": "unverified", "reason": "The measured verification result could not be persisted.", "report": None}
+
+
+@router.post("/{thread_id}/runs/{run_id}/verification/recheck")
+@require_permission("runs", "read", owner_check=True)
+async def recheck_run_verification(thread_id: ThreadId, run_id: str, request: Request) -> dict[str, Any]:
+    """Measure acceptance again and append a separate, auditable result.
+
+    Unlike the cached GET projection, this deliberate action always scans the
+    complete run evidence stream and appends a new attempt. It never replaces
+    the original measurement. The event store is authoritative; concurrent
+    requests may produce separate attempts and are not described as exactly-once.
+    """
+    run_manager = get_run_manager(request)
+    user_id = await get_current_user(request)
+    record = await run_manager.get(run_id, user_id=user_id)
+    if record is None or record.thread_id != thread_id:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    if record.status in {RunStatus.pending, RunStatus.running}:
+        raise HTTPException(status_code=409, detail="Acceptance can be rechecked only after the run is terminal.")
+    if record.status is not RunStatus.success:
+        raise HTTPException(status_code=409, detail="Acceptance cannot be verified for a run without successful terminal status.")
+
+    criteria = (record.metadata or {}).get("acceptance_criteria")
+    if not isinstance(criteria, list) or not criteria:
+        raise HTTPException(status_code=409, detail="This run has no acceptance criteria to recheck.")
+    descriptions = [item.get("description") for item in criteria if isinstance(item, Mapping)]
+    if len(descriptions) != len(criteria) or not all(isinstance(item, str) and item.strip() for item in descriptions):
+        raise HTTPException(status_code=409, detail="Stored acceptance criteria are unreadable.")
+    criteria_digest = _acceptance_criteria_digest(criteria)
+    if criteria_digest is None:
+        raise HTTPException(status_code=409, detail="Stored acceptance criteria cannot be fingerprinted safely.")
+
+    event_store = get_run_event_store(request)
+    events = await _complete_verification_event_scan(event_store, thread_id=str(thread_id), run_id=run_id)
+    if events is None:
+        raise HTTPException(status_code=503, detail="The complete run event stream could not be read; partial events cannot verify work.")
+    from alpha.apex.auto_acceptance import evaluate_run_acceptance_criteria
+
+    report = evaluate_run_acceptance_criteria(descriptions, events)
+    if report is None:
+        result = {
+            "status": "unverified",
+            "reason": "These criteria need evidence beyond the supported exact-text, explicit artifact readback, or auto-detected project test checks.",
+            "report": None,
+        }
+    else:
+        result = {"status": "verified" if report.passed else "failed", "reason": report.refusal_reason(), "report": report.to_dict()}
+    attempt_id = str(uuid.uuid4())
+    metadata = {
+        **result,
+        "attempt_id": attempt_id,
+        "criteria_sha256": criteria_digest,
+        "evaluator_version": "exact_text_file_readback.v1",
+    }
+    try:
+        event = await event_store.put(
+            thread_id=str(thread_id),
+            run_id=run_id,
+            event_type=RUN_VERIFICATION_ATTEMPT_EVENT.event_type,
+            category=RUN_VERIFICATION_ATTEMPT_EVENT.category,
+            content="",
+            metadata=metadata,
+        )
+        history, history_complete, history_count = await _run_verification_history(event_store, thread_id=str(thread_id), run_id=run_id)
+        return {
+            **result,
+            "attempt_id": attempt_id,
+            "measured_at": event.get("created_at"),
+            "history": history,
+            "history_complete": history_complete,
+            "history_count": history_count,
+        }
+    except Exception:
+        logger.exception("Could not persist verification recheck for run %s", sanitize_log_param(run_id))
+        raise HTTPException(status_code=503, detail="The measured verification attempt could not be persisted.") from None
+
+
+async def _run_verification_history(event_store: Any, *, thread_id: str, run_id: str) -> tuple[list[dict[str, Any]], bool, int]:
+    rows: list[dict[str, Any]] = []
+    cursor = 0
+    complete = False
+    for _ in range(20):
+        try:
+            page = await event_store.list_events(
+                thread_id,
+                run_id,
+                event_types=[RUN_VERIFICATION_EVENT.event_type, RUN_VERIFICATION_ATTEMPT_EVENT.event_type],
+                limit=500,
+                after_seq=cursor,
+            )
+        except Exception:
+            logger.exception("Could not read verification history for run %s", sanitize_log_param(run_id))
+            return [], False, len(rows)
+        if not page:
+            complete = True
+            break
+        previous = cursor
+        for event in page:
+            seq = event.get("seq") if isinstance(event, Mapping) else None
+            if not isinstance(seq, int) or isinstance(seq, bool) or seq <= previous:
+                return [], False, len(rows)
+            previous = seq
+            rows.append(event)
+        cursor = previous
+        if len(page) < 500:
+            complete = True
+            break
+    history: list[dict[str, Any]] = []
+    for event in rows[-100:]:
+        if not isinstance(event, Mapping):
+            continue
+        metadata = event.get("metadata")
+        if not isinstance(metadata, Mapping) or metadata.get("status") not in {"verified", "failed", "unverified"}:
+            continue
+        history.append(
+            {
+                "attempt_id": metadata.get("attempt_id") if isinstance(metadata.get("attempt_id"), str) else None,
+                "measured_at": event.get("created_at") if isinstance(event.get("created_at"), str) else None,
+                "status": metadata["status"],
+                "reason": metadata.get("reason") if isinstance(metadata.get("reason"), str) else None,
+            }
+        )
+    return history, complete, len(rows)
 
 
 def _decode_run_verification_event(event: object) -> dict[str, Any] | None:

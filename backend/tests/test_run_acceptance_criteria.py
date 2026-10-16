@@ -525,6 +525,72 @@ def test_verification_is_owner_scoped_and_thread_scoped() -> None:
     with TestClient(app) as client:
         other_thread = client.get(f"/api/threads/some-other-thread/runs/{run_id}/verification")
         missing_run = client.get(f"/api/threads/{THREAD}/runs/does-not-exist/verification")
+        other_thread_recheck = client.post(f"/api/threads/some-other-thread/runs/{run_id}/verification/recheck")
+        missing_run_recheck = client.post(f"/api/threads/{THREAD}/runs/does-not-exist/verification/recheck")
 
     assert other_thread.status_code == 404
     assert missing_run.status_code == 404
+    assert other_thread_recheck.status_code == 404
+    assert missing_run_recheck.status_code == 404
+
+
+def test_explicit_recheck_appends_history_without_overwriting_initial_measurement() -> None:
+    event_store = MemoryRunEventStore()
+    run_manager, _run_store, run_id = _create_run_with_criteria(_criteria(READBACK_CRITERION), event_store)
+    _seed_readback_evidence(event_store, run_id)
+    app = _make_app(run_manager, event_store)
+
+    initial = _verification(app, run_id)
+    with TestClient(app) as client:
+        response = client.post(f"/api/threads/{THREAD}/runs/{run_id}/verification/recheck")
+    assert response.status_code == 200
+    rechecked = response.json()
+
+    assert initial["status"] == rechecked["status"] == "verified"
+    assert len(rechecked["history"]) == 2
+    assert rechecked["history"][0]["attempt_id"] is None
+    assert rechecked["history"][1]["attempt_id"] == rechecked["attempt_id"]
+    assert rechecked["history"][1]["status"] == "verified"
+    stored = asyncio.run(event_store.list_events(THREAD, run_id, event_types=["run.verification"], limit=10))
+    attempts = asyncio.run(event_store.list_events(THREAD, run_id, event_types=["run.verification.attempt"], limit=10))
+    assert len(stored) == 1
+    assert len(attempts) == 1
+    assert stored[0]["metadata"]["status"] == "verified"
+
+
+def test_explicit_recheck_refuses_active_run() -> None:
+    event_store = MemoryRunEventStore()
+    run_manager, _run_store, run_id = _create_run_with_criteria(_criteria(READBACK_CRITERION), event_store)
+    asyncio.run(run_manager.set_status(run_id, RunStatus.running))
+    app = _make_app(run_manager, event_store)
+
+    with TestClient(app) as client:
+        response = client.post(f"/api/threads/{THREAD}/runs/{run_id}/verification/recheck")
+
+    assert response.status_code == 409
+    assert "terminal" in response.json()["detail"]
+
+
+def test_verification_history_returns_latest_100_and_discloses_full_count() -> None:
+    from app.gateway.routers.thread_runs import _run_verification_history
+
+    event_store = MemoryRunEventStore()
+
+    async def _write_attempts() -> None:
+        for index in range(105):
+            await event_store.put(
+                thread_id=THREAD,
+                run_id="history-run",
+                event_type="run.verification.attempt",
+                category="verification",
+                metadata={"attempt_id": f"attempt-{index}", "status": "verified"},
+            )
+
+    asyncio.run(_write_attempts())
+    history, complete, count = asyncio.run(_run_verification_history(event_store, thread_id=THREAD, run_id="history-run"))
+
+    assert complete is True
+    assert count == 105
+    assert len(history) == 100
+    assert history[0]["attempt_id"] == "attempt-5"
+    assert history[-1]["attempt_id"] == "attempt-104"

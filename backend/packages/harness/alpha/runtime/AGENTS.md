@@ -83,8 +83,9 @@ evaluator receipt.
 ### Acceptance verification result event
 
 `runs/verification.py` is the deterministic overlay and
-`GET /api/threads/{thread_id}/runs/{run_id}/verification` its only reader;
-neither decides a lifecycle — `RunManager` still does. Never equate a terminal
+`GET /api/threads/{thread_id}/runs/{run_id}/verification` its cached projection;
+the owner-scoped recheck route deliberately measures again. Neither route
+decides a lifecycle — `RunManager` still does. Never equate a terminal
 run status with verified acceptance: `success` with criteria and no evidence, and
 `error` either way, return `unverified`. The auto-verifier supports explicit
 exact-text file readback plus `File artifact at "/path" exists and is non-empty`.
@@ -94,10 +95,15 @@ reports an empty file as `NOT_MET`, and leaves absent, stale, ambiguous, or
 oversized readback unverified. It returns `unverified` when *any* criterion is
 outside the supported typed forms rather than a partial pass. The first complete measurement is
 persisted as a singleton `run.verification` event keyed by a SHA-256 of the
-stored criteria, so later reads replay it and changed criteria re-measure. No
+stored criteria, so later reads replay it and changed criteria re-measure. A
+deliberate `POST .../verification/recheck` performs a fresh complete scan and
+appends `run.verification.attempt`; it never overwrites the initial result. The
+inspector shows the recorded history. This append-only trail is not an exactly-once
+guarantee across workers. No
 criteria is `not_requested`, not a pass; the 32-criterion ceiling is refused, not
 truncated. Tests: `tests/test_run_acceptance_criteria.py`,
-`tests/test_apex_auto_acceptance.py`, `tests/test_run_usage_endpoint.py`.
+`tests/test_apex_auto_acceptance.py`, `tests/test_run_usage_endpoint.py`,
+`tests/test_run_event_stream_contract.py`.
 
 ### Safe Run Auto-Recovery
 

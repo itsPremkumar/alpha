@@ -525,7 +525,7 @@ def main() -> int:
         stages.append(
             _run_process_stage(
                 "pytest-collect",
-                [python, "-m", "pytest", "--collect-only", "-q", "tests/"],
+                [python, "-m", "pytest", "--collect-only", "-q", "tests/", "packages/"],
                 cwd=REPO_ROOT / "backend",
                 reports_dir=reports_dir,
                 environment=environment,
@@ -555,6 +555,7 @@ def main() -> int:
                     "not live",
                     "--ignore=tests/blocking_io",
                     "tests/",
+                    "packages/",
                     "-q",
                     "--tb=short",
                     f"--junitxml={junit}",

@@ -59,6 +59,7 @@ RUN_START_EVENT = RunEventDefinition("run.start", "trace")
 RUN_END_EVENT = RunEventDefinition("run.end", "outputs")
 RUN_ERROR_EVENT = RunEventDefinition("run.error", "error")
 RUN_VERIFICATION_EVENT = RunEventDefinition("run.verification", "verification")
+RUN_VERIFICATION_ATTEMPT_EVENT = RunEventDefinition("run.verification.attempt", "verification")
 LLM_HUMAN_INPUT_EVENT = RunEventDefinition("llm.human.input", "message")
 LLM_AI_RESPONSE_EVENT = RunEventDefinition("llm.ai.response", "message")
 LLM_TOOL_RESULT_EVENT = RunEventDefinition("llm.tool.result", "message")
@@ -110,7 +111,7 @@ SUBAGENT_RUN_EVENT_DEFINITIONS = (
 )
 
 WORKSPACE_RUN_EVENT_DEFINITIONS = (WORKSPACE_CHANGES_EVENT,)
-VERIFICATION_RUN_EVENT_DEFINITIONS = (RUN_VERIFICATION_EVENT,)
+VERIFICATION_RUN_EVENT_DEFINITIONS = (RUN_VERIFICATION_EVENT, RUN_VERIFICATION_ATTEMPT_EVENT)
 
 FIXED_RUN_EVENT_DEFINITIONS = (
     *JOURNAL_RUN_EVENT_DEFINITIONS,

@@ -57,7 +57,7 @@
  *    carries the `run_id` that made it.
  */
 
-import { get } from "./http";
+import { get, send } from "./http";
 import { fetchRunEventsPage, type RunEvent, type RunEventSeverity, runEventSeverity } from "./runs";
 import { honestToolStatus } from "./sse-reducer";
 import type { ToolCallStatus } from "../types/chat";
@@ -119,6 +119,9 @@ export interface RunVerification {
   reason: string | null;
   evaluator: string | null;
   criteria: RunVerificationCriterion[] | null;
+  history: { attemptId: string | null; measuredAt: string | null; status: string | null; reason: string | null }[];
+  historyComplete: boolean | null;
+  historyCount: number | null;
 }
 
 export function toRunVerification(raw: unknown): RunVerification {
@@ -141,12 +144,26 @@ export function toRunVerification(raw: unknown): RunVerification {
     reason: text(body.reason),
     evaluator: str(report?.evaluator),
     criteria,
+    history: Array.isArray(body.history)
+      ? body.history.flatMap((item) => {
+          const entry = rec(item);
+          return entry ? [{ attemptId: str(entry.attempt_id), measuredAt: str(entry.measured_at), status: str(entry.status), reason: text(entry.reason) }] : [];
+        })
+      : [],
+    historyComplete: flag(body.history_complete),
+    historyCount: count(body.history_count),
   };
 }
 
 /** `GET /threads/{id}/runs/{rid}/verification` — measured acceptance only. */
 export async function fetchRunVerification(threadId: string, runId: string): Promise<RunVerification> {
   const d = await get<unknown>(`/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/verification`);
+  return toRunVerification(d);
+}
+
+/** Explicitly measures the run evidence again; each deliberate call is appended to history. */
+export async function recheckRunVerification(threadId: string, runId: string): Promise<RunVerification> {
+  const d = await send<unknown>(`/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/verification/recheck`, "POST", {});
   return toRunVerification(d);
 }
 

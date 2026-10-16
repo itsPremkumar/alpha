@@ -30,6 +30,7 @@ import {
   fetchOlderRuns,
   fetchRunRecord,
   fetchRunVerification,
+  recheckRunVerification,
   fetchRunTimeline,
   fetchRunTranscript,
   fetchThreadDelegations,
@@ -1310,14 +1311,34 @@ function RunLinkControl(props: {
 
 /* ── the view (pure) ──────────────────────────────────────────────────────── */
 
-function RunVerificationPanel(props: { verification: RunVerification | null; error: string | null }) {
+function RunVerificationPanel(props: { verification: RunVerification | null; error: string | null; canRecheck: boolean; onRecheck: () => Promise<void> }) {
+  const [rechecking, setRechecking] = useState(false);
+  const [recheckError, setRecheckError] = useState<string | null>(null);
+  const recheckingRef = useRef(false);
   const verification = props.verification;
   const tone: Tone = verification?.status === "verified" ? "green" : verification?.status === "failed" ? "red" : "amber";
+  const recheck = async () => {
+    if (recheckingRef.current) return;
+    recheckingRef.current = true;
+    setRechecking(true);
+    setRecheckError(null);
+    try {
+      await props.onRecheck();
+    } catch (error) {
+      setRecheckError(errMsg(error));
+    } finally {
+      recheckingRef.current = false;
+      setRechecking(false);
+    }
+  };
   return (
     <section aria-label="Acceptance verification" className="rounded-2xl border border-border/60 bg-card p-4">
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-sm font-semibold">Acceptance verification</h4>
-        {verification?.status ? <Badge tone={tone}>{verification.status}</Badge> : null}
+        <div className="flex items-center gap-2">
+          {verification?.status ? <Badge tone={tone}>{verification.status}</Badge> : null}
+          {props.canRecheck ? <Btn variant="ghost" onClick={() => void recheck()} disabled={rechecking}><RefreshCw className={`size-3.5 ${rechecking ? "animate-spin" : ""}`} />{rechecking ? "Rechecking…" : "Recheck evidence"}</Btn> : null}
+        </div>
       </div>
       {props.error ? (
         <p className="mt-2 text-xs text-red-600 dark:text-red-400">Verification could not be read: {props.error}</p>
@@ -1339,6 +1360,23 @@ function RunVerificationPanel(props: { verification: RunVerification | null; err
                 </li>
               ))}
             </ul>
+          ) : null}
+          {recheckError ? <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">Recheck failed: {recheckError}</p> : null}
+          {verification.history.length > 0 ? (
+            <div className="mt-3 border-t border-border/50 pt-3">
+              <p className="text-[11px] font-medium text-muted-foreground">
+                Measurement history · {verification.historyComplete === false ? `latest ${verification.history.length} of at least ${verification.historyCount ?? verification.history.length}` : verification.historyCount ?? verification.history.length}
+              </p>
+              <ol className="mt-2 space-y-1.5">
+                {verification.history.map((attempt, index) => (
+                  <li key={attempt.attemptId ?? `initial-${index}`} className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+                    <span className="font-medium">{attempt.status ?? "unreported"}</span>
+                    <span>{attempt.measuredAt ? absoluteStamp(attempt.measuredAt) : index === 0 ? "Initial measurement" : "Time not reported"}</span>
+                    {attempt.reason ? <span className="break-words">· {attempt.reason}</span> : null}
+                  </li>
+                ))}
+              </ol>
+            </div>
           ) : null}
         </>
       )}
@@ -1399,6 +1437,7 @@ export function RunInspectorView(props: {
   onQueryChange: (query: string) => void;
   onCopyLink: () => void;
   onLoadOlder: () => void;
+  onRecheckVerification: () => Promise<void>;
   /** False when the oldest loaded run carries no cursor to page from. */
   canLoadOlder: boolean;
 }) {
@@ -1507,7 +1546,12 @@ export function RunInspectorView(props: {
               serving={serving}
               failure={failure}
             />
-            <RunVerificationPanel verification={state.verification} error={state.errors.verification ?? null} />
+            <RunVerificationPanel
+              verification={state.verification}
+              error={state.errors.verification ?? null}
+              canRecheck={isTerminalSuccess(state.record.status)}
+              onRecheck={props.onRecheckVerification}
+            />
             <ConversationPanel record={state.record} transcript={state.transcript} error={state.errors.transcript ?? null} />
             <ToolCallsPanel calls={calls.calls} unattributedCount={calls.unattributedCount} error={state.errors.transcript ?? null} />
             <DelegationPanel
@@ -1772,6 +1816,14 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
 
   const onReload = useCallback(() => setReloadKey((key) => key + 1), []);
 
+  const onRecheckVerification = useCallback(async () => {
+    const threadId = props.threadId;
+    const runId = state.selectedRunId;
+    if (!threadId || !runId) return;
+    const verification = await recheckRunVerification(threadId, runId);
+    setState((prev) => ({ ...prev, verification, errors: { ...prev.errors, verification: undefined } }));
+  }, [props.threadId, state.selectedRunId]);
+
   /**
    * The keyset cursor for the next, older page.
    *
@@ -1854,6 +1906,7 @@ export function RunInspectorSection(props: { threadId: string | null; runId?: st
         onReload={onReload}
         onQueryChange={onQueryChange}
         onCopyLink={onCopyLink}
+        onRecheckVerification={onRecheckVerification}
       onLoadOlder={onLoadOlder}
       canLoadOlder={olderCursor !== null}
     />

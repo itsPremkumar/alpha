@@ -589,7 +589,9 @@ exactly-once execution.
   `Auto-detected project test suite passes.` only when a correlated
   `auto_test_and_repair` result reports an auto-detected argv command with exit
   code 0 and zero failures. Other criterion types remain unverified; see
-  [the verification API](docs/API.md#read-run-acceptance-verification).
+  [the verification API](docs/API.md#read-run-acceptance-verification). The
+  Run Inspector can explicitly recheck a successful run and show append-only
+  measurement history; rechecking does not broaden the supported evidence types.
 - **Ralph loop** — test-driven iterative self-healing until the suite passes and
   architectural invariants hold.
 - **Boulder checkpointing & safe durable replay** — multi-session snapshots;

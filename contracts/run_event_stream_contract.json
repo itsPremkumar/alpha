@@ -138,6 +138,25 @@
       }
     },
     {
+      "event_type": "run.verification.attempt",
+      "category": "verification",
+      "producer": "gateway.routers.thread_runs.recheck_run_verification() after a complete terminal-run evidence scan",
+      "content_schema": {"type": "string", "const": ""},
+      "metadata_schema": {
+        "type": "object",
+        "required": ["status", "reason", "report", "attempt_id", "criteria_sha256", "evaluator_version"],
+        "properties": {
+          "status": {"enum": ["verified", "failed", "unverified"]},
+          "reason": {"type": ["string", "null"]},
+          "report": {"type": ["object", "null"]},
+          "attempt_id": {"type": "string", "format": "uuid"},
+          "criteria_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "evaluator_version": {"const": "exact_text_file_readback.v1"}
+        },
+        "additionalProperties": true
+      }
+    },
+    {
       "event_type": "llm.human.input",
       "category": "message",
       "producer": "RunJournal.on_chat_model_start() for the first persisted lead-agent HumanMessage",
