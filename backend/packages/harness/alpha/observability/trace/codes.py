@@ -192,6 +192,7 @@ _DEFINITIONS: Final[tuple[EventTypeDef, ...]] = (
         notes="model_config_sha256 is a hash of the resolved model config, not of a secret; git_sha256 is 'unknown' outside a checkout and says so.",
     ),
     _e("env.run.closed", TraceLayer.ENVELOPE, "Run envelope closed with a terminal status.", TraceSeverity.INFO, "outcome"),
+    _e("run.verification", TraceLayer.ENVELOPE, "Acceptance criteria verification result persisted for a completed run.", TraceSeverity.INFO, "status"),
     # -- layer 1: node / graph transition ------------------------------------
     _e("node.transition", TraceLayer.NODE, "Graph node transition with the state delta either side and the chosen next node with its reason.", TraceSeverity.INFO, "from_node", "to_node", "reason"),
     # -- layer 2: model call ---------------------------------------------------
@@ -494,6 +495,7 @@ DURABLE_EVENT_TYPE_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
     {
         "run.start": "env.run.opened",
         "run.end": "env.run.closed",
+        "run.verification": "run.verification",
         "run.error": "err.raised",
         "llm.error": "model.call.failed",
         "llm.ai.response": "model.call.completed",

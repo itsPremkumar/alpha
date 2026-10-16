@@ -37,6 +37,7 @@ def _extract_shell_function(name: str) -> str:
 # WindowsApps alias (exit 127 = cannot exec).
 _SCRIPT_TEMPLATE = r"""
 set -u
+REPO_ROOT=/nonexistent
 BIN=__BIN__
 mkdir -p "$BIN"
 for name in __STUBS__; do

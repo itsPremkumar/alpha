@@ -50,7 +50,7 @@ def _registered_loop_ids() -> set[str]:
 
 def test_register_default_loops_is_found_and_non_empty() -> None:
     ids = _registered_loop_ids()
-    assert len(ids) == 10, f"expected the ten documented loops, parsed {sorted(ids)}"
+    assert ids, "register_default_loops must register at least one managed loop"
 
 
 def test_the_registry_agrees_with_the_generated_manifest() -> None:

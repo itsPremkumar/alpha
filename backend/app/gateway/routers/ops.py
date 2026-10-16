@@ -78,7 +78,7 @@ def _resolve_gateway_version() -> str:
     version (kept in lockstep by scripts/bump_version.sh); the legacy names
     remain as fallbacks for older installs.
     """
-    for name in ("alpha-harness", "alpha", "alpha"):
+    for name in ("alpha-harness", "alpha"):
         try:
             return metadata.version(name)
         except metadata.PackageNotFoundError:
@@ -90,7 +90,7 @@ class VersionResponse(BaseModel):
     """Deployed Gateway build identity."""
 
     service: str = Field(..., description="Gateway service name")
-    version: str = Field(..., description='Installed alpha-harness version (legacy alpha/alpha fallback), or "unknown" without package metadata')
+    version: str = Field(..., description='Installed alpha-harness version (legacy alpha fallback), or "unknown" without package metadata')
 
 
 class StatusResponse(BaseModel):

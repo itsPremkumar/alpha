@@ -216,7 +216,7 @@ def _http_server(env_repo: dict, *, ready_status: int):
 class TestStartPs1LeavesNoStaleStatus:
     @pytest.fixture
     def isolated_repo(self, tmp_path: Path) -> Path:
-        """A checkout containing only the launcher.
+        """A minimal checkout containing the launcher and its bootstrap helper.
 
         ``start.ps1`` derives its root from ``$PSScriptRoot``, so a bare copy
         makes it operate entirely inside the temp dir: it resolves the real
@@ -226,7 +226,9 @@ class TestStartPs1LeavesNoStaleStatus:
         """
         root = tmp_path / "checkout"
         (root / "logs").mkdir(parents=True)
+        (root / "scripts").mkdir()
         shutil.copy2(START_PS1, root / "start.ps1")
+        shutil.copy2(REPO_ROOT / "scripts" / "toolchain.ps1", root / "scripts" / "toolchain.ps1")
         return root
 
     def _run(self, root: Path, *args: str, timeout: int = 240) -> subprocess.CompletedProcess[str]:
@@ -382,7 +384,7 @@ class TestStartPs1LeavesNoStaleStatus:
         for field in (
             'phase              = "boot_wait"',
             "attempt            = $i",
-            "elapsed_seconds    = [int]($i * 2)",
+            "elapsed_seconds    = $elapsedSeconds",
             "gateway_ready      = [bool]$gatewayReady",
             "frontend_ready     = [bool]$frontendReady",
             "gateway_last_error = $script:LastGatewayProbeError",
@@ -640,6 +642,10 @@ class TestStartSh:
         record = _assert_not_a_lie(unix_repo["root"] / "logs", expect_status_terminal=True)
         assert record["status"] != "starting"
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="Git Bash under Windows pipes does not deliver POSIX SIGTERM/CTRL_BREAK as a shell trap",
+    )
     def test_sigterm_during_the_wait_clears_the_state_files(self, unix_repo: dict) -> None:
         """Clean shutdown: no lease, no pid file, no status file left claiming."""
         root: Path = unix_repo["root"]

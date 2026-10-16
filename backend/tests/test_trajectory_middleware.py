@@ -215,6 +215,15 @@ class TestTrajectoryRecorderMiddleware:
 
         assert len(json.dumps(_bounded_tool_input({"payload": "x" * 100_000})).encode("utf-8")) <= 8_192
 
+    def test_nonserializable_tool_input_is_disclosed_in_debug_log(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.DEBUG, logger="alpha.agents.middlewares.trajectory_middleware"):
+            projected = _bounded_tool_input({"large_integer": 10**5_000})
+
+        assert projected["_omitted"].startswith("tool arguments exceeded")
+        assert "serialization failed" in caplog.text
+
     def test_lead_builder_wires_the_initialized_trajectory_store(self, monkeypatch, mock_store):
         from alpha.agents.middlewares import tool_error_handling_middleware as builder
 

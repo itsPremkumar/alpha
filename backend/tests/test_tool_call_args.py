@@ -288,7 +288,7 @@ class TestProviderSerializers:
     def test_anthropic_native_tool_use_payload_uses_rewritten_input(self):
         from langchain_anthropic.chat_models import _format_messages
 
-        _system, formatted = _format_messages([rewrite_tool_call_args(_full_surface_message(), {"call-1": NEW_ARGS})])
+        _system, formatted = _format_messages([rewrite_tool_call_args(_full_surface_message(), {"call-1": NEW_ARGS})], model="claude-test")
 
         tool_use = [block for block in formatted[0]["content"] if block["type"] == "tool_use"]
         assert len(tool_use) == 1
@@ -304,7 +304,7 @@ class TestProviderSerializers:
         tcs = [{"type": "tool_call", "name": tc["name"], "args": tc["args"], "id": tc.get("id")} for tc in rewritten.tool_calls]
         translated = rewritten.model_copy(update={"content": _convert_from_v1_to_anthropic(rewritten.content, tcs, "anthropic")})
 
-        _system, formatted = _format_messages([translated])
+        _system, formatted = _format_messages([translated], model="claude-test")
 
         tool_use = [block for block in formatted[0]["content"] if block["type"] == "tool_use"]
         assert len(tool_use) == 1

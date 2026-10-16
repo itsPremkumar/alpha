@@ -319,6 +319,10 @@ def test_service_wiring_injects_persistent_store_path(tmp_path, monkeypatch):
     assert captured_config["seen_event_store_path"] == expected
     # An explicitly configured path must win over the default wiring.
     captured_config.clear()
+    # Starting the same channel name twice on one live service is deliberately
+    # rejected: it could replace an instance whose cleanup did not finish. Use
+    # a fresh service to verify the explicit-path case independently.
+    service = ChannelService(channels_config={})
     asyncio.run(service._start_channel("buzz", {"relay_url": "wss://x", "private_key": SK3_HEX, "seen_event_store_path": "/custom/seen.json"}))
     assert captured_config["seen_event_store_path"] == "/custom/seen.json"
 

@@ -76,6 +76,15 @@ def test_a_created_notification_is_listed_newest_first(tmp_path) -> None:
     assert store.unread_count("operator") == 2
 
 
+def test_equal_timestamps_still_list_newest_notification_first(tmp_path) -> None:
+    store = _store(tmp_path)
+    created_at = "2026-10-16T00:00:00+00:00"
+    for index in range(3):
+        store.create(_notification(title=f"n{index}", created_at=created_at))
+
+    assert [note.title for note in store.list("operator")] == ["n2", "n1", "n0"]
+
+
 def test_marking_read_is_idempotent_and_stamps_when(tmp_path) -> None:
     store = _store(tmp_path)
     note = store.create(_notification())

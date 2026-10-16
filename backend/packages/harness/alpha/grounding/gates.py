@@ -204,6 +204,9 @@ DEFAULT_SIDE_EFFECTS: dict[str, SideEffectClass] = {
     "write_todos": SideEffectClass.REVERSIBLE_WRITE,
     "goal_engine": SideEffectClass.REVERSIBLE_WRITE,
     "bot_roster": SideEffectClass.REVERSIBLE_WRITE,
+    # Bootstrap persists a user-scoped agent profile. It is recoverable through
+    # the agent lifecycle tools and is an explicitly requested local write.
+    "setup_agent": SideEffectClass.REVERSIBLE_WRITE,
     # Skills Hub discovery, inspection and user-scoped installation. Installs
     # are durable local custom-skill writes, but can be removed through the
     # caller's skill storage and are bounded by digest pinning, package review,

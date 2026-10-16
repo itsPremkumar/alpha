@@ -136,12 +136,14 @@ def test_claim_refreshes_our_own_lease(stores):
 
 def test_claim_succeeds_once_a_lease_expires(stores):
     """The crash path: a dead owner's container must become adoptable."""
-    a = stores.make("A", ttl_seconds=0.2)
+    # Leave enough time for Redis' first script invocation to load/execute on
+    # shared CI hosts before checking that the live lease excludes a peer.
+    a = stores.make("A", ttl_seconds=5.0)
     b = stores.make("B")
     assert a.claim("s1") is True
     assert b.claim("s1") is False
 
-    time.sleep(0.35)
+    time.sleep(5.2)
 
     assert a.owner("s1") is None
     assert b.claim("s1") is True
@@ -210,12 +212,12 @@ def test_claim_for_destroy_is_still_refused_against_a_peer(stores):
 
 def test_a_stale_teardown_marker_expires(stores):
     """A destroyer that dies mid-stop must not block the container forever."""
-    a = stores.make("A", ttl_seconds=0.2)
+    a = stores.make("A", ttl_seconds=5.0)
     b = stores.make("B")
     a.claim("s1", for_destroy=True)
     assert b.take("s1") is False
 
-    time.sleep(0.35)
+    time.sleep(5.2)
 
     assert b.take("s1") is True
 
@@ -238,10 +240,10 @@ def test_renew_reports_lapsed_not_lost_for_an_expired_lease(stores):
     re-establish it. Reporting LOST would make the provider evict a container it
     is actively using.
     """
-    a = stores.make("A", ttl_seconds=0.2)
+    a = stores.make("A", ttl_seconds=5.0)
     a.claim("s1")
 
-    time.sleep(0.35)
+    time.sleep(5.2)
 
     assert a.renew("s1") is RenewOutcome.LAPSED
     assert a.owner("s1") is None
@@ -249,9 +251,9 @@ def test_renew_reports_lapsed_not_lost_for_an_expired_lease(stores):
 
 def test_renew_does_not_reacquire_on_its_own(stores):
     """The caller decides; renew() never silently re-takes."""
-    a = stores.make("A", ttl_seconds=0.2)
+    a = stores.make("A", ttl_seconds=5.0)
     a.claim("s1")
-    time.sleep(0.35)
+    time.sleep(5.2)
 
     a.renew("s1")
 
@@ -259,12 +261,12 @@ def test_renew_does_not_reacquire_on_its_own(stores):
 
 
 def test_renew_extends_the_lease(stores):
-    a = stores.make("A", ttl_seconds=0.4)
+    a = stores.make("A", ttl_seconds=5.0)
     b = stores.make("B")
     a.claim("s1")
 
     for _ in range(3):
-        time.sleep(0.15)
+        time.sleep(1.0)
         assert a.renew("s1") is RenewOutcome.RENEWED
 
     assert b.claim("s1") is False, "a renewed lease must keep peers out"

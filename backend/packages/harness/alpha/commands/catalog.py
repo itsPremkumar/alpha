@@ -46,7 +46,6 @@ def get_default_catalog_entries():
         ("/loop status", CommandCategory.AUTONOMOUS_OPS, "Shows goal records and milestones, and how many are not running", "/loop status [goal_id]", True),
         ("/loop pause", CommandCategory.AUTONOMOUS_OPS, "Pauses one continuous loop; specify its id when several are active", "/loop pause [goal_id]", True),
         ("/loop resume", CommandCategory.AUTONOMOUS_OPS, "Marks one paused goal executing (nothing dispatches it; use the agent run for real work)", "/loop resume [goal_id]", True),
-        ("/loop orphans", CommandCategory.AUTONOMOUS_OPS, "Lists goal records claiming to be in flight with no executor; deletes nothing", "/loop orphans [page_size]", True),
         # 3. Planning Commands
         ("/plan", CommandCategory.PLANNING, "Creates execution plan without immediately acting", "/plan <objective>", True),
         ("/plan show", CommandCategory.PLANNING, "Displays current execution plan", "/plan show", False),

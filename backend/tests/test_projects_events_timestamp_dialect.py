@@ -42,7 +42,8 @@ def _anyio_backend() -> str:
 
 
 @pytest.fixture()
-def client(tmp_path) -> Any:
+def client(tmp_path, monkeypatch) -> Any:
+    monkeypatch.setenv("ALPHA_HOME", str(tmp_path / "alpha-home"))
     app = _build_projects_app(tmp_path)
     return TestClient(app)
 

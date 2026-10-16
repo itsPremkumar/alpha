@@ -420,6 +420,11 @@ def _verdicts_for(mapping: dict) -> list:
 def _source_with_findings(findings: list[str]) -> EvidenceSource:
     source = EvidenceSource(url="https://x.example", title="t", snippet="s")
     source.content = "Quarterly revenue rose 12 percent year over year."
+    # These tests exercise citation verification against an actually fetched
+    # page. The default EvidenceSource is snippet-only and must not be treated
+    # as independent corroboration.
+    source.retrieval = "page"
+    source.retrieval_note = "page body fetched"
     source.key_findings = list(findings)
     source.extracted_facts = list(findings)
     return source

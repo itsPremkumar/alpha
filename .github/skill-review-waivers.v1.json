@@ -8,7 +8,7 @@
       "path": "scripts/improve_description.py",
       "line": 35,
       "evidence": "subprocess.run",
-      "file_sha256": "sha256:87d864570220b699fac52da309d2d6efdb060647bfebc74f768128e646accf80",
+      "file_sha256": "sha256:05d01aaf68c232fe6dd7d96e9331eac4f3def62b18488bd0bd302cb78e25dcf5",
       "preapproved_file_sha256s": [
         "sha256:2877bde08bf3f437b9dae3d57585a0840b9b1024736d2e5c6c657b71899269d0",
         "sha256:8903171e790c8b8ff8c888ad6eef6568bfc78789ed44f70f5f65aaf24c91970e"

@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import time
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from alpha.mission.acceptance import AcceptanceReport, CriterionResult, CriterionVerdict
+
+logger = logging.getLogger(__name__)
 
 _EXACT_TEXT = re.compile(r"(?:exactly|exact(?:\s+text)?\s+of)\s+([\"'`])(.+?)\1", re.IGNORECASE | re.DOTALL)
 _MAX_EXPECTED_TEXT = 16_384
@@ -198,7 +201,8 @@ def _artifact_readback_result(path: str, events: Sequence[Mapping[str, Any]]) ->
         return None
     try:
         encoded = body.encode("utf-8")
-    except UnicodeEncodeError:
+    except UnicodeEncodeError as exc:
+        logger.debug("APEX artifact readback is not UTF-8 encodable; leaving it unverified (%s)", type(exc).__name__)
         return None
     if len(encoded) > _MAX_ARTIFACT_BYTES:
         return None
@@ -267,7 +271,8 @@ def _auto_test_result(events: Sequence[Mapping[str, Any]]) -> tuple[bool, str] |
         return None
     try:
         report = json.loads(raw_report)
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError) as exc:
+        logger.debug("APEX auto-test receipt is not valid JSON; leaving it unverified (%s)", type(exc).__name__)
         return None
     if not isinstance(report, dict) or report.get("execution") != "argv":
         return None

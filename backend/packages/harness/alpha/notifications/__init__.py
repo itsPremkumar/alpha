@@ -283,8 +283,12 @@ class NotificationStore:
             history = [n for n in history if n.type in wanted]
         if unread_only:
             history = [n for n in history if not n.read]
-        history.sort(key=lambda n: n.created_at, reverse=True)
-        return history[:limit]
+        # Wall clocks can return the same timestamp for several notifications
+        # created in one tick (notably under Windows' clock granularity). Keep
+        # append order as the deterministic tie-break so the newest event still
+        # appears first; the list's insertion order is the store's arrival order.
+        ordered = sorted(enumerate(history), key=lambda row: (row[1].created_at, row[0]), reverse=True)
+        return [notification for _index, notification in ordered[:limit]]
 
     def mark_read(self, user_id: str, notification_id: str) -> bool:
         with self._lock:

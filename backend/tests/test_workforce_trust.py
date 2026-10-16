@@ -39,7 +39,9 @@ def test_operator_policy_overrides_and_removes(policy):
 
 
 def test_mission_lifecycle_guards(missions):
-    m = missions.create("owner-1", "Ship auth")
+    from alpha.mission.acceptance import AcceptanceReport, CriterionResult, CriterionVerdict
+
+    m = missions.create("owner-1", "Ship auth", acceptance_criteria=["tests pass"])
     assert m.status == "draft"
     assert missions.transition(m.mission_id, "completed") is None
     assert missions.transition(m.mission_id, "active") is not None
@@ -49,6 +51,13 @@ def test_mission_lifecycle_guards(missions):
     missions.attach_artifact(m.mission_id, "auth.py")
     row = missions.get(m.mission_id)
     assert row is not None and row.thread_ids == ["thread-1"] and row.artifacts == ["auth.py"]
+    missions.record_acceptance(
+        m.mission_id,
+        AcceptanceReport(
+            criteria=[CriterionResult("tests pass", CriterionVerdict.MET, evidence="pytest exit code 0")],
+            evaluator="test_workforce_trust",
+        ),
+    )
     assert missions.transition(m.mission_id, "completed") is not None
     assert missions.list(owner="owner-1", status="completed")
 

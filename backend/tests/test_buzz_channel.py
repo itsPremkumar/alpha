@@ -10,6 +10,7 @@ import pytest
 
 pytest.importorskip("coincurve")
 
+from alpha.branding import DISPLAY_NAME
 from app.channels import buzz_nostr
 from app.channels.base import Channel
 from app.channels.buzz import EDIT_MAX_BYTES, MAX_CACHED_CHANNELS, MAX_CHANNEL_SUBSCRIPTIONS, MAX_RESUBSCRIBE_ATTEMPTS, MEMBERSHIP_LOOKBACK_SECONDS, BuzzChannel, _chunk_text
@@ -592,7 +593,7 @@ def test_connect_success_sends_confirmation_reply():
     events = _events_of(transport)
     assert len(events) == 1
     assert events[0]["kind"] == 9
-    assert events[0]["content"] == "Buzz connected to AI Workspace."
+    assert events[0]["content"] == f"Buzz connected to {DISPLAY_NAME}."
     assert ["p", NEWCOMER] in events[0]["tags"]
     assert captured == []  # still never published as a chat message
 

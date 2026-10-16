@@ -73,14 +73,12 @@ def test_shipped_template_declares_a_keyless_default_model(tmp_path):
     assert (entry.model_extra or {}).get("api_key") is None, f"the shipped default_model {default_name!r} declares an api_key. A keyless default must not carry one, or it is credentialed in everything but name."
 
 
-def test_shipped_template_default_pins_a_free_route(tmp_path):
-    """`free:<gateway>:<model>` is load-bearing; a bare model id is not a route."""
+def test_shipped_template_default_uses_free_router_auto_discovery(tmp_path):
+    """`auto` asks the free router to select from its discovered gateway catalog."""
     cfg = _load_template(tmp_path)
     entry = _entry(cfg, cfg.default_model_name)
 
-    assert str(entry.model).startswith("free:"), (
-        f"the shipped default_model is pinned to {entry.model!r}. The free router reads a string with no `free:` prefix as a plain model id and then honestly reports that no provider offers it, so the default would have no route at all."
-    )
+    assert entry.model == "auto", f"the shipped keyless default should use discovered free routes, got {entry.model!r}"
 
 
 def test_union_alpha_stays_configured_and_first(tmp_path):

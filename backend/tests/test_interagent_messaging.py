@@ -1,5 +1,7 @@
 """Unit tests for direct agent-to-agent messaging and family roster."""
 
+from langchain.tools import ToolRuntime
+
 from alpha.subagents.messaging import AgentRoster, get_agent_roster
 from alpha.tools.builtins.agent_message_tool import agent_message_tool, agent_observe_tool
 
@@ -63,12 +65,21 @@ def test_interagent_broadcast():
 def test_agent_message_and_observe_tools():
     roster = get_agent_roster("default_thread")
     roster.register_agent("api_expert", role="specialist", status="idle")
+    runtime = ToolRuntime(
+        state={},
+        context={"thread_id": "default_thread"},
+        config={},
+        stream_writer=lambda _chunk: None,
+        tool_call_id="tool-call-1",
+        store=None,
+    )
 
-    observe_out = agent_observe_tool.invoke({})
+    observe_out = agent_observe_tool.invoke({"runtime": runtime})
     assert "api_expert" in observe_out
 
     msg_out = agent_message_tool.invoke(
         {
+            "runtime": runtime,
             "receiver_name": "api_expert",
             "content": "Verify OpenAPI schemas",
             "sender_name": "tester",

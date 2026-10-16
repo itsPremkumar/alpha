@@ -228,6 +228,24 @@ _FRAMEWORK_STRUCTURED_TAGS = [
     "historical_reflexion_lessons",
     "team_context",
     "wiki",
+    # Additional framework-owned blocks emitted by the capability/grounding,
+    # project, scenario-memory, MCP, mission-memory and self-awareness planes.
+    "capability_manifest",
+    "confidence",
+    "grounding_ledger",
+    "leader_dispatch",
+    "project_guidance",
+    "project_identity",
+    "reasoning_bank",
+    "scenario",
+    "scenario_memory",
+    "self_aware_resource_setup",
+    "structured_content",
+    "subject",
+    "surface",
+    "surfaces",
+    "system_memory",
+    "unavailable_surfaces",
 ]
 
 
@@ -268,6 +286,9 @@ _EXEMPT_BLOCK_TAGS = {
     "skill",
     "skill_content",
     "user_request",
+    # HTML link markup in keyless search-provider response parsers; it is not
+    # injected as framework context and escaping ordinary links is unnecessary.
+    "a",
     # Prompts for a *different* LLM call (memory updater, summarizer). Those
     # prompts are built from checkpointed state, not from the ModelRequest that
     # InputSanitizationMiddleware rewrites, so this denylist does not defend them

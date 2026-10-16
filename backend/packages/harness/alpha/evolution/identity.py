@@ -35,7 +35,7 @@ IDENTITY_FILE = "identity.json"
 # tests/test_evolution_identity.py asserts
 # resolve_alpha_version() == ops._resolve_gateway_version() so the two copies
 # can never disagree silently.
-_VERSION_DIST_NAMES = ("alpha-harness", "alpha", "alpha")
+_VERSION_DIST_NAMES = ("alpha-harness", "alpha")
 
 # Honest, complete list of capabilities actually wired in this build:
 # GET /api/evolution/identity (this module), POST /api/evolution/update-check
@@ -49,7 +49,7 @@ WIRED_CAPABILITIES = ("identity", "release_check", "evolution_ledger", "auto_upd
 def resolve_alpha_version() -> str:
     """Return the installed harness package version, or "unknown".
 
-    Same 3-name chain as ops.py — see the comment on _VERSION_DIST_NAMES.
+    Same ordered distribution-name chain as ops.py — see the comment on _VERSION_DIST_NAMES.
     """
     for name in _VERSION_DIST_NAMES:
         try:

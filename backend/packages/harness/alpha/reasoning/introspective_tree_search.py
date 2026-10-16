@@ -213,6 +213,9 @@ class IntrospectiveTreeSearchEngine:
         """Synthesize lessons from parent and failed sibling branches."""
         lessons: list[str] = []
         for sibling in parent.children:
+            failed = sibling.is_pruned or (sibling.validation_feedback is not None and (not sibling.validation_feedback.syntax_valid or sibling.validation_feedback.tests_passed < sibling.validation_feedback.tests_total))
+            if failed and sibling.action and sibling.action.hypothesis:
+                lessons.append(f"Do not repeat failed hypothesis: {sibling.action.hypothesis}")
             if sibling.validation_feedback and not sibling.validation_feedback.syntax_valid:
                 lessons.append(f"Avoid syntax construct from sibling {sibling.node_id}: {sibling.validation_feedback.error_message}")
             if sibling.is_pruned and sibling.prune_reason:

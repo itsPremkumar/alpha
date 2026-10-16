@@ -58,7 +58,7 @@ def test_ops_version_resolves_installed_harness_then_legacy_names(monkeypatch) -
     looked_up.clear()
     monkeypatch.setattr(ops_module.metadata, "version", _resolver({"alpha": "9.9.9"}))
     assert ops_module._resolve_gateway_version() == "9.9.9"
-    assert looked_up == ["alpha-harness", "alpha", "alpha"]
+    assert looked_up == ["alpha-harness", "alpha"]
 
 
 def test_ops_status_returns_runtime_health(monkeypatch) -> None:

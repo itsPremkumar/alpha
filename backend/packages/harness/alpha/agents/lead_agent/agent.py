@@ -599,11 +599,17 @@ def build_middlewares(
     # Only the delegation names are added, and only when this run enabled them:
     # the middleware unions this with the manifest, so nothing is claimed that the
     # run does not actually have, and a genuinely absent tool is still refused.
+    runtime_config = _get_runtime_config(config)
     grounding_extra: frozenset[str] = frozenset()
-    if _get_runtime_config(config).get("subagent_enabled", False):
+    if runtime_config.get("is_bootstrap", False):
+        # Bootstrap exposes setup_agent outside the normal builtin registry.
+        # The deterministic grounding gate must know about that exact tool or
+        # it will reject the creation call that the model was explicitly given.
+        grounding_extra = frozenset({"setup_agent"})
+    if runtime_config.get("subagent_enabled", False):
         from alpha.tools.tools import SUBAGENT_TOOLS
 
-        grounding_extra = frozenset(getattr(t, "name", "") for t in SUBAGENT_TOOLS if getattr(t, "name", ""))
+        grounding_extra |= frozenset(getattr(t, "name", "") for t in SUBAGENT_TOOLS if getattr(t, "name", ""))
 
     middlewares.append(GroundingMiddleware(app_config=resolved_app_config, available_tools=grounding_extra or None))
 

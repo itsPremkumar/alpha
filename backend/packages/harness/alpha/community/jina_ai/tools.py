@@ -60,10 +60,17 @@ def _coerce_timeout(value: object, default: int) -> int:
     """
     if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         return default
-    try:
-        number = int(float(value))
-    except (TypeError, ValueError):
-        return default
+    if isinstance(value, float):
+        if not value.is_integer():
+            return default
+        number = int(value)
+    elif isinstance(value, int):
+        number = value
+    else:
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return default
     if number <= 0:
         return default
     return coerce_timeout_seconds(number, default)

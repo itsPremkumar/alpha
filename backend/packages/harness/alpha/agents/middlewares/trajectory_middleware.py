@@ -115,8 +115,8 @@ def _bounded_tool_input(value: dict[str, Any]) -> dict[str, Any]:
 
         if len(json.dumps(safe, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) <= _MAX_TOOL_INPUT_BYTES:
             return safe if isinstance(safe, dict) else {"args": safe}
-    except (TypeError, ValueError):
-        pass
+    except (TypeError, ValueError) as exc:
+        logger.debug("Trajectory tool input omitted after JSON serialization failed (%s)", type(exc).__name__)
     return {"_omitted": f"tool arguments exceeded {_MAX_TOOL_INPUT_BYTES} bytes after redaction"}
 
 

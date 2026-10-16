@@ -20,4 +20,5 @@ def ensure_config_path_for_tests() -> str | None:
         if example.is_file():
             os.environ["ALPHA_CONFIG_PATH"] = str(example)
             return str(example)
+        raise
     return None

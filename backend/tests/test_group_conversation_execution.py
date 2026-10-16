@@ -274,11 +274,17 @@ async def test_round_robin_room_rotates_through_every_persona(monkeypatch) -> No
 
     room = service.get_room(room_name)
     assert room is not None
-    # Every member's message was parsed for mentions by the real parser and
-    # landed in the room log with its own sender.
+    # The human opened the room without a mention; every model reply included
+    # its own @handle, which the real parser records as a source span.
     assert [m.sender for m in room.log] == ["user"] + spoken
+    assert room.log[0].metadata == {}
+    for message, speaker in zip(room.log[1:], spoken, strict=True):
+        (span,) = message.metadata["mention_spans"]
+        assert span["raw"] == f"@{speaker}"
+        assert span["kind"] == "bot"
+        assert span["body"] == speaker
     # A round_robin room does not fan out: one message schedules one reply.
-    assert all(m.metadata == {} for m in room.log)
+    assert all(len(m.mentions) <= 1 for m in room.log)
 
 
 async def test_parallel_room_fans_one_message_out_to_every_other_member(monkeypatch) -> None:

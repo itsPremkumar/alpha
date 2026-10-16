@@ -369,7 +369,7 @@ def test_bash_tool_passes_token_as_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("alpha.sandbox.tools.ensure_sandbox_initialized", lambda runtime: _Sandbox())
     monkeypatch.setattr("alpha.sandbox.tools.ensure_thread_directories_exist", lambda runtime: None)
 
-    result = bash_tool.func(runtime=runtime, description="push", command="git push")
+    result = bash_tool.func(runtime=runtime, description="push", command="git push origin feature/test")
 
     assert "done" in result
     assert captured["env"] == {"GH_TOKEN": "tok-from-manager", "GITHUB_TOKEN": "tok-from-manager"}

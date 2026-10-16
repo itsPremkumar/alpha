@@ -231,7 +231,7 @@ def test_build_subagent_runtime_middlewares_threads_app_config_to_llm_middleware
     from alpha.agents.middlewares.tool_output_budget_middleware import ToolOutputBudgetMiddleware
     from alpha.agents.middlewares.tool_receipt_middleware import ToolReceiptMiddleware
 
-    assert len(middlewares) == 20
+    assert len(middlewares) == 22
     assert isinstance(middlewares[0], FakeInputSanitizationMiddleware)  # InputSanitizationMiddleware stub
     assert isinstance(middlewares[1], ToolOutputBudgetMiddleware)
     assert any(isinstance(m, ToolErrorHandlingMiddleware) for m in middlewares)

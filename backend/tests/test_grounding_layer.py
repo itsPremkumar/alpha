@@ -507,6 +507,7 @@ class TestGates:
             "write_todos",
             "goal_engine",
             "bot_roster",
+            "setup_agent",
             "war_room",
             "swarm",
             "workflow_dag_manage",

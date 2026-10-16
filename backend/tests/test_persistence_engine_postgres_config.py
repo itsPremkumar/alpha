@@ -183,7 +183,7 @@ async def test_init_engine_postgres_retry_uses_hardened_kwargs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_init_engine_sqlite_omits_postgres_kwargs_and_keeps_wal_listener(tmp_path) -> None:
+async def test_init_engine_sqlite_omits_postgres_kwargs_and_keeps_connection_pragmas(tmp_path) -> None:
     url = f"sqlite+aiosqlite:///{tmp_path / 'alpha.db'}"
     mock_engine = MagicMock()
     mock_engine.sync_engine = object()
@@ -218,7 +218,6 @@ async def test_init_engine_sqlite_omits_postgres_kwargs_and_keeps_wal_listener(t
             listener = registered["listener"]
             listener(dbapi_connection, None)
             assert [entry.args[0] for entry in cursor.execute.call_args_list] == [
-                "PRAGMA journal_mode=WAL;",
                 "PRAGMA synchronous=NORMAL;",
                 "PRAGMA foreign_keys=ON;",
                 "PRAGMA busy_timeout=30000;",

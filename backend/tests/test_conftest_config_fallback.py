@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
 from config_fallback_test_support import ensure_config_path_for_tests
 
 from alpha.config.app_config import AppConfig
@@ -51,3 +52,16 @@ def test_missing_config_falls_back_to_shipped_template(monkeypatch):
     assert resolved == str(_shipped_template())
     assert resolved is not None and Path(resolved).is_file()
     assert os.environ["ALPHA_CONFIG_PATH"] == resolved
+
+
+def test_missing_config_and_missing_template_reraise_the_original_error(monkeypatch):
+    monkeypatch.delenv("ALPHA_CONFIG_PATH", raising=False)
+
+    def _missing(cls):
+        raise FileNotFoundError("operator config missing")
+
+    monkeypatch.setattr(AppConfig, "resolve_config_path", classmethod(_missing))
+    monkeypatch.setattr(Path, "is_file", lambda _self: False)
+
+    with pytest.raises(FileNotFoundError, match="operator config missing"):
+        ensure_config_path_for_tests()

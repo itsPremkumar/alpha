@@ -115,6 +115,8 @@ def test_n_the_kill_switch_stops_a_running_war_room():
     assert "operator pressed the stop button" in (run.killed_by or "")
     # Nothing was published from the interrupted work.
     assert run.synthesis is None
+    assert all(receipt.status.value == "cancelled" for receipt in run.stages[0].receipts)
+    assert not any(receipt.delivered for receipt in run.stages[0].receipts)
     # And it is on the record.
     persisted = (room.dir / "run.json").read_text(encoding="utf-8")
     assert "cancelled" in persisted

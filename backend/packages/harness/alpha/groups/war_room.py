@@ -1003,10 +1003,28 @@ class WarRoom:
                 receipt.duration_ms = int((self.clock() - started) * 1000)
             return receipt
 
-        # The isolation boundary. return_exceptions=True plus a _contribute that
-        # never raises: a sibling cannot cancel, delay or truncate another.
+        # The isolation boundary. A sibling cannot cancel, delay or truncate
+        # another, but an operator cancellation must reap every in-flight
+        # participant promptly instead of waiting for the stage timeout.
         names = list(self.config.participants)
-        gathered = await asyncio.gather(*(_contribute(n) for n in names), return_exceptions=True)
+        participant_tasks = [asyncio.create_task(_contribute(name)) for name in names]
+        cancellation = asyncio.create_task(self._cancelled.wait())
+        pending_participants = set(participant_tasks)
+        try:
+            while pending_participants:
+                done, _ = await asyncio.wait(
+                    (*pending_participants, cancellation),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if cancellation in done and self._cancelled.is_set():
+                    for task in pending_participants:
+                        task.cancel()
+                    break
+                pending_participants.difference_update(done)
+            gathered = await asyncio.gather(*participant_tasks, return_exceptions=True)
+        finally:
+            cancellation.cancel()
+            await asyncio.gather(cancellation, return_exceptions=True)
         receipts: list[MemberReceipt] = []
         for name, outcome in zip(names, gathered, strict=True):
             if isinstance(outcome, BaseException):
@@ -1119,6 +1137,8 @@ class WarRoom:
                     result, delivered = await self._run_stage(stage, prior)
                     self.run.stages.append(result)
                     prior = delivered
+                    if self._cancelled.is_set():
+                        return self._finish_cancelled()
                     if result.status is not StageStatus.COMPLETED and stage.requires_previous_quorum:
                         # A stage that could not reach quorum ends the run in a
                         # TYPED terminal state. It does not wait for a wedged

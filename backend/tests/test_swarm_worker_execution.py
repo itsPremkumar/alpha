@@ -114,9 +114,13 @@ def test_worker_without_models_fails_loudly(monkeypatch):
         worker.execute_task(_task(), _plan())
 
 
-def test_worktree_worker_writes_model_authored_patch(tmp_path, monkeypatch):
+def test_worktree_worker_applies_model_authored_patch(tmp_path, monkeypatch):
+    import subprocess
+
     fake_wt = tmp_path / "wt-task-w1"
     fake_wt.mkdir()
+    subprocess.run(["git", "init", str(fake_wt)], check=True, capture_output=True)
+    (fake_wt / "thing.py").write_text("old\n", encoding="utf-8")
 
     class _FakeWorktreeManager:
         def __init__(self, repo_root=None, **kwargs):
@@ -124,6 +128,14 @@ def test_worktree_worker_writes_model_authored_patch(tmp_path, monkeypatch):
 
         def create_worktree(self, *, branch_name):
             return SimpleNamespace(path=fake_wt)
+
+        def run_in_worktree(self, path, args, *, check=False):
+            return subprocess.run(
+                ["git", "-C", str(path), *args],
+                capture_output=True,
+                text=True,
+                check=check,
+            )
 
     monkeypatch.setattr(worker_mod, "WorktreeManager", _FakeWorktreeManager)
     diff = "--- a/thing.py\n+++ b/thing.py\n@@ -1 +1 @@\n-old\n+new\n"
@@ -134,13 +146,13 @@ def test_worktree_worker_writes_model_authored_patch(tmp_path, monkeypatch):
     outcome = worker.execute_task(_task("task-wt-1"), _plan())
 
     patch_file = fake_wt / "task-wt-1.patch"
-    # Teeth: the patch file used to be named in artifacts but never written.
-    assert patch_file.read_text(encoding="utf-8") == diff
-    assert str(patch_file) in outcome["artifacts"]
-    # Honest summary: authored, not "authoring" and not "applied".
-    assert "Authored patch" in outcome["summary"]
+    assert (fake_wt / "thing.py").read_text(encoding="utf-8") == "new\n"
+    assert not patch_file.exists(), "the successfully applied patch should not remain as a stale artifact"
+    assert str(patch_file) not in outcome["artifacts"]
+    assert "applied via git apply" in outcome["summary"]
     assert outcome["worktree_path"] == str(fake_wt)
     assert outcome["evidence"][0]["patch_file"] == str(patch_file)
+    assert outcome["evidence"][0]["applied"] is True
 
 
 @pytest.mark.asyncio

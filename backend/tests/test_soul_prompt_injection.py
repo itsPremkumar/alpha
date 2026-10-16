@@ -68,7 +68,6 @@ def test_apply_prompt_template_forwards_user_id_to_agent_soul(monkeypatch) -> No
 
     monkeypatch.setattr(prompt_module, "get_agent_soul", fake_get_agent_soul)
     monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda *args, **kwargs: "")
-    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda **kwargs: "")
     monkeypatch.setattr(prompt_module, "_build_acp_section", lambda **kwargs: "")
     monkeypatch.setattr(prompt_module, "_build_custom_mounts_section", lambda **kwargs: "")
     monkeypatch.setattr(prompt_module, "_build_memory_tool_section", lambda **kwargs: "")

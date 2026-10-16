@@ -366,4 +366,5 @@ class TestThreadStateAnnotations:
             "delegations",
             "skill_context",
             "task_notes",
+            "working_files",
         }

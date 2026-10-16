@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from alpha.apex.auto_acceptance import evaluate_run_acceptance_criteria, evaluate_tool_readback_criteria
 
@@ -275,3 +276,22 @@ def test_auto_test_collector_refuses_model_supplied_commands_and_bad_receipts() 
     duplicate_id = _auto_test_events()
     duplicate_id[0]["content"]["tool_calls"].append({"id": "tests-1", "name": "auto_test_and_repair", "args": {}})
     assert evaluate_run_acceptance_criteria([criterion], duplicate_id) is None
+
+
+def test_malformed_auto_test_receipt_stays_unverified_and_is_logged(caplog) -> None:
+    events = _auto_test_events()
+    events[1]["content"]["content"] = "not-json"
+
+    with caplog.at_level(logging.DEBUG, logger="alpha.apex.auto_acceptance"):
+        assert evaluate_run_acceptance_criteria(["Auto-detected project test suite passes."], events) is None
+
+    assert "leaving it unverified" in caplog.text
+
+
+def test_unencodable_artifact_readback_stays_unverified_and_is_logged(caplog) -> None:
+    events = _events(read=chr(0xD800))
+
+    with caplog.at_level(logging.DEBUG, logger="alpha.apex.auto_acceptance"):
+        assert evaluate_run_acceptance_criteria(["File artifact at `/workspace/result.txt` exists and is non-empty."], events) is None
+
+    assert "not UTF-8 encodable" in caplog.text

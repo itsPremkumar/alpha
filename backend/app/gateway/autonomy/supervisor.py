@@ -205,7 +205,7 @@ class AutonomySupervisor:
             ("company_operations", "Bounded sweep of Company OS loops: observe, plan, act, verify, ledger.", loop_adapters.company_operations_tick, 300.0),
             ("self_update", "Opt-in GitHub source update check and guarded apply.", loop_adapters.self_update_tick, 21600.0),
             ("apex", "APEX executive cycle with idempotent RunManager dispatch and run observation.", loop_adapters.apex_tick, 120.0),
-            # Two branches each appended one loop here and neither knew about the
+            # Separate branches appended loop registrations here without seeing
             # other, so the merge keeps BOTH: `mission` is the long-horizon
             # fail-closed watchdog (parks done-stuck/blocked missions, never
             # loops and never dispatches), and `workflow_triggers` fires due

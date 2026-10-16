@@ -30,6 +30,7 @@ from alpha.config.reasoning_effort import (
 )
 from alpha.models.effort_translation import (
     EFFORT_STYLE_ANTHROPIC,
+    EFFORT_STYLE_ANTHROPIC_BUDGET,
     EFFORT_STYLE_BEDROCK,
     EFFORT_STYLE_GOOGLE,
     EFFORT_STYLE_INERT,
@@ -236,9 +237,10 @@ def test_an_openai_compatible_client_is_detected_as_openai():
     assert detect_effort_style(ChatOpenAI) == EFFORT_STYLE_OPENAI
 
 
-def test_an_anthropic_client_is_detected_and_uses_adaptive_effort():
+def test_anthropic_client_detection_matches_its_supported_effort_api():
     anthropic = pytest.importorskip("langchain_anthropic")
-    assert detect_effort_style(anthropic.ChatAnthropic) == EFFORT_STYLE_ANTHROPIC
+    expected = EFFORT_STYLE_ANTHROPIC if "effort" in getattr(anthropic.ChatAnthropic, "model_fields", {}) else EFFORT_STYLE_ANTHROPIC_BUDGET
+    assert detect_effort_style(anthropic.ChatAnthropic) == expected
 
 
 def test_a_google_client_is_detected():
@@ -449,12 +451,17 @@ def test_an_openai_client_that_declares_the_field_gets_the_constructor_kwarg():
     assert settings == {"reasoning_effort": "high"}
 
 
-def test_anthropic_uses_the_effort_field_the_client_lowers_into_output_config():
+def test_anthropic_effort_uses_the_supported_client_field():
     anthropic = pytest.importorskip("langchain_anthropic")
     entry = model(use="langchain_anthropic:ChatAnthropic", reasoning_efforts=["low", "medium", "high", "xhigh", "max"], max_tokens=32000)
     settings: dict = {}
     apply_effort(anthropic.ChatAnthropic, entry, settings, "xhigh", style=EFFORT_STYLE_ANTHROPIC)
-    assert settings == {"effort": "xhigh"}, "langchain-anthropic lowers `effort` into output_config.effort itself"
+    if "effort" in anthropic.ChatAnthropic.model_fields:
+        assert settings == {"effort": "xhigh"}
+    elif "output_config" in anthropic.ChatAnthropic.model_fields:
+        assert settings == {"output_config": {"effort": "xhigh"}}
+    else:
+        pytest.fail("the declared Anthropic effort style has no supported client field")
 
 
 def test_anthropic_never_asks_for_more_rungs_than_it_has():

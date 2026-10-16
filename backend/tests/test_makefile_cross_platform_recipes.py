@@ -102,7 +102,15 @@ def test_the_windows_branch_uses_the_quoted_set_form() -> None:
 def test_test_shard_runs_even_without_the_duration_baseline() -> None:
     """The regression: all four CI shards died before collecting a test."""
     proc = subprocess.run(
-        ["make", "-n", "--no-print-directory", "test-shard", "SPLITS=4", "GROUP=1"],
+        [
+            "make",
+            "-n",
+            "--no-print-directory",
+            "test-shard",
+            "SPLITS=4",
+            "GROUP=1",
+            "DURATIONS_FILE=.missing-test-durations",
+        ],
         cwd=BACKEND,
         capture_output=True,
         text=True,
@@ -125,7 +133,15 @@ def test_test_shard_runs_even_without_the_duration_baseline() -> None:
 def test_a_missing_duration_baseline_does_not_request_duration_balancing() -> None:
     """Passing --splitting-algorithm least_duration with no baseline is a guess."""
     proc = subprocess.run(
-        ["make", "-n", "--no-print-directory", "test-shard", "SPLITS=4", "GROUP=1"],
+        [
+            "make",
+            "-n",
+            "--no-print-directory",
+            "test-shard",
+            "SPLITS=4",
+            "GROUP=1",
+            "DURATIONS_FILE=.missing-test-durations",
+        ],
         cwd=BACKEND,
         capture_output=True,
         text=True,
@@ -134,10 +150,8 @@ def test_a_missing_duration_baseline_does_not_request_duration_balancing() -> No
         timeout=300,
         check=False,
     )
-    baseline = BACKEND / ".test_durations"
-    if not baseline.exists():
-        assert "least_duration" not in proc.stdout, proc.stdout
-        assert "--durations-path" not in proc.stdout, proc.stdout
+    assert "least_duration" not in proc.stdout, proc.stdout
+    assert "--durations-path" not in proc.stdout, proc.stdout
 
 
 def test_migrate_rev_guard_is_not_a_posix_shell_conditional() -> None:

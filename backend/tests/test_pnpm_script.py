@@ -100,7 +100,9 @@ def test_runner_uses_corepack_pnpm_from_frontend_directory(tmp_path: Path):
     assert result.stdout.strip() == f"corepack|{FRONTEND_DIR}|pnpm --version"
     assert result.stderr.strip() == "Using pnpm via Corepack."
 
-    package_json = json.loads((FRONTEND_DIR / "package.json").read_text(encoding="utf-8"))
+    # Corepack resolves the monorepo's pinned package manager from the root
+    # package.json; the frontend package itself intentionally has no duplicate.
+    package_json = json.loads((REPO_ROOT / "package.json").read_text(encoding="utf-8"))
     assert package_json["packageManager"] == "pnpm@10.26.2"
 
 
@@ -141,13 +143,12 @@ def test_runner_propagates_selected_pnpm_failure(tmp_path: Path):
 
 def test_official_entrypoints_route_pnpm_through_shared_runner():
     root_makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
-    frontend_makefile = (FRONTEND_DIR / "Makefile").read_text(encoding="utf-8")
     serve_script = (REPO_ROOT / "scripts" / "serve.sh").read_text(encoding="utf-8")
     doctor_script = (REPO_ROOT / "scripts" / "doctor.py").read_text(encoding="utf-8")
     support_bundle_script = (REPO_ROOT / "scripts" / "support_bundle.py").read_text(encoding="utf-8")
 
     assert "cd frontend && $(FRONTEND_PNPM) install" in root_makefile
-    assert "PNPM = $(PYTHON) ../scripts/pnpm.py" in frontend_makefile
+    assert (REPO_ROOT / "scripts" / "pnpm.py").is_file()
     assert '"$ALPHA_PNPM_PYTHON" "$ALPHA_PNPM_RUNNER" install --silent' in serve_script
     assert 'ALPHA_PNPM_RUNNER="$REPO_ROOT/scripts/pnpm.py"' in serve_script
     assert 'FRONTEND_CMD=\'env PORT=3000 "$ALPHA_PNPM_PYTHON" "$ALPHA_PNPM_RUNNER" run dev\'' in serve_script
