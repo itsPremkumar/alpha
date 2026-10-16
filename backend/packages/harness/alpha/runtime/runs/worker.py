@@ -52,7 +52,7 @@ from alpha.runtime.checkpoint_state import (
     graph_state_schema,
     graph_writable_channels,
 )
-from alpha.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
+from alpha.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY, PROJECT_CONTEXT_RUNTIME_KEY
 from alpha.runtime.events.message_identity import attach_message_seq, message_identity
 from alpha.runtime.goal import (
     DEFAULT_MAX_GOAL_CONTINUATIONS,
@@ -603,6 +603,7 @@ _SERVER_OWNED_RUNTIME_CONTEXT_KEYS: Final[frozenset[str]] = (
     frozenset(
         {
             CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY,
+            PROJECT_CONTEXT_RUNTIME_KEY,
             ALPHA_TRACE_METADATA_KEY,
         }
     )
@@ -617,6 +618,7 @@ def _build_runtime_context(
     app_config: AppConfig | None = None,
     task_store: Any | None = None,
     extensions: Any | None = None,
+    project_context: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build the dict that becomes ``ToolRuntime.context`` for the run.
 
@@ -638,6 +640,8 @@ def _build_runtime_context(
             runtime_ctx.setdefault(key, value)
     if app_config is not None:
         runtime_ctx["app_config"] = app_config
+    if project_context is not None:
+        runtime_ctx[PROJECT_CONTEXT_RUNTIME_KEY] = project_context
     if task_store is not None:
         from alpha_extension_api import EXTENSION_TASK_STORE_KEY
 
@@ -670,6 +674,7 @@ class RunContext:
     event_store: Any | None = field(default=None)
     run_events_config: Any | None = field(default=None)
     thread_store: Any | None = field(default=None)
+    project_repo: Any | None = field(default=None)
     mcp_task_repo: Any | None = field(default=None)
     app_config: AppConfig | None = field(default=None)
     extensions: Any | None = field(default=None)
@@ -678,6 +683,31 @@ class RunContext:
     # this process" (embedded/tests) and resolves to the config default.
     checkpoint_snapshot_frequency: int | None = None
     on_run_completed: Any | None = field(default=None)
+
+
+async def _load_project_run_context(ctx: RunContext, thread_id: str, user_id: str | None) -> dict[str, str] | None:
+    """Resolve owner-scoped project guidance for this thread, if assigned."""
+    if ctx.thread_store is None:
+        return None
+    thread = await ctx.thread_store.get(thread_id, user_id=user_id)
+    if not isinstance(thread, dict):
+        return None
+    metadata = thread.get("metadata")
+    project_id = metadata.get("alpha_project_id") if isinstance(metadata, dict) else None
+    if not isinstance(project_id, str) or not project_id:
+        return None
+    if not user_id:
+        raise RuntimeError("Project context requires an authenticated thread owner")
+    if ctx.project_repo is None:
+        raise RuntimeError("Project context storage is unavailable for this assigned thread")
+    project = await ctx.project_repo.get(project_id, user_id=user_id)
+    if not isinstance(project, dict):
+        raise RuntimeError("The assigned project could not be read for this thread owner")
+    return {
+        "project_id": project_id,
+        "name": str(project.get("name") or ""),
+        "instructions": str(project.get("instructions") or ""),
+    }
 
 
 def _install_runtime_context(config: dict, runtime_context: dict[str, Any]) -> None:
@@ -1217,6 +1247,7 @@ async def run_agent(
         # access thread-level data. langgraph-cli does this automatically; we must do it
         # manually here because we drive the graph through ``agent.astream(config=...)``
         # without passing the official ``context=`` parameter.
+        project_context = await _load_project_run_context(ctx, thread_id, record.user_id)
         runtime_ctx = _build_runtime_context(
             thread_id,
             run_id,
@@ -1224,6 +1255,7 @@ async def run_agent(
             ctx.app_config,
             task_store,
             extensions,
+            project_context,
         )
         alpha_trace_id = _bind_trace_id(config, runtime_ctx)
         # Expose the run-scoped journal under a sentinel key so middleware can

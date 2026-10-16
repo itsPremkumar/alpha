@@ -3,3 +3,4 @@
 from typing import Final
 
 CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY: Final[str] = "__alpha_pre_run_message_ids"
+PROJECT_CONTEXT_RUNTIME_KEY: Final[str] = "__alpha_project_context"

@@ -53,6 +53,19 @@ cancellation and text-cache drain/cleanup.
   frames. The web frontend does not request subgraph streaming; subtask progress
   rides root-namespace `task_*` custom events.
 
+### Persistent project guidance
+
+`run_agent()` resolves a thread's assigned `metadata.alpha_project_id` using
+the authenticated owner, then reads the project through the owner-scoped
+`project_repo`. The resulting `__alpha_project_context` is server-owned,
+stripped from client `context` and `configurable`, and installed only from this
+explicit worker argument. An assigned project that cannot be read fails the run
+closed rather than silently dropping its instructions. The middleware projects
+those instructions as hidden, request-only user-level guidance; they cannot
+grant tools, permissions, approvals, or verification claims. Tests:
+`tests/test_project_run_context.py`, `tests/test_gateway_services.py`, and
+`tests/test_durable_context_middleware.py`.
+
 ### Thread-goal continuation progress evidence
 
 `runtime/runs/worker.py` passes `visible_conversation_signature()` to the bounded

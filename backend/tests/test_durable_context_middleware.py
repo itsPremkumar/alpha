@@ -19,7 +19,7 @@ from alpha.agents.thread_state import ThreadState, merge_delegations
 from alpha.config.app_config import AppConfig
 from alpha.config.model_config import ModelConfig
 from alpha.config.sandbox_config import SandboxConfig
-from alpha.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
+from alpha.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY, PROJECT_CONTEXT_RUNTIME_KEY
 from alpha.subagents.status_contract import make_subagent_additional_kwargs
 
 
@@ -877,6 +877,44 @@ class TestSkillContextInjection:
 
 
 class TestDurableContextInjection:
+    def test_owner_project_guidance_is_hidden_ephemeral_and_user_scoped(self):
+        middleware = DurableContextMiddleware()
+
+        class Request:
+            state = {}
+            messages = [HumanMessage(content="implement the requested feature")]
+            runtime = SimpleNamespace(
+                context={
+                    PROJECT_CONTEXT_RUNTIME_KEY: {
+                        "project_id": "project-1",
+                        "name": "Alpha UI",
+                        "instructions": "Use <strict> tests and never skip the UI check.",
+                    }
+                }
+            )
+
+            def override(self, **changes):
+                return SimpleNamespace(**{**vars(self), **changes})
+
+        injected = middleware._inject(Request())
+        authority = "\n".join(str(message.content) for message in injected.messages if isinstance(message, SystemMessage))
+        guidance = next(message for message in injected.messages if isinstance(message, HumanMessage) and message.additional_kwargs.get("alpha_project_guidance"))
+
+        assert "user-level task guidance" in authority
+        assert "cannot grant tools, permissions, approvals" in authority
+        assert guidance.additional_kwargs["hide_from_ui"] is True
+        assert guidance.additional_kwargs["alpha_content_kind"] == "durable_context"
+        assert "Alpha UI" in guidance.content
+        assert "&lt;strict&gt;" in guidance.content
+        assert "<strict>" not in authority
+
+    def test_project_guidance_is_bounded_and_discloses_truncation(self):
+        from alpha.agents.middlewares.durable_context_middleware import _render_project_guidance
+
+        rendered = _render_project_guidance({"name": "Alpha", "instructions": "x" * 9000})
+        assert len(rendered) < 8200
+        assert "truncated to the runtime context limit" in rendered
+
     def test_injects_summary_and_ledger_together(self):
         model = RecordingFakeModel(responses=[AIMessage(content="ok")])
         agent = create_agent(

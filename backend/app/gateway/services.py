@@ -56,6 +56,7 @@ from alpha.runtime.checkpoint_mode import (
     inject_checkpoint_mode,
 )
 from alpha.runtime.checkpoint_state import graph_state_schema
+from alpha.runtime.context_keys import PROJECT_CONTEXT_RUNTIME_KEY
 from alpha.runtime.events.message_identity import MESSAGE_SEQ_KEY
 from alpha.runtime.goal import goal_thread_lock
 from alpha.runtime.journal import build_checkpoint_history_seed_events
@@ -654,6 +655,7 @@ _SERVER_OWNED_RUNTIME_CONTEXT_KEYS: frozenset[str] = (
             "run_id",
             "thread_id",
             "user_id",
+            PROJECT_CONTEXT_RUNTIME_KEY,
             APEX_RUNTIME_SESSION_KEY,
         }
     )

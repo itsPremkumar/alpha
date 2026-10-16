@@ -209,6 +209,10 @@ auto-update (disabled
 by default); and an interactive canvas with generative UI, live SVG, KaTeX, and
 data tables.
 
+Assigned project instructions are loaded with owner-scoped reads on each run and
+injected as hidden, request-only user-level guidance; they do not grant tools or
+permissions and cannot override system or safety policy.
+
 
 ### 5.9 APEX Autopilot
 The APEX executive records an objective and decision history. The Gateway

@@ -809,6 +809,10 @@ exactly-once execution.
   autonomy subsystems. Each subsystem is read independently, so one that fails
   says so instead of hiding the rest; counts the server did not send stay
   unknown rather than showing as zero.
+- **Persistent project instructions** - instructions saved on a project are
+  loaded for each assigned thread through owner-scoped reads and applied as
+  hidden, request-only user-level guidance. They do not grant tools or
+  permissions, override system/safety policy, or count as verification.
 - **Bot detail page, end to end** - `/bots/[name]` reads everything the Gateway
   reports about one bot: profile, SOUL, capabilities, skills and toolsets,
   model configuration and its live read-only plan, performance, liveness,

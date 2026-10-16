@@ -26,6 +26,7 @@ Alpha is a LangGraph-based AI super-agent system — a backend "super agent" wit
 - **Capability Mesh**: Evidence-backed capability records for every dispatchable configuration, with every count reported beside its evidence level (`unmeasured` reads as `unmeasured`) - `capability_mesh` tool (12 actions, one write) and `/api/capability-mesh`; off by default behind `capability_mesh.enabled`, and a read/preview plane that dispatches nothing even when enabled
 - **Extensible Tooling**: 139 built-in tools + MCP servers + custom skills + community extensions
 - **Per-Thread Isolation**: Every conversation gets its own sandbox, memory, and tool namespace
+- **Project guidance**: Owner-scoped instructions for an assigned project are loaded on each run as hidden, request-only user-level guidance; they cannot grant tools or override system/safety policy
 - **IM Bridges**: Native Feishu, Slack, Telegram, Discord, DingTalk connectors via unified Gateway
 - **Observability**: Real-time SSE streams, run traces, token usage, cost tracking, delivery receipts
 - **Governance**: Tool risk policies, approval gates, capability ceilings, emergency stop

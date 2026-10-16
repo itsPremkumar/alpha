@@ -171,6 +171,14 @@ POST /api/bots/{bot_name}/dm
 
 ## Projects System
 
+Project instructions are saved on the project and apply to every assigned
+conversation. On each run the Gateway resolves the thread's project assignment
+and reads that project using the authenticated owner. The instructions are
+injected as hidden, request-only user-level guidance; they are not added to the
+visible or checkpointed chat history and cannot grant tools, permissions,
+approvals, or verification. If an assigned project cannot be read, the run
+fails closed instead of silently continuing without its guidance.
+
 ### Project Structure
 ```python
 {
