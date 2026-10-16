@@ -77,7 +77,7 @@ def test_foreground_blocking_command_times_out_with_notice():
 def test_timeout_notice_formats_fractional_and_singular_timeouts(monkeypatch):
     monkeypatch.setattr(LocalSandbox, "_get_shell", lambda self: "/bin/sh")
     runner = "_run_windows_command" if os.name == "nt" else "_run_posix_command"
-    monkeypatch.setattr(LocalSandbox, runner, staticmethod(lambda args, timeout, env=None: ("", "", 0, True)))
+    monkeypatch.setattr(LocalSandbox, runner, staticmethod(lambda args, timeout, env=None, cwd=None: ("", "", 0, True)))
 
     assert "after 1.5 seconds" in LocalSandbox("t").execute_command("wait", timeout=1.5)
     assert "after 1 second" in LocalSandbox("t").execute_command("wait", timeout=1)
@@ -93,7 +93,7 @@ def test_timeout_output_carries_authoritative_failure_marker(monkeypatch):
     # only the POSIX runner made this test really spawn a nonexistent /bin/sh
     # and fail with WinError 2 instead of exercising the timeout notice.
     runner = "_run_windows_command" if os.name == "nt" else "_run_posix_command"
-    monkeypatch.setattr(LocalSandbox, runner, staticmethod(lambda args, timeout, env=None: ("12 passed\n", "", 0, True)))
+    monkeypatch.setattr(LocalSandbox, runner, staticmethod(lambda args, timeout, env=None, cwd=None: ("12 passed\n", "", 0, True)))
 
     output = LocalSandbox("t").execute_command("make test", timeout=1)
 
@@ -107,7 +107,7 @@ def test_windows_timeout_returns_notice(monkeypatch):
     monkeypatch.setattr(
         LocalSandbox,
         "_run_windows_command",
-        staticmethod(lambda args, timeout, env: ("partial out", "partial err", 0, True)),
+        staticmethod(lambda args, timeout, env, cwd=None: ("partial out", "partial err", 0, True)),
     )
 
     output = LocalSandbox("t").execute_command("wait", timeout=1.5)

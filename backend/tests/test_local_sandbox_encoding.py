@@ -188,7 +188,7 @@ def test_get_shell_uses_cmd_as_last_windows_fallback(monkeypatch):
 def test_execute_command_uses_powershell_command_mode_on_windows(monkeypatch):
     calls: list[tuple[list[str], float, dict[str, str]]] = []
 
-    def fake_run(args, timeout, env):
+    def fake_run(args, timeout, env, cwd=None):
         calls.append((args, timeout, env))
         return "ok", "", 0, False
 
@@ -220,7 +220,7 @@ def test_execute_command_uses_powershell_command_mode_on_windows(monkeypatch):
 def test_execute_command_keeps_msys_path_conversion_for_host_commands_on_windows(monkeypatch):
     calls: list[tuple[list[str], float, dict[str, str]]] = []
 
-    def fake_run(args, timeout, env):
+    def fake_run(args, timeout, env, cwd=None):
         calls.append((args, timeout, env))
         return "ok", "", 0, False
 
@@ -248,7 +248,7 @@ def test_execute_command_keeps_msys_path_conversion_for_host_commands_on_windows
 def test_execute_command_scopes_msys_path_conversion_exclusions_on_windows(monkeypatch):
     calls: list[tuple[list[str], float, dict[str, str]]] = []
 
-    def fake_run(args, timeout, env):
+    def fake_run(args, timeout, env, cwd=None):
         calls.append((args, timeout, env))
         return "ok", "", 0, False
 
@@ -270,7 +270,7 @@ def test_execute_command_scopes_msys_path_conversion_exclusions_on_windows(monke
 def test_execute_command_ignores_root_msys_mapping_for_host_commands_on_windows(monkeypatch):
     calls: list[tuple[list[str], float, dict[str, str]]] = []
 
-    def fake_run(args, timeout, env):
+    def fake_run(args, timeout, env, cwd=None):
         calls.append((args, timeout, env))
         return "ok", "", 0, False
 
@@ -303,7 +303,7 @@ def test_msys_path_conversion_exclusions_omit_blanket_patterns():
 def test_execute_command_does_not_set_msys_env_for_non_msys_posix_shell_on_windows(monkeypatch):
     calls: list[tuple[list[str], float, dict[str, str]]] = []
 
-    def fake_run(args, timeout, env):
+    def fake_run(args, timeout, env, cwd=None):
         calls.append((args, timeout, env))
         return "ok", "", 0, False
 
@@ -324,7 +324,7 @@ def test_execute_command_does_not_set_msys_env_for_non_msys_posix_shell_on_windo
 def test_execute_command_uses_cmd_command_mode_on_windows(monkeypatch):
     calls: list[tuple[list[str], float, dict[str, str]]] = []
 
-    def fake_run(args, timeout, env):
+    def fake_run(args, timeout, env, cwd=None):
         calls.append((args, timeout, env))
         return "ok", "", 0, False
 

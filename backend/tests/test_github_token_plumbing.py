@@ -56,7 +56,7 @@ def test_local_sandbox_env_overlay_reaches_subprocess(monkeypatch: pytest.Monkey
 
     captured: dict = {}
 
-    def fake_run_posix(args, timeout, env=None):
+    def fake_run_posix(args, timeout, env=None, cwd=None):
         captured["env"] = env
         return ("", "", 0, False)
 
@@ -80,7 +80,7 @@ def test_local_sandbox_no_env_passes_sanitized_environ(monkeypatch: pytest.Monke
 
     captured: dict = {}
 
-    def fake_run_posix(args, timeout, env=None):
+    def fake_run_posix(args, timeout, env=None, cwd=None):
         captured["env"] = env
         return ("", "", 0, False)
 

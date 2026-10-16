@@ -2150,7 +2150,14 @@ def bash_tool(runtime: Runtime, command: str, description: str = "") -> str:
             thread_data = get_thread_data(runtime)
             validate_local_bash_command_paths(command, thread_data)
             command = replace_virtual_paths_in_command(command, thread_data)
-            command = _apply_cwd_prefix(command, thread_data)
+            # The `cd <workspace> &&` prefix is POSIX shell syntax. On Windows the
+            # resolved shell may be Windows PowerShell 5.1 (which rejects `&&`
+            # as a statement separator) or cmd.exe (where single-quoted paths
+            # are not quoting), so no shell-independent prefix exists; relative
+            # paths are anchored by LocalSandbox running the command with the
+            # mapped thread workspace as the subprocess working directory.
+            if not _is_windows():
+                command = _apply_cwd_prefix(command, thread_data)
             # POSIX-only: the Windows local sandbox may execute via
             # PowerShell/cmd.exe where `export` is not valid syntax.
             if identity_prefix and not _is_windows():

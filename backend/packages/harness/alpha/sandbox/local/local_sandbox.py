@@ -31,6 +31,11 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 _COMMAND_CAPTURE_LIMIT_BYTES = 10 * 1024 * 1024
 _PIPE_DRAIN_JOIN_TIMEOUT_SECONDS = 0.2
 
+#: Container path of the per-thread workspace. On Windows, commands run with
+#: this mapped directory as the subprocess working directory instead of a
+#: ``cd <workspace> &&`` command prefix (see :attr:`LocalSandbox._workspace_cwd`).
+_WORKSPACE_CONTAINER_PATH = f"{VIRTUAL_PATH_PREFIX}/workspace"
+
 #: Exit status reported for a command whose real status is unknown because the
 #: process was never reaped. This is the coreutils ``timeout`` convention, the
 #: same sentinel :meth:`LocalSandbox.execute_command` already emits on timeout.
@@ -290,6 +295,23 @@ class LocalSandbox(Sandbox):
     def _mappings_by_local_specificity(self) -> list[PathMapping]:
         """Mappings ordered longest-local-path-first (for reverse resolution)."""
         return sorted(self.path_mappings, key=lambda m: len(m.local_path), reverse=True)
+
+    @cached_property
+    def _workspace_cwd(self) -> str | None:
+        """Host directory of the mapped thread workspace, or ``None``.
+
+        Windows host bash cannot anchor relative paths with a command prefix:
+        the resolved shell may be Windows PowerShell 5.1, which rejects ``&&``
+        ("The token '&&' is not a valid statement separator in this version."),
+        or cmd.exe, where single-quoted paths are not quoting. No single prefix
+        spelling works across ``sh`` / ``pwsh`` / Windows PowerShell 5.1 /
+        ``cmd.exe``, so the working directory is set on the subprocess instead,
+        which every candidate shell honors identically.
+        """
+        for mapping in self.path_mappings:
+            if mapping.container_path.rstrip("/") == _WORKSPACE_CONTAINER_PATH:
+                return str(mapping.local_path)
+        return None
 
     def _is_read_only_path(self, resolved_path: str) -> bool:
         """Check if a resolved path is under a read-only mount.
@@ -566,7 +588,14 @@ class LocalSandbox(Sandbox):
                             "MSYS2_ARG_CONV_EXCL": exclusions,
                         }
 
-            stdout, stderr, returncode, timed_out = self._run_windows_command(args, timeout, sandbox_env)
+            # Anchor relative paths through the process working directory. The
+            # tool layer deliberately does not prefix `cd <workspace> &&` on
+            # Windows because Windows PowerShell 5.1 rejects `&&` and cmd.exe
+            # does not treat single-quoted paths as quoting.
+            cwd = self._workspace_cwd
+            if cwd is not None and not os.path.isdir(cwd):
+                cwd = None
+            stdout, stderr, returncode, timed_out = self._run_windows_command(args, timeout, sandbox_env, cwd=cwd)
         else:
             args = [shell, "-c", resolved_command]
             stdout, stderr, returncode, timed_out = self._run_posix_command(args, timeout, sandbox_env)
@@ -593,8 +622,14 @@ class LocalSandbox(Sandbox):
         args: list[str],
         timeout: float,
         env: dict[str, str] | None = None,
+        cwd: str | None = None,
     ) -> tuple[str, str, int, bool]:
-        """Run a Windows command with bounded capture and process-tree timeout."""
+        """Run a Windows command with bounded capture and process-tree timeout.
+
+        ``cwd`` sets the subprocess working directory (the mapped thread
+        workspace on per-thread sandboxes); ``None`` inherits the Gateway's
+        working directory.
+        """
         timed_out = False
         stdout_read_fd, stdout_write_fd = os.pipe()
         stderr_read_fd, stderr_write_fd = os.pipe()
@@ -607,6 +642,7 @@ class LocalSandbox(Sandbox):
                 stderr=stderr_write_fd,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
                 env=env,
+                cwd=cwd,
             )
         except Exception:
             for fd in (stdout_read_fd, stdout_write_fd, stderr_read_fd, stderr_write_fd):
