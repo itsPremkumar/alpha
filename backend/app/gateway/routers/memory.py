@@ -187,6 +187,12 @@ class FactPatchRequest(BaseModel):
     confidence: float | None = Field(default=None, ge=0.0, le=1.0, description="Confidence score (0-1)")
 
 
+class ProspectiveLifecycleRequest(BaseModel):
+    """Optional operator reason for completing or cancelling a reminder."""
+
+    reason: str = Field(default="updated from Memory UI", max_length=500)
+
+
 class MemoryConfigResponse(BaseModel):
     """Response model for memory configuration."""
 
@@ -196,6 +202,46 @@ class MemoryConfigResponse(BaseModel):
     shutdown_flush_timeout_seconds: float = Field(..., description="Hard budget (s) to drain pending memory updates on Gateway graceful shutdown; must fit inside the pod's K8s terminationGracePeriodSeconds.")
     manager_class: str = Field(..., description="Active memory backend selector (backend name or dotted path).")
     backend_config: dict = Field(..., description="Backend-private config (self-interpreted by the backend).")
+
+
+class L1CaptureSurfaceResponse(BaseModel):
+    surface: str
+    status: str
+    written: int | None = None
+    considered: int | None = None
+    rejected: int | None = None
+
+
+class L1CaptureRunResponse(BaseModel):
+    timestamp: str | None = None
+    run_status: str | None = None
+    surfaces: list[L1CaptureSurfaceResponse] = Field(default_factory=list)
+
+
+class L1CaptureStatusResponse(BaseModel):
+    status: Literal[
+        "available",
+        "degraded",
+        "disabled",
+        "no_readable_entries",
+        "no_recent_runs",
+        "not_reported",
+        "unreadable",
+        "unavailable",
+    ]
+    window_days: int = 7
+    latest: L1CaptureRunResponse | None = None
+    reason: str | None = None
+
+
+class ProspectiveMemoryStatusResponse(BaseModel):
+    status: Literal["available", "empty", "disabled", "degraded", "unreadable", "unavailable"]
+    pending: int = 0
+    fired: int = 0
+    done: int = 0
+    cancelled: int = 0
+    expired: int = 0
+    reason: str | None = None
 
 
 class MemoryStatusResponse(BaseModel):
@@ -213,6 +259,106 @@ class MemoryStatusResponse(BaseModel):
     # runs with `response_model_exclude_none`), which reads as "unavailable"
     # and is deliberately *not* a claim of health.
     health: dict[str, Any] | None = None
+    # Bounded read-only projection of L1's owner-scoped capture provenance.
+    # It contains lifecycle/count metadata only; never memory text or IDs.
+    l1_capture: L1CaptureStatusResponse | None = None
+    # Owner-scoped lifecycle counts and read health for reminders/commitments.
+    # Never includes reminder content or IDs.
+    prospective: ProspectiveMemoryStatusResponse | None = None
+
+
+def _prospective_memory_status(config: Any, user_id: str) -> ProspectiveMemoryStatusResponse:
+    """Return bounded, content-free prospective-memory health for one owner."""
+    memory_config = getattr(config, "prospective", None)
+    if not getattr(config, "enabled", False) or not getattr(memory_config, "enabled", False):
+        return ProspectiveMemoryStatusResponse(status="disabled", reason="prospective_memory_disabled")
+    if not user_id:
+        return ProspectiveMemoryStatusResponse(status="unavailable", reason="owner_identity_unavailable")
+    try:
+        from alpha.memory.prospective.models import ProspectiveStatus
+        from alpha.memory.prospective.store import ProspectiveStore
+
+        result = ProspectiveStore(memory_config).list_items_result(user_id)
+        if result.status == "empty":
+            return ProspectiveMemoryStatusResponse(status="empty")
+        if result.status == "skipped":
+            return ProspectiveMemoryStatusResponse(status="disabled", reason="prospective_memory_disabled")
+        if result.status not in {"succeeded", "recovered"}:
+            reason = "unsupported_store_format" if result.status == "format_unsupported" else result.reason or "storage_read_failed"
+            state = "degraded" if result.status == "format_unsupported" else "unreadable"
+            return ProspectiveMemoryStatusResponse(status=state, reason=reason[:80])
+
+        counts = {status.value: 0 for status in ProspectiveStatus}
+        for item in result.items:
+            counts[item.status.value] += 1
+        state = "degraded" if result.status == "recovered" else "available" if result.items else "empty"
+        return ProspectiveMemoryStatusResponse(
+            status=state,
+            pending=counts[ProspectiveStatus.PENDING.value],
+            fired=counts[ProspectiveStatus.FIRED.value],
+            done=counts[ProspectiveStatus.DONE.value],
+            cancelled=counts[ProspectiveStatus.CANCELLED.value],
+            expired=counts[ProspectiveStatus.EXPIRED.value],
+            reason=result.reason if result.status == "recovered" else None,
+        )
+    except Exception as exc:  # noqa: BLE001 - optional status must not break core memory status
+        logger.warning("Prospective memory status read failed (%s)", type(exc).__name__, exc_info=True)
+        return ProspectiveMemoryStatusResponse(status="unreadable", reason="storage_read_failed")
+
+
+def _l1_capture_status(config: Any, user_id: str) -> L1CaptureStatusResponse:
+    """Read only bounded capture metadata for the authenticated owner."""
+    l1 = getattr(config, "l1", None)
+    if l1 is None:
+        return L1CaptureStatusResponse(status="unavailable", reason="l1_configuration_unavailable")
+    if not getattr(config, "enabled", False) or not getattr(l1, "enabled", False):
+        return L1CaptureStatusResponse(status="disabled", reason="l1_memory_disabled")
+    if not getattr(l1, "provenance_enabled", False):
+        return L1CaptureStatusResponse(status="disabled", reason="l1_provenance_disabled")
+    if not user_id:
+        return L1CaptureStatusResponse(status="unavailable", reason="owner_identity_unavailable")
+
+    try:
+        from alpha.agents.memory.l1.provenance import read_recent_capture_entry
+
+        result = read_recent_capture_entry(user_id=user_id, storage_path=getattr(l1, "storage_path", None))
+    except Exception as exc:  # noqa: BLE001 - status metadata cannot break the core route
+        logger.warning("L1 capture status read failed (%s)", type(exc).__name__, exc_info=True)
+        return L1CaptureStatusResponse(status="unreadable", reason="generation_log_unreadable")
+
+    raw_entry = result.get("entry")
+    latest = None
+    if isinstance(raw_entry, dict):
+        capture = raw_entry.get("capture_outcome")
+        raw_surfaces = capture.get("surfaces") if isinstance(capture, dict) else None
+        surfaces: list[L1CaptureSurfaceResponse] = []
+        if isinstance(raw_surfaces, list):
+            for raw in raw_surfaces[:8]:
+                if not isinstance(raw, dict):
+                    continue
+                surface = raw.get("surface")
+                status = raw.get("status")
+                if not isinstance(surface, str) or not isinstance(status, str):
+                    continue
+                values: dict[str, Any] = {"surface": surface[:40], "status": status[:40]}
+                for key in ("written", "considered", "rejected"):
+                    value = raw.get(key)
+                    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                        values[key] = value
+                surfaces.append(L1CaptureSurfaceResponse(**values))
+        timestamp = raw_entry.get("ts")
+        run_status = raw_entry.get("status")
+        latest = L1CaptureRunResponse(
+            timestamp=timestamp[:64] if isinstance(timestamp, str) else None,
+            run_status=run_status[:40] if isinstance(run_status, str) else None,
+            surfaces=surfaces,
+        )
+
+    status = result.get("status", "unavailable")
+    allowed = {"available", "degraded", "not_reported", "no_recent_runs", "no_readable_entries", "unreadable"}
+    if status not in allowed:
+        status = "unavailable"
+    return L1CaptureStatusResponse(status=status, latest=latest, reason=result.get("reason"))
 
 
 @router.get(
@@ -509,8 +655,11 @@ async def get_memory_status(http_request: Request) -> MemoryStatusResponse:
         Combined memory configuration and current data.
     """
     config = get_memory_config()
+    user_id = _resolve_memory_user_id(http_request)
     manager = await asyncio.to_thread(get_memory_manager)
-    memory_data = await _get_memory_or_501(manager, _resolve_memory_user_id(http_request), "get memory status")
+    memory_data = await _get_memory_or_501(manager, user_id, "get memory status")
+    l1_capture = await asyncio.to_thread(_l1_capture_status, config, user_id)
+    prospective = await asyncio.to_thread(_prospective_memory_status, config, user_id)
 
     return MemoryStatusResponse(
         config=MemoryConfigResponse(
@@ -523,7 +672,70 @@ async def get_memory_status(http_request: Request) -> MemoryStatusResponse:
         ),
         data=MemoryResponse(**memory_data),
         health=_memory_health_or_none(manager),
+        l1_capture=l1_capture,
+        prospective=prospective,
     )
+
+
+@router.get("/memory/prospective", summary="List owner-scoped reminders and commitments")
+async def list_prospective_memory(http_request: Request) -> dict[str, Any]:
+    """List this owner's prospective records; never accept an owner from input."""
+    from alpha.memory.prospective.store import ProspectiveStore
+
+    config = get_memory_config()
+    user_id = _resolve_memory_user_id(http_request)
+    prospective = getattr(config, "prospective", None)
+    if not getattr(config, "enabled", False) or not getattr(prospective, "enabled", False):
+        return {"status": "disabled", "items": [], "reason": "prospective_memory_disabled"}
+    result = await asyncio.to_thread(ProspectiveStore(prospective).list_items_result, user_id)
+    if result.status not in {"succeeded", "empty", "recovered"}:
+        reason = "unsupported_store_format" if result.status == "format_unsupported" else result.reason or "storage_read_failed"
+        raise HTTPException(status_code=503, detail=f"Prospective memory unavailable: {reason}")
+    return {
+        "status": result.status,
+        "items": [item.to_dict() for item in result.items],
+        "reason": result.reason if result.status == "recovered" else None,
+    }
+
+
+async def _mutate_prospective_item(
+    item_id: str,
+    operation: Literal["complete", "cancel"],
+    request: ProspectiveLifecycleRequest,
+    http_request: Request,
+) -> dict[str, Any]:
+    from alpha.memory.prospective.store import ProspectiveStore
+
+    config = get_memory_config()
+    prospective = getattr(config, "prospective", None)
+    if not getattr(config, "enabled", False) or not getattr(prospective, "enabled", False):
+        raise HTTPException(status_code=409, detail="Prospective memory is disabled.")
+    store = ProspectiveStore(prospective)
+    user_id = _resolve_memory_user_id(http_request)
+    result = await asyncio.to_thread(
+        getattr(store, operation),
+        item_id,
+        user_id=user_id,
+        reason=request.reason,
+    )
+    if result.status == "succeeded":
+        return {"status": result.status, "item": result.item.to_dict(), "next_item": result.next_item.to_dict() if result.next_item else None}
+    if result.reason == "not_found":
+        raise HTTPException(status_code=404, detail="Prospective memory item not found for this owner.")
+    if result.status in {"refused", "illegal_transition"}:
+        raise HTTPException(status_code=409, detail=f"Prospective memory transition refused: {result.reason}")
+    reason = "unsupported_store_format" if result.reason == "unsupported_store_format" else result.reason or "storage_mutation_failed"
+    raise HTTPException(status_code=503, detail=f"Prospective memory update unavailable: {reason}")
+
+
+@router.post("/memory/prospective/{item_id}/complete", summary="Complete an owner-scoped reminder")
+async def complete_prospective_memory(item_id: str, request: ProspectiveLifecycleRequest, http_request: Request) -> dict[str, Any]:
+    return await _mutate_prospective_item(item_id, "complete", request, http_request)
+
+
+@router.post("/memory/prospective/{item_id}/cancel", summary="Cancel an owner-scoped reminder")
+async def cancel_prospective_memory(item_id: str, request: ProspectiveLifecycleRequest, http_request: Request) -> dict[str, Any]:
+    return await _mutate_prospective_item(item_id, "cancel", request, http_request)
 
 
 def _memory_health_or_none(manager: Any) -> dict[str, Any] | None:

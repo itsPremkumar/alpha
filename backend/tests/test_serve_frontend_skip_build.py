@@ -57,8 +57,16 @@ def test_make_start_exposes_flag_as_opt_in() -> None:
 
 def test_windows_launcher_uses_installed_next_entrypoint() -> None:
     launcher = (REPO_ROOT / "start.ps1").read_text(encoding="utf-8")
-    assert '$frontendArgs = "node_modules/next/dist/bin/next dev -p $FrontendPort"' in launcher
+    assert '$frontendArgs = "node_modules/next/dist/bin/next dev --hostname 127.0.0.1 -p $FrontendPort"' in launcher
     assert '-ArgumentList "run --no-sync uvicorn' in launcher
+
+
+def test_windows_frontend_listeners_bind_only_to_loopback() -> None:
+    launcher = (REPO_ROOT / "start.ps1").read_text(encoding="utf-8")
+
+    assert launcher.count("next start --hostname 127.0.0.1 -p $FrontendPort") == 2
+    assert "next dev --hostname 127.0.0.1 -p $FrontendPort" in launcher
+    assert '$appUrl = "http://127.0.0.1:$FrontendPort"' in launcher
 
 
 def test_windows_launcher_requires_successful_readiness() -> None:

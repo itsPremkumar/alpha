@@ -12,6 +12,32 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **scenario-conditioned-memory-recall:** When the default-off
+  `memory.scenarios.enabled` gate is enabled, the lead prompt deterministically
+  classifies the user request that triggers the first applicable memory
+  injection for a thread/date and limits typed recall to enabled, compatible
+  concrete memory surfaces. Routing records include owner/thread scope without
+  the raw request; same-day turns reuse that snapshot. This host integration
+  does not construct the optional classifier model or persist frozen plans
+  across prompt calls.
+
+- **prospective-due-time-parsing:** Explicit “remind me to …” capture now stamps
+  a bounded due time when the captured phrase is unambiguous (relative offsets,
+  self-disambiguating clock phrases such as “at 5pm”/“at 21:30”, day cues like
+  “tomorrow”/“tonight”, weekdays including “next friday”, and
+  “next week”/“next month”), recording the matched phrase and interpretation
+  rule in the record metadata for audit. Ambiguous phrases stay undated
+  (`due_at` unset) rather than guessed, and no scheduler or notification
+  delivery exists yet — a recorded due time is lifecycle metadata, not a
+  delivered reminder.
+
+- **memory-write-and-forget-safety:** L1 records redact recognized credential
+  patterns from content and metadata before deriving IDs, and the durable store
+  refuses unsanitized direct writes. Memory-fabric forget paths now disclose
+  unsupported future schemas and preserve the file instead of treating the
+  scope as empty. Secret detection remains heuristic, and old records are not
+  retroactively scrubbed.
+
 - **online-skills-hub-for-forge:** Replaced the fake two-entry Skills Hub catalog
   and placeholder installer with live Skills.sh search, immutable GitHub blob
   inspection, Alpha Review Core findings, and exact-digest installation through

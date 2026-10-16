@@ -155,6 +155,14 @@ class ScanResult:
 # library.  Keep descriptions one line and edit this table, never INDEX.md, when
 # a document moves or its navigation summary changes.
 FILE_OVERRIDES: dict[str, DocumentSpec] = {
+    "ALPHA_ADVANCED_MEMORY_SYSTEM_IMPLEMENTATION_PLAN.md": DocumentSpec(
+        "plans",
+        "Advanced memory-system implementation plan covering the taxonomy, safe storage and retrieval contracts, phased lifecycle integration, governance, tests, and acceptance criteria.",
+    ),
+    "MEMORY_RUNTIME_AUDIT.md": DocumentSpec(
+        "architecture",
+        "Evidence-backed map of Alpha memory types, stores, capture and recall wiring, configuration gates, tests, current runtime limits and the recommended first vertical slice.",
+    ),
     "AGENT_RESPONSE_UI.md": DocumentSpec(
         "architecture",
         "Design record for the chat transcript's agent-response surfaces: kind-specialised tool cards, terminal, diff and subagent blocks, and the honesty contract that keeps an unmeasured field rendering nothing rather than zero.",

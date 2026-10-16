@@ -87,6 +87,8 @@ test("the selector exposes real worker and category choices", () => {
   );
   assert.match(composer, /category:research/);
   assert.match(composer, /category:quick/);
+  assert.match(composer, /Quick · 15 turns \/ 2 min/);
+  assert.match(composer, /limited to 15 turns and 120 seconds per delegated task/);
   assert.match(composer, /category:deep-research/);
   assert.match(composer, /type:\$\{choice\.name\}/);
   assert.match(composer, /Concurrent subagents/);

@@ -152,12 +152,82 @@ export async function updateFact(factId: string, content: string): Promise<void>
   await send(`/memory/facts/${encodeURIComponent(factId)}`, "PATCH", { content });
 }
 
-export async function memoryStatus(): Promise<Record<string, unknown> | null> {
-  try {
-    return await get<Record<string, unknown>>("/memory/status");
-  } catch {
-    return null;
-  }
+export interface L1CaptureSurfaceStatus {
+  surface: string;
+  status: string;
+  written?: number;
+  considered?: number;
+  rejected?: number;
+}
+
+export interface L1CaptureStatus {
+  status: "available" | "degraded" | "disabled" | "no_readable_entries" | "no_recent_runs" | "not_reported" | "unreadable" | "unavailable";
+  window_days: number;
+  reason?: string;
+  latest?: {
+    timestamp?: string;
+    run_status?: string;
+    surfaces: L1CaptureSurfaceStatus[];
+  };
+}
+
+export interface MemoryExtractionHealth {
+  status: "ok" | "degraded" | "disabled" | "unknown" | string;
+  reason?: string | null;
+  extraction_enabled?: boolean | null;
+  model?: string | null;
+  model_source?: string | null;
+  last_attempt_at?: string | null;
+  last_success_at?: string | null;
+  last_failure_at?: string | null;
+  last_error_type?: string | null;
+  consecutive_failures?: number;
+  total_successes?: number;
+  total_failures?: number;
+}
+
+export interface MemoryStatus {
+  config?: { enabled?: boolean };
+  health?: MemoryExtractionHealth | null;
+  l1_capture?: L1CaptureStatus;
+  prospective?: {
+    status: "available" | "empty" | "disabled" | "degraded" | "unreadable" | "unavailable";
+    pending: number;
+    fired: number;
+    done: number;
+    cancelled: number;
+    expired: number;
+    reason?: string;
+  };
+}
+
+export interface ProspectiveMemoryItem {
+  id: string;
+  content: string;
+  kind: "reminder" | "commitment" | "recurring";
+  status: "pending" | "fired" | "done" | "cancelled" | "expired";
+  priority: number;
+  due_at: number | null;
+  created_at: number;
+  occurrence: number;
+}
+
+export interface ProspectiveMemoryList {
+  status: "disabled" | "empty" | "succeeded" | "recovered";
+  items: ProspectiveMemoryItem[];
+  reason?: string | null;
+}
+
+export async function fetchProspectiveMemory(): Promise<ProspectiveMemoryList> {
+  return await get<ProspectiveMemoryList>("/memory/prospective");
+}
+
+export async function transitionProspectiveMemory(itemId: string, action: "complete" | "cancel"): Promise<void> {
+  await send(`/memory/prospective/${encodeURIComponent(itemId)}/${action}`, "POST", { reason: `marked ${action} from Memory UI` });
+}
+
+export async function memoryStatus(): Promise<MemoryStatus> {
+  return await get<MemoryStatus>("/memory/status");
 }
 
 // ============================================================================

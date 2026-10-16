@@ -40,6 +40,51 @@ Alpha implements a multi-layered memory architecture designed for different acce
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Scenario-conditioned recall
+
+The lead-agent prompt can optionally classify the request that triggers a
+memory injection and select which enabled typed-memory surfaces to recall. Set
+`memory.scenarios.enabled` to `true` to enable deterministic routing; it
+remains off by default. The current dynamic-context lifecycle injects this
+memory snapshot on the first applicable turn per thread/date, so later
+same-day turns reuse that snapshot rather than reclassifying. The host routes
+only concrete surfaces whose individual gates are enabled, records the
+decision under the resolved owner and runtime thread ID, and does not persist
+the raw request text. A weak or ambiguous classification falls back to the
+general scenario. The prompt integration does not construct the optional model
+classifier or preserve a frozen routing plan across prompt calls. See
+[`MEMORY_TYPES.md`](MEMORY_TYPES.md) for coverage and
+[`MEMORY_RUNTIME_AUDIT.md`](MEMORY_RUNTIME_AUDIT.md) for verification status.
+
+## Coding-task repository structure memory
+
+The existing opt-in `memory.codebase` indexer is connected to the real
+lead-agent prompt path. When the master memory/injection gates and
+`memory.codebase.enabled` are on, the dynamic context middleware accepts a
+`repo_root` only from trusted internal runtime context; external clients cannot
+smuggle a host path through request context or checkpoint configuration. If no
+trusted root is present, Alpha does not search the filesystem or guess from the
+process working directory. A bounded standard-library parser indexes the
+explicit workspace without importing or executing project code. Refresh runs
+in a worker thread, so it does not block the request event loop. The first
+prompt schedules a refresh and can use only a previously published snapshot;
+later prompts can recall the new snapshot. Retrieval selects query-matched
+module summaries, symbol locations and dependency structure without adding
+source text to the prompt. Snapshot IDs are opaque hashes of owner and resolved
+root. The JSON store remains single-process state: it provides no
+cross-process exactly-once guarantee or independent project ACL. The feature is
+default-off and reads source files only within the trusted, explicitly supplied
+workspace.
+
+This design follows the distinction between thread state and cross-thread
+long-term memory, and between semantic, episodic and procedural memories in the
+[LangGraph memory guide](https://docs.langchain.com/oss/python/concepts/memory).
+For coding agents, repository structure and dependency context are useful
+retrieval units; prior execution traces can be linked to code entities as a
+future extension, as explored in the [Remember Your Trace paper](https://arxiv.org/abs/2605.14563).
+The current Alpha integration is a structural index, not a persistent task
+trace store or an automatic learner.
+
 ## Short-term Memory (In-Thread)
 
 ### Structure
@@ -449,6 +494,80 @@ Response:
 ```
 
 ## Memory API Reference
+
+### L1 credential protection
+
+New L1 records pass through `MemoryRecord.create()`, which redacts recognized
+credential patterns in content and metadata before deriving the record ID. The
+durable `L1RecordStore.put_records()` boundary checks again and refuses
+unredacted records that bypass the constructor. A refusal does not include the
+matched secret in its exception text. Redaction reports store only the count and
+pattern families replaced.
+
+This is heuristic protection, not a guarantee that every secret format is
+recognized. Existing snapshots are not retroactively scrubbed by this write
+guard. The supported patterns and coverage limits are documented in
+`backend/packages/harness/alpha/security/memory_redaction.py`; focused coverage
+is in `backend/tests/test_memory_secret_filter.py`.
+
+`GET /api/memory/status` includes an `l1_capture` projection for the authenticated
+owner. It reads at most seven days of per-owner L1 generation logs and limits the
+tail read to 128 KiB and 500 lines per day. The projection contains the latest
+readable run timestamp/status and per-surface counters only; it never returns
+memory text or record IDs. `disabled`, `no_recent_runs`, `no_readable_entries`,
+`not_reported`, `unreadable`, and `degraded` are distinct states. This is owner/agent scope:
+`CaptureJob` has no project ID, so this status does not claim project isolation.
+
+The Memory overview renders this projection in the **Automatic L1 Capture** card.
+It is diagnostic evidence from the local generation log, not a proof of successful
+retrieval or cross-process exactly-once behavior.
+
+The overview also renders the backend's **Automatic Memory Extraction** health
+record: current extraction posture, model/source label, recent attempt/failure
+times, and bounded success/failure counters. It omits raw provider error text and
+owner/thread scope values. This health record is process-local; after a Gateway
+restart it returns to `unknown` until an extraction result is observed. A
+`degraded` result means background extraction failed even if the chat run itself
+completed; it does not imply that existing stored facts are unavailable.
+
+### Prospective reminders
+
+Lead-agent middleware can capture explicit user requests phrased as “remind me to …”
+or “don't let me forget to …” after a successful turn. Capture and prompt recall both
+require `memory.enabled: true` and `memory.prospective.enabled: true`; prospective
+memory is off by default. The middleware requires a resolved non-default owner and
+a stable source message/run ID, which makes retries with that same source
+idempotent. Capture also stamps a bounded due time: `alpha.memory.prospective.dates`
+(stdlib-only, injectable clock) turns an unambiguous explicit phrase — relative
+offsets (“in 30 minutes”), self-disambiguating clocks (meridiem-qualified or 24h
+hours such as “at 5pm”, “at 21:30” — a bare “at 9:30” is refused), day cues
+(“today”, “tomorrow”, “tonight”, part-of-day defaults), weekdays (“friday”, “next
+friday”) and “next week”/“next month” — into the record's `due_at`, persisting
+`due_phrase` and the stable `due_rule` name in the record metadata for audit.
+Anything ambiguous (two conflicting day cues, two different clocks, a false match
+inside an e-mail address) keeps the reminder undated rather than guessing a wrong
+date. Capture still does not schedule notifications or deliver due-time reminders,
+does not capture arbitrary commitments, and the parsed dates are unit-tested in
+isolated scopes, not proven end to end on a live Gateway. The store is
+owner/agent scoped and has no project scope. The
+authenticated Gateway exposes `GET /api/memory/prospective` plus
+`POST /api/memory/prospective/{item_id}/complete|cancel`; owner identity always
+comes from the request context, never the body. Unsupported future store formats
+return an explicit unavailable error and are preserved. `GET /api/memory/status`
+includes content-free lifecycle counts, and the Memory UI's **Reminders** tab
+lists records and supports completion/cancellation. This UI does not schedule or
+deliver time-based notifications.
+
+### Canonical memory-fabric deletion
+
+Memory-fabric scope deletion and hard deletion return a disclosed
+`format_unsupported` result if the scope file was written by a newer schema.
+Candidate enumeration, just like the delete operation itself, refuses to
+describe that scope as empty. The store file is left byte-for-byte intact so a
+compatible build can read it later. Corruption-preservation failures are
+reported separately; neither condition is a successful forget. These local
+JSON writes remain process-local and do not provide cross-worker exactly-once
+coordination.
 
 ### Core Endpoints
 ```

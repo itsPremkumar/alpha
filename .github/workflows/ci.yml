@@ -110,8 +110,10 @@ jobs:
           retention-days: 7
 
   # backend-test and backend-test-blocking-io used to run here. The full suite
-  # is owned by backend-unit-tests.yml (4 duration-balanced shards with
-  # Postgres/Redis services and DEDUPE_TEST_POSTGRES_URL wired) and the strict
+  # is owned by backend-unit-tests.yml (4 shards, duration-balanced when the
+  # committed .test-durations baseline is present and file-count balanced
+  # otherwise, with Postgres/Redis services and DEDUPE_TEST_POSTGRES_URL wired)
+  # and the strict
   # Blockbuster gate by backend-blocking-io-tests.yml (`make test-blocking-io`).
   # The copies here ran the same tests unsharded, without the service
   # containers or a job timeout, so DB-backed tests silently skipped and a

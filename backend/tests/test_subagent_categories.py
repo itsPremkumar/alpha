@@ -79,6 +79,14 @@ def test_research_overrides_and_suffix():
     assert "research" in resolution.prompt_suffix
 
 
+def test_quick_category_enforces_low_latency_turn_and_time_caps():
+    resolution = apply_category(_make_base_config(max_turns=150, timeout_seconds=1800), "quick", app_config=None)
+
+    assert resolution.config_overrides["max_turns"] == 15
+    assert resolution.config_overrides["timeout_seconds"] == 120
+    assert "Optimize for latency" in resolution.prompt_suffix
+
+
 def test_unknown_category_lists_available():
     with pytest.raises(CategoryResolutionError, match="Unknown task category 'nope'"):
         apply_category(_make_base_config(), "nope", app_config=None)

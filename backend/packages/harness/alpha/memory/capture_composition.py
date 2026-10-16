@@ -163,7 +163,10 @@ def _write_entities(
 
     memory = EntityMemory(config=config.entities)
     result = memory.ingest_records(records, user_id=user_id, now=now)
-    written = int(getattr(result, "indexed", 0) or getattr(result, "written", 0) or 0)
+    # EntityIngestResult's canonical persistence count is stored_mentions.
+    # Reading a generic `written`/`indexed` attribute made real successful
+    # entity writes look empty in the composed outcome.
+    written = int(getattr(result, "stored_mentions", 0) or 0)
     return written, str(getattr(result, "status", "unknown"))
 
 
@@ -189,8 +192,8 @@ def _write_narrative(
         for record in records
     ]
     result = memory.ingest(events, scope="user", scope_id=user_id, user_id=user_id, now=now)
-    accepted = int(getattr(result, "accepted", 0) or 0)
-    return accepted, str(getattr(result, "status", "unknown"))
+    written = int(getattr(result, "stored", 0) or 0) + int(getattr(result, "updated", 0) or 0)
+    return written, str(getattr(result, "status", "unknown"))
 
 
 _WRITERS: dict[str, Callable[..., tuple[int, str]]] = {

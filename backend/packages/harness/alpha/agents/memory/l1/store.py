@@ -37,6 +37,7 @@ from typing import Any
 
 from alpha.agents.memory.l1.models import MemoryRecord
 from alpha.agents.memory.l1.paths import atomic_write_text, l1_root, records_path
+from alpha.security.memory_redaction import redact_for_memory, redact_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +221,18 @@ class L1RecordStore:
         """Add or replace (by id) records in one scope. Returns count added."""
         if not records:
             return 0
+        # MemoryRecord.create() is the normal sanitizing constructor. Keep the
+        # durable store as a second, fail-closed boundary for callers that
+        # bypass it with direct model construction or model_validate(). Do not
+        # silently rewrite IDs here: callers use them as commit receipts.
+        for record in records:
+            content_redactions = redact_for_memory(record.content).redactions
+            scene_redactions = redact_for_memory(record.scene_name).redactions
+            metadata_redactions = redact_mapping(record.metadata).redactions
+            tags_redactions = redact_mapping({"tags": record.tags}).redactions
+            timestamp_redactions = redact_mapping({"timestamps": record.timestamps}).redactions
+            if content_redactions or scene_redactions or metadata_redactions or tags_redactions or timestamp_redactions:
+                raise ValueError("L1 memory record contains unredacted sensitive content; refusing persistence")
         with self._key_lock(user_id, agent_name):
             doc = self._load(user_id, agent_name)
             by_id = {record.id: index for index, record in enumerate(doc.records)}

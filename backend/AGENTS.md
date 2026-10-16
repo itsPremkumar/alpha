@@ -263,7 +263,7 @@ meant to catch.
 
 **Every new feature or bug fix MUST be accompanied by unit tests. No exceptions.**
 
-- Write tests in `backend/tests/` following the existing naming convention `test_<feature>.py`
+- Write tests in `backend/tests/` following the existing naming convention `test_<feature>.py`; package-level suites live in `backend/packages/<engine>/tests/` and run in the same suite and the same CI shards (`make test`, `make test-shard`)
 - Run both offline targets before and after your change: `make test` and `make test-blocking-io`
 - Tests must pass before a feature is considered complete
 - For lightweight config/utility modules, prefer pure unit tests with no external dependencies
@@ -478,7 +478,7 @@ Operations: [docs/ALPHA_PEER_NETWORK.md](../docs/ALPHA_PEER_NETWORK.md); tests:
 
 - Uses `ruff` for linting and formatting
 - Line length: 240 characters
-- Python 3.32+ with type hints
+- Python 3.12+ with type hints
 - Double quotes, space indentation
 
 Backend reference docs (`CONFIGURATION`, `ARCHITECTURE`, `API`, `API_REFERENCE`,

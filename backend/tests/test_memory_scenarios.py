@@ -283,11 +283,11 @@ def test_no_signal_does_not_ask_model_to_invent_a_label() -> None:
 
 
 def test_default_registry_contains_only_today_surfaces_and_names_are_defensive() -> None:
-    assert DEFAULT_REGISTRY.names() == ("l1", "cognitive", "dormant_context")
-    surface = DEFAULT_REGISTRY.get("l1")
+    assert DEFAULT_REGISTRY.names() == ("affective", "prospective", "entities", "social", "narrative")
+    surface = DEFAULT_REGISTRY.get("prospective")
     assert surface is not None
     surface.base_weight = 0.1
-    assert DEFAULT_REGISTRY.get("l1").base_weight == 0.9  # type: ignore[union-attr]
+    assert DEFAULT_REGISTRY.get("prospective").base_weight == 0.95  # type: ignore[union-attr]
 
 
 def test_registry_rejects_duplicates_and_serializes_concurrent_registration() -> None:

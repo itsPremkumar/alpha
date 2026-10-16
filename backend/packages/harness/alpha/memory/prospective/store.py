@@ -348,6 +348,8 @@ class ProspectiveStore:
             items = self._filtered(document["items"], user_id=user_id, agent_name=agent_name, status=status)
             if load_status == "failed":
                 return StoreReadResult(status="failed", reason="corrupt_document_preservation_failed", error=error)
+            if load_status == STORE_FORMAT_UNSUPPORTED:
+                return StoreReadResult(status=STORE_FORMAT_UNSUPPORTED, reason="unsupported_store_format", error=error)
             if load_status == "recovered":
                 return StoreReadResult(status="recovered", items=items, reason="corrupt_document_preserved", error=error)
             if not items:
@@ -374,7 +376,7 @@ class ProspectiveStore:
         for item in listed.items:
             if item.id == item_id:
                 return StoreReadResult(status="succeeded", items=[item])
-        if listed.status == "failed":
+        if listed.status not in {"empty", "succeeded"}:
             return listed
         return StoreReadResult(status="failed", reason="not_found", error=f"item {item_id!r} not found")
 
@@ -452,6 +454,8 @@ class ProspectiveStore:
                 return self._failed("storage_read_failed", str(exc), item=candidate)
             if load_status == "failed":
                 return self._failed("corrupt_document_preservation_failed", error, item=candidate)
+            if load_status == STORE_FORMAT_UNSUPPORTED:
+                return self._failed("unsupported_store_format", error, item=candidate)
             items = list(document["items"])
             if any(item.id == candidate.id for item in items):
                 return LifecycleResult(
@@ -520,6 +524,8 @@ class ProspectiveStore:
                 return self._failed("storage_read_failed", str(exc))
             if load_status == "failed":
                 return self._failed("corrupt_document_preservation_failed", error)
+            if load_status == STORE_FORMAT_UNSUPPORTED:
+                return self._failed("unsupported_store_format", error)
             items = list(document["items"])
             index = next((position for position, item in enumerate(items) if item.id == item_id), None)
             if index is None:
@@ -685,6 +691,8 @@ class ProspectiveStore:
                 return ExpiryBatchResult(status="failed", reason="storage_read_failed", error=str(exc))
             if load_status == "failed":
                 return ExpiryBatchResult(status="failed", reason="corrupt_document_preservation_failed", error=error)
+            if load_status == STORE_FORMAT_UNSUPPORTED:
+                return ExpiryBatchResult(status="failed", reason="unsupported_store_format", error=error)
             items = list(document["items"])
             changed: list[ProspectiveItem] = []
             results: list[LifecycleResult] = []

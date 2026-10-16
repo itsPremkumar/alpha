@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import html
 import logging
 import threading
@@ -26,6 +27,8 @@ if TYPE_CHECKING:
     from alpha.config.app_config import AppConfig
 
 logger = logging.getLogger(__name__)
+_CODEBASE_REFRESH_LOCKS: dict[str, threading.Lock] = {}
+_CODEBASE_REFRESH_LOCKS_GUARD = threading.Lock()
 
 # LRU cap on the per-(app_config, user_id) enabled-skills cache.
 # Without this, a long-running multi-user process leaks one entry per
@@ -862,6 +865,9 @@ def _get_memory_context(
     *,
     app_config: AppConfig | None = None,
     user_id: str | None = None,
+    declared_intent: str | None = None,
+    thread_id: str | None = None,
+    repo_root: str | None = None,
 ) -> str:
     """Get memory context for injection into system prompt.
 
@@ -871,6 +877,8 @@ def _get_memory_context(
             are read from this value instead of the global config singleton.
         user_id: Explicit user bucket. When omitted, resolves the current
             Gateway or standalone LangGraph Server identity.
+        repo_root: Explicit project workspace root. Used only by opt-in
+            codebase memory; never inferred from the process working directory.
 
     Returns:
         Formatted memory context string wrapped in XML tags, or empty string if disabled.
@@ -957,19 +965,124 @@ def _get_memory_context(
         # Each type is default-OFF and renders only real store content, so with
         # every type off this appends nothing and the block is byte-identical.
         try:
-            from alpha.memory.recall_composition import compose_typed_memory_blocks
+            from alpha.memory.recall_composition import SURFACE_ORDER, compose_typed_memory_blocks
 
-            composed = compose_typed_memory_blocks(
-                config,
-                user_id=user_id or resolve_runtime_user_id(None),
-                agent_name=agent_name,
-            )
-            composed_text = composed.text.strip()
+            owner_id = user_id or resolve_runtime_user_id(None)
+            scenario_config = getattr(config, "scenarios", None)
+            if getattr(scenario_config, "enabled", False):
+                from alpha.memory.scenarios.classifier import ScenarioClassifier
+                from alpha.memory.scenarios.models import ScenarioSignals
+                from alpha.memory.scenarios.registry import DEFAULT_SURFACES, MemorySurfaceRegistry
+                from alpha.memory.scenarios.router import ScenarioRouter
+
+                enabled_surfaces = [name for name in SURFACE_ORDER if bool(getattr(getattr(config, name, None), "enabled", False))]
+                # Register only configured, implemented renderers. A route may
+                # never select an abstract or disabled surface that the prompt
+                # cannot supply.
+                configured = {surface.name: surface for surface in DEFAULT_SURFACES}
+                registry = MemorySurfaceRegistry(configured[name] for name in enabled_surfaces)
+                router = ScenarioRouter(
+                    registry=registry,
+                    classifier=ScenarioClassifier(config=scenario_config),
+                    config=scenario_config,
+                    user_id=owner_id,
+                )
+                request_text = str(declared_intent or "")[-4_000:]
+                # User phrasing is declared intent, not evidence that a
+                # runtime error/incident has actually occurred. Those stronger
+                # signals must come from observed execution state, not words
+                # such as "error" in a coding request.
+                signals = ScenarioSignals(declared_intent=request_text)
+                plan = router.route(signals, thread_id=thread_id)
+                selected_names = [route.name for route in plan.surfaces]
+                composed = compose_typed_memory_blocks(
+                    config,
+                    user_id=owner_id,
+                    agent_name=agent_name,
+                    surfaces=tuple(selected_names),
+                )
+                composed_text = composed.text.strip()
+                # Include a compact decision record for observability while
+                # keeping actual memory records inside the existing untrusted
+                # data marking and wrapper.
+                if composed_text:
+                    selected = ", ".join(selected_names) or "none"
+                    route_header = f"[memory routing: scenario={plan.scenario.value}; confidence={plan.confidence:.2f}; surfaces={selected}]"
+                    composed_text = f"{route_header}\n{composed_text}"
+            else:
+                composed = compose_typed_memory_blocks(
+                    config,
+                    user_id=owner_id,
+                    agent_name=agent_name,
+                )
+                composed_text = composed.text.strip()
             if composed_text:
                 base = memory_content.strip()
                 memory_content = f"{base}\n\n{composed_text}" if base else composed_text
         except Exception:
             logger.debug("Failed to compose typed memory recall", exc_info=True)
+
+        # Coding-agent repository memory is opt-in and requires the caller's
+        # explicit workspace root. Never infer a host path or scan cwd here.
+        # Indexing is read-only, bounded, and parser-only; refresh is dispatched
+        # in a daemon worker because this prompt seam is synchronous and reached
+        # during async runs.
+        codebase_config = getattr(config, "codebase", None)
+        if repo_root and getattr(codebase_config, "enabled", False):
+            try:
+                from pathlib import Path
+
+                from alpha.memory.codebase.indexer import CodebaseIndexer
+                from alpha.memory.codebase.refresh import CodebaseRefresh
+                from alpha.memory.codebase.store import CodebaseStore
+                from alpha.runtime.user_context import resolve_runtime_user_id
+
+                root = Path(repo_root).expanduser().resolve(strict=True)
+                if root.is_dir():
+                    # A user's project root can contain executable or hostile
+                    # repository data; the indexer reads source as text only.
+                    # A stable owner+resolved-root key prevents cross-owner
+                    # snapshot reuse without exposing absolute paths in prompts.
+                    owner = user_id or resolve_runtime_user_id(None) or "default"
+                    repo_key = hashlib.sha256(f"{owner}\0{root}".encode()).hexdigest()
+                    store = CodebaseStore(config=codebase_config, repo_id=repo_key)
+                    indexer = CodebaseIndexer(codebase_config, repo_id=repo_key, repo_root=root)
+                    refresh = CodebaseRefresh(codebase_config, indexer=indexer, store=store, repo_id=repo_key)
+                    snapshot = store.load(repo_key)
+                    lock_key = str(store.path_for(repo_key).resolve())
+                    with _CODEBASE_REFRESH_LOCKS_GUARD:
+                        refresh_lock = _CODEBASE_REFRESH_LOCKS.setdefault(lock_key, threading.Lock())
+                    if refresh_lock.acquire(blocking=False):
+
+                        def refresh_in_background() -> None:
+                            try:
+                                refresh.refresh()
+                            finally:
+                                refresh_lock.release()
+
+                        threading.Thread(
+                            target=refresh_in_background,
+                            name="alpha-codebase-memory-refresh",
+                            daemon=True,
+                        ).start()
+                    if snapshot is not None:
+                        from alpha.memory.codebase.recall import CodebaseRecaller
+
+                        recaller = CodebaseRecaller(codebase_config, snapshot)
+                        query = str(declared_intent or "")[-4_000:]
+                        blocks = [
+                            recaller.module_summary(query),
+                            recaller.symbols(query),
+                            recaller.structure(query),
+                        ]
+                        useful = [block for block in blocks if block.strip()]
+                        if useful:
+                            disclosure = " (partial index)" if snapshot.partial_index else ""
+                            codebase_block = "### Current repository structure" + disclosure + "\n" + "\n".join(useful)
+                            base = memory_content.strip()
+                            memory_content = f"{base}\n\n{codebase_block}" if base else codebase_block
+            except Exception:
+                logger.debug("Codebase memory refresh or recall unavailable", exc_info=True)
 
         if not memory_content.strip():
             return ""

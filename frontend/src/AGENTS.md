@@ -20,8 +20,11 @@ Read the nearest feature test before changing a behavior it pins.
 `components/lion-pet/` owns the companion's SVG rig, action registry, settings,
 lifecycle, bounded local travel and CSS. `ChatView` passes only bounded
 lifecycle state and an optional chat action; never prompt text or thread IDs.
-The top bar, chat header, composer, sidebar footer and dialogs are keep-out
-regions. Placement must escape those regions when a safe position exists, and
+The top bar, chat header, composer, transcript, project inspector, sidebar
+footer and dialogs are keep-out regions. The transcript and inspector are
+protected because the companion otherwise covers readable answers and project
+controls; when no safe slot remains, the component hides until the layout has
+room. Placement must escape those regions when a safe position exists, and
 resize observation must track every marked region and dialog as the DOM changes
 while ignoring companion-owned mutations. The clickable hit area must stay
 inside the measured shell at responsive widths; CSS scaling and placement
@@ -90,6 +93,7 @@ source for exact route mappings and honest display states.
 | Side-effect journal | `components/sections/EffectsSection.tsx`, `lib/side-effects.ts` | `lib/side-effects.test.mjs`, `lib/effects-view.test.mjs` |
 | Completion gates | `components/sections/CompletionSection.tsx`, `lib/completion.ts` | `lib/completion.test.mjs`, `lib/completion-view.test.mjs` |
 | Mod kernel | `components/sections/ModsSection.tsx`, `lib/mods.ts` | `lib/mods.test.mjs`, `lib/mods-view.test.mjs` |
+| Memory overview, extraction health and L1 capture status | `components/sections/MemorySection.tsx`, `lib/memory.ts` | `lib/memory.test.mjs` |
 | Specialist catalog and orchestration controls | subagent catalog and composer selectors | `lib/subagent-catalog-view.test.mjs`, `lib/swarm-structure-view.test.mjs`, `lib/swarm-structure-wiring.test.mjs` |
 | Projects and group tree | project/group section clients and views | matching `lib/projects*.test.mjs`, `lib/groups*.test.mjs` |
 | Alpha peer network | peer client and network panel | `lib/peer-network*.test.mjs`, `lib/qr-decode.test.mjs` |

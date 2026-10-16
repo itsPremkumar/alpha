@@ -302,7 +302,14 @@ function Stop-ServiceChainOrphans {
     $patterns = if ($Service -eq 'gateway') {
         @("app.gateway.app:app --host 127.0.0.1 --port $port")
     } else {
-        @("next dev -p $port", "next start -p $port")
+        # Keep matching the earlier unqualified command lines so a launcher
+        # upgrade also cleans up a listener left by the previous release.
+        @(
+            "next dev -p $port",
+            "next start -p $port",
+            "next dev --hostname 127.0.0.1 -p $port",
+            "next start --hostname 127.0.0.1 -p $port"
+        )
     }
     $kill = if ($KillAction) { $KillAction } else { { param($procId) Stop-ProcessTree -ProcessId $procId } }
     # A tree-kill releases the grandchildren's inherited handles asynchronously,
@@ -781,7 +788,7 @@ $script:GatewaySpawnedUtc = [DateTime]::UtcNow
 Write-Host "[2/2] Starting Next.js Web Interface on port $FrontendPort..." -ForegroundColor Yellow
 Write-Host "  logs: logs\frontend.log, logs\frontend.err.log" -ForegroundColor Gray
 
-$frontendArgs = "node_modules/next/dist/bin/next dev -p $FrontendPort"
+$frontendArgs = "node_modules/next/dist/bin/next dev --hostname 127.0.0.1 -p $FrontendPort"
 if ($Prod) {
     if (-not (Test-Path "$RepoRoot\frontend\.next\BUILD_ID")) {
         Write-Host "Production build not found. Building frontend..." -ForegroundColor Yellow
@@ -800,7 +807,7 @@ if ($Prod) {
     Stop-ServiceChainOrphans -Service "frontend"
     Archive-ServiceLogs -Service "frontend" -Reason "frontend start (prod)"
     $frontendProcess = Start-Process -FilePath $nodePath `
-        -ArgumentList "node_modules/next/dist/bin/next start -p $FrontendPort" `
+        -ArgumentList "node_modules/next/dist/bin/next start --hostname 127.0.0.1 -p $FrontendPort" `
         -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $frontendLogOut -RedirectStandardError $frontendLogErr
 } else {
@@ -1020,7 +1027,7 @@ function Restart-FrontendService {
         Stop-ServiceChainOrphans -Service "frontend"
         Archive-ServiceLogs -Service "frontend" -Reason "frontend restart attempt $Attempt (prod)"
         $script:frontendProcess = Start-Process -FilePath $nodePath `
-            -ArgumentList "node_modules/next/dist/bin/next start -p $FrontendPort" `
+            -ArgumentList "node_modules/next/dist/bin/next start --hostname 127.0.0.1 -p $FrontendPort" `
             -WorkingDirectory "$RepoRoot\frontend" -PassThru -WindowStyle Hidden `
             -RedirectStandardOutput $frontendLogOut -RedirectStandardError $frontendLogErr
     } else {
@@ -1305,7 +1312,7 @@ if (-not $gatewayReady -or -not $frontendReady) {
 }
 
 # -- 8. Open Web Browser -----------------------------------------------------
-$appUrl = "http://localhost:$FrontendPort"
+$appUrl = "http://127.0.0.1:$FrontendPort"
 
 Write-Host "`n========================================================" -ForegroundColor Green
 Write-Host "Alpha is LIVE and running as ONE unified system!" -ForegroundColor Green

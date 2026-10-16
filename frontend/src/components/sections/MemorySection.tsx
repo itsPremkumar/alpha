@@ -9,6 +9,8 @@ import {
   reloadMemory,
   clearMemory,
   memoryStatus,
+  fetchProspectiveMemory,
+  transitionProspectiveMemory,
   fetchCognitiveOverview,
   recallCognitiveMemory,
   fetchWorkingMemory,
@@ -23,6 +25,10 @@ import {
   triggerConsolidation,
   triggerBeliefReconciliation,
   MemoryFact,
+  MemoryStatus,
+  MemoryExtractionHealth,
+  ProspectiveMemoryItem,
+  L1CaptureStatus,
   CognitiveOverview,
   ScoredMemoryItem,
   WorkingMemoryItem,
@@ -58,7 +64,172 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-type ActiveTab = "overview" | "recall" | "beliefs" | "skills" | "working" | "facts";
+type ActiveTab = "overview" | "recall" | "beliefs" | "skills" | "working" | "facts" | "prospective";
+
+function L1CaptureCard({ capture, error }: { capture?: L1CaptureStatus; error: string | null }) {
+  const state = capture?.status;
+  const tone = state === "available" ? "blue" : state === "degraded" ? "amber" : state === "unreadable" || state === "unavailable" ? "red" : "gray";
+  const summary = error
+    ? `Capture status unavailable: ${error}`
+    : state === "disabled"
+      ? `L1 capture is disabled (${capture?.reason ?? "disabled by configuration"}).`
+      : state === "no_recent_runs"
+        ? `No L1 generation runs were recorded in the last ${capture?.window_days ?? 7} days.`
+        : state === "no_readable_entries"
+          ? "The recent L1 generation log contains no readable entries."
+        : state === "not_reported"
+          ? "The latest readable L1 run predates capture outcome reporting."
+          : state === "unreadable"
+            ? "The recent L1 generation log could not be read."
+            : state === "degraded"
+              ? "The latest readable capture outcome is shown; part of the generation log could not be read."
+              : state === "available"
+                ? "Latest owner-scoped L1 capture outcome. Memory content is not shown here."
+                : "Capture status was not reported by the Gateway.";
+  const timestamp = capture?.latest?.timestamp;
+  const parsedTimestamp = timestamp ? Date.parse(timestamp) : NaN;
+  const displayTimestamp = timestamp
+    ? Number.isNaN(parsedTimestamp)
+      ? timestamp
+      : new Date(parsedTimestamp).toLocaleString()
+    : null;
+
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card p-4 space-y-3" aria-label="L1 capture status">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Layers className="size-4 text-cyan-400" />
+          <span className="text-xs font-semibold">Automatic L1 Capture</span>
+        </div>
+        <Badge tone={tone}>{state ?? (error ? "unavailable" : "not reported")}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground">{summary}</p>
+      {capture?.latest && (
+        <div className="space-y-2 rounded-xl bg-muted/40 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+            <span>{displayTimestamp ?? "Run time not reported"}</span>
+            <span>Run: {capture.latest.run_status ?? "status not reported"}</span>
+          </div>
+          {capture.latest.surfaces.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {capture.latest.surfaces.map((surface) => {
+                const counts = [
+                  surface.written !== undefined ? `${surface.written} stored` : null,
+                  surface.considered !== undefined ? `${surface.considered} considered` : null,
+                  surface.rejected !== undefined && surface.rejected > 0 ? `${surface.rejected} rejected` : null,
+                ].filter(Boolean).join(" · ");
+                return (
+                  <Badge key={surface.surface} tone={surface.status === "error" ? "red" : surface.status === "written" ? "green" : "gray"}>
+                    {surface.surface}: {surface.status}{counts ? ` · ${counts}` : ""}
+                  </Badge>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">No per-surface result was recorded for this run.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProspectiveMemoryCard({ memory, error }: { memory?: MemoryStatus["prospective"]; error: string | null }) {
+  const state = memory?.status;
+  const tone = state === "available" ? "green" : state === "degraded" ? "amber" : state === "unreadable" || state === "unavailable" ? "red" : "gray";
+  const description = error
+    ? `Reminder status unavailable: ${error}`
+    : state === "disabled"
+      ? "Reminder and commitment memory is disabled by configuration."
+      : state === "empty"
+        ? "No reminders or commitments are stored for this account."
+        : state === "degraded"
+          ? memory?.reason === "unsupported_store_format"
+            ? "The reminder store was created by a newer version. Its file was preserved; update Alpha to read it."
+            : `Reminder data was recovered with a warning (${memory?.reason ?? "recovery needed"}).`
+          : state === "unreadable"
+            ? "The reminder store could not be read. No reminder data is shown."
+            : state === "unavailable"
+              ? "Reminder status could not be determined."
+              : "Owner-scoped reminder and commitment lifecycle counts. Reminder text is not shown here.";
+
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card p-4 space-y-3" aria-label="Prospective memory status">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="size-4 text-violet-400" />
+          <span className="text-xs font-semibold">Reminders &amp; Commitments</span>
+        </div>
+        <Badge tone={tone}>{state ?? (error ? "unavailable" : "not reported")}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground">{description}</p>
+      {memory && (state === "available" || state === "degraded") && (
+        <div className="flex flex-wrap gap-2" aria-label="Reminder lifecycle counts">
+          <Badge tone="blue">{memory.pending} pending</Badge>
+          <Badge tone="gray">{memory.fired} triggered</Badge>
+          <Badge tone="green">{memory.done} done</Badge>
+          {(memory.cancelled > 0 || memory.expired > 0) && (
+            <Badge tone="gray">{memory.cancelled} cancelled · {memory.expired} expired</Badge>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MemoryExtractionHealthCard({ health, error }: { health?: MemoryExtractionHealth | null; error: string | null }) {
+  const reportedState = health?.status ?? "unknown";
+  const state = error
+    ? "unavailable"
+    : health?.extraction_enabled === false && reportedState !== "degraded"
+      ? "disabled"
+      : reportedState;
+  const tone = state === "ok" ? "green" : state === "degraded" ? "red" : state === "unavailable" ? "amber" : "gray";
+  const description = error
+    ? `Extraction health could not be loaded (${error}).`
+    : state === "degraded"
+      ? "Automatic memory extraction is enabled but recent updates failed. Existing facts remain available; new conversations may not be learned until this recovers."
+        : state === "disabled"
+        ? health?.reason || "Automatic memory extraction is disabled by configuration."
+        : state === "ok"
+          ? "The latest memory extraction completed successfully."
+          : state === "unknown"
+            ? "No extraction result has been reported since startup."
+            : state === "unavailable"
+              ? "The Gateway did not report extraction health."
+              : `Extraction health reported an unrecognized state: ${state}.`;
+  const lastAttempt = health?.last_attempt_at ? Date.parse(health.last_attempt_at) : NaN;
+  const lastFailure = health?.last_failure_at ? Date.parse(health.last_failure_at) : NaN;
+  const formatTime = (value: number, fallback: string) =>
+    Number.isNaN(value) ? fallback : new Date(value).toLocaleString();
+
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card p-4 space-y-3" aria-label="Memory extraction health">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className={`size-4 ${state === "ok" ? "text-emerald-400" : state === "degraded" ? "text-destructive" : "text-muted-foreground"}`} />
+          <span className="text-xs font-semibold">Automatic Memory Extraction</span>
+        </div>
+        <Badge tone={tone}>{state}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground">{description}</p>
+      {health && (
+        <div className="flex flex-wrap gap-2" aria-label="Memory extraction diagnostics">
+          {health.model && <Badge tone="gray">Model: {health.model}</Badge>}
+          {health.model_source && <Badge tone="gray">Source: {health.model_source}</Badge>}
+          {health.last_error_type && <Badge tone={state === "degraded" ? "red" : "gray"}>Last failure: {health.last_error_type}</Badge>}
+          {typeof health.consecutive_failures === "number" && health.consecutive_failures > 0 && (
+            <Badge tone="red">{health.consecutive_failures} consecutive failures</Badge>
+          )}
+          {typeof health.total_successes === "number" && <Badge tone="green">{health.total_successes} successes</Badge>}
+          {typeof health.total_failures === "number" && <Badge tone={health.total_failures > 0 ? "amber" : "gray"}>{health.total_failures} failures</Badge>}
+          {health.last_attempt_at && <span className="w-full text-[11px] text-muted-foreground">Last attempt: {formatTime(lastAttempt, "time not reported")}</span>}
+          {health.last_failure_at && <span className="w-full text-[11px] text-muted-foreground">Last failure: {formatTime(lastFailure, "time not reported")}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function MemorySection() {
   const [tab, setTab] = useState<ActiveTab>("overview");
@@ -66,13 +237,15 @@ export function MemorySection() {
   // Legacy facts state
   const [facts, setFacts] = useState<MemoryFact[]>([]);
   const [summary, setSummary] = useState("");
-  const [status, setStatus] = useState<Record<string, unknown> | null>(null);
+  const [status, setStatus] = useState<MemoryStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   // Cognitive states
   const [cognitive, setCognitive] = useState<CognitiveOverview | null>(null);
   const [workingItems, setWorkingItems] = useState<WorkingMemoryItem[]>([]);
   const [semanticNodes, setSemanticNodes] = useState<SemanticNodeItem[]>([]);
   const [proceduralSkills, setProceduralSkills] = useState<ProceduralSkillItem[]>([]);
+  const [prospectiveItems, setProspectiveItems] = useState<ProspectiveMemoryItem[]>([]);
 
   // Interactive recall simulator state
   const [recallQuery, setRecallQuery] = useState("AgentArchitecture streaming protocol");
@@ -114,6 +287,7 @@ export function MemorySection() {
   const [workingError, setWorkingError] = useState<string | null>(null);
   const [beliefsError, setBeliefsError] = useState<string | null>(null);
   const [skillsError, setSkillsError] = useState<string | null>(null);
+  const [prospectiveError, setProspectiveError] = useState<string | null>(null);
 
   const flash = (msg: string) => {
     setNotice(msg);
@@ -152,6 +326,16 @@ export function MemorySection() {
     }
   };
 
+  const loadProspective = async () => {
+    try {
+      const result = await fetchProspectiveMemory();
+      setProspectiveItems(result.items);
+      setProspectiveError(result.status === "recovered" ? (result.reason ?? "Stored reminders were recovered with a warning.") : null);
+    } catch (e) {
+      setProspectiveError(errMsg(e));
+    }
+  };
+
   const loadAll = async () => {
     setLoading(true);
     setError(null);
@@ -164,7 +348,9 @@ export function MemorySection() {
         fetchMemory()
           .then((value) => ({ ok: true as const, value }))
           .catch((e) => ({ ok: false as const, error: errMsg(e) })),
-        memoryStatus().catch(() => null),
+        memoryStatus()
+          .then((value) => ({ ok: true as const, value }))
+          .catch((e) => ({ ok: false as const, error: errMsg(e) })),
         fetchCognitiveOverview()
           .then((value) => ({ ok: true as const, value }))
           .catch((e) => ({ ok: false as const, error: errMsg(e) })),
@@ -175,7 +361,13 @@ export function MemorySection() {
       } else {
         setFactsError(mem.error);
       }
-      setStatus(st);
+      if (st.ok) {
+        setStatus(st.value);
+        setStatusError(null);
+      } else {
+        setStatus(null);
+        setStatusError(st.error);
+      }
       if (cog.ok) {
         setCognitive(cog.value);
       } else {
@@ -186,6 +378,7 @@ export function MemorySection() {
       void loadWorking();
       void loadBeliefs();
       void loadSkills();
+      void loadProspective();
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -216,6 +409,27 @@ export function MemorySection() {
       setError(errMsg(e));
     } finally {
       setSearching(false);
+    }
+  };
+
+  const onTransitionProspective = async (item: ProspectiveMemoryItem, action: "complete" | "cancel") => {
+    setActionBusy(true);
+    try {
+      await transitionProspectiveMemory(item.id, action);
+      flash(action === "complete" ? "Reminder marked complete." : "Reminder cancelled.");
+      await Promise.all([
+        loadProspective(),
+        memoryStatus()
+          .then((nextStatus) => {
+            setStatus(nextStatus);
+            setStatusError(null);
+          })
+          .catch((e) => setStatusError(errMsg(e))),
+      ]);
+    } catch (e) {
+      setProspectiveError(errMsg(e));
+    } finally {
+      setActionBusy(false);
     }
   };
 
@@ -422,8 +636,8 @@ export function MemorySection() {
             <Badge tone="gray">Density: {cognitive.tiers.semantic_graph.density}</Badge>
           </>
         )}
-        {status && typeof status.enabled !== "undefined" && (
-          <Badge tone={status.enabled ? "green" : "gray"}>gateway memory {status.enabled ? "on" : "off"}</Badge>
+        {status?.config && typeof status.config.enabled === "boolean" && (
+          <Badge tone={status.config.enabled ? "green" : "gray"}>gateway memory {status.config.enabled ? "on" : "off"}</Badge>
         )}
       </div>
 
@@ -489,6 +703,18 @@ export function MemorySection() {
         >
           Facts & Preferences ({factsError ? "?" : facts.length})
         </button>
+        <button
+          onClick={() => {
+            setTab("prospective");
+            void loadProspective();
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors ${
+            tab === "prospective" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
+          }`}
+          aria-label={`Reminders and commitments (${prospectiveError ? "unavailable" : prospectiveItems.length})`}
+        >
+          <CheckCircle2 className="size-3.5" /> Reminders ({prospectiveError ? "?" : prospectiveItems.length})
+        </button>
       </div>
 
       {loading ? (
@@ -496,6 +722,13 @@ export function MemorySection() {
       ) : (
         <>
           {/* TAB 1: COGNITIVE OVERVIEW */}
+          {tab === "overview" && (
+            <div className="grid gap-3 xl:grid-cols-2">
+              <L1CaptureCard capture={status?.l1_capture} error={statusError} />
+              <MemoryExtractionHealthCard health={status?.health} error={statusError} />
+              <ProspectiveMemoryCard memory={status?.prospective} error={statusError} />
+            </div>
+          )}
           {tab === "overview" && overviewError && (
             <ErrorBox
               message={`Cognitive overview unavailable — tier counts could not be loaded, so none are shown. (${overviewError})`}
@@ -579,6 +812,61 @@ export function MemorySection() {
                   </p>
                 )}
               </div>
+            </div>
+          )}
+
+          {tab === "prospective" && (
+            <div className="space-y-3" aria-label="Manage reminders and commitments">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Reminders &amp; Commitments</h3>
+                  <p className="text-xs text-muted-foreground">Alpha captures explicit reminders from chat. Review, complete, or cancel them here.</p>
+                </div>
+                <Btn variant="ghost" onClick={() => void loadProspective()} disabled={actionBusy}>
+                  <RefreshCw className="size-3.5" /> Refresh
+                </Btn>
+              </div>
+              {prospectiveError ? (
+                <ErrorBox
+                  message={`Reminder data unavailable — this is not an empty list. (${prospectiveError})`}
+                  onRetry={loadProspective}
+                />
+              ) : prospectiveItems.length === 0 ? (
+                <EmptyState title="No reminders stored" hint="In chat, say “remind me to…” or “don't let me forget to…” to capture an explicit reminder." />
+              ) : (
+                <div className="space-y-2">
+                  {prospectiveItems.map((item) => {
+                    const due = item.due_at === null ? null : new Date(item.due_at * 1000).toLocaleString();
+                    const active = item.status === "pending" || item.status === "fired";
+                    return (
+                      <article key={item.id} className="rounded-xl border border-border/60 bg-card p-3 space-y-2">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 space-y-1">
+                            <p className="text-sm whitespace-pre-wrap break-words">{item.content}</p>
+                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <Badge tone="purple">{item.kind}</Badge>
+                              <Badge tone={item.status === "pending" ? "blue" : item.status === "fired" ? "amber" : item.status === "done" ? "green" : "gray"}>{item.status}</Badge>
+                              <span>Priority {item.priority}</span>
+                              {due && <span>Due {due}</span>}
+                              {item.kind === "recurring" && <span>Occurrence {item.occurrence}</span>}
+                            </div>
+                          </div>
+                          {active && (
+                            <div className="flex shrink-0 gap-2">
+                              <Btn onClick={() => void onTransitionProspective(item, "complete")} disabled={actionBusy}>
+                                <CheckCircle2 className="size-3.5" /> Complete
+                              </Btn>
+                              <Btn variant="ghost" onClick={() => void onTransitionProspective(item, "cancel")} disabled={actionBusy}>
+                                <Trash2 className="size-3.5" /> Cancel
+                              </Btn>
+                            </div>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

@@ -13,6 +13,7 @@ any store. The stores have their own suites.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -78,6 +79,85 @@ def _context(config: MemoryConfig, monkeypatch: pytest.MonkeyPatch) -> str:
     return prompt_module._get_memory_context("lead", user_id="u1")
 
 
+def test_scenario_routing_uses_current_request_and_only_enabled_real_surfaces(
+    collaborators: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    import alpha.memory.recall_composition as rc
+
+    original = rc._RENDERERS["narrative"]
+    rc._RENDERERS["narrative"] = lambda *a, **k: "### Life story\n- coding preference"
+    try:
+        config = _config(narrative={"enabled": True}, scenarios={"enabled": True, "storage_path": str(tmp_path)})
+        import alpha.config.memory_config as memory_config_module
+
+        monkeypatch.setattr(memory_config_module, "get_memory_config", lambda: config)
+        block = prompt_module._get_memory_context(
+            "lead",
+            user_id="u1",
+            declared_intent="Fix this Python error; distinctive phrase stays private",
+            thread_id="thread-123",
+        )
+    finally:
+        rc._RENDERERS["narrative"] = original
+
+    assert "scenario=coding" in block
+    assert "surfaces=narrative" in block
+    assert "### Life story" in block
+    assert "unavailable_surfaces" not in block
+    entries = [json.loads(line) for path in tmp_path.rglob("*.jsonl") for line in path.read_text(encoding="utf-8").splitlines()]
+    assert len(entries) == 1
+    assert entries[0]["thread_id"] == "thread-123"
+    assert "distinctive phrase stays private" not in json.dumps(entries[0])
+
+
+def test_persisted_narrative_reaches_routed_prompt_only_for_its_owner(
+    collaborators: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from alpha.memory.narrative import NarrativeConfig, NarrativeEvent, NarrativeMemory
+
+    storage_path = tmp_path / "narrative"
+    narrative_config = NarrativeConfig(
+        enabled=True,
+        storage_path=str(storage_path),
+        min_importance=0,
+        lookback_days=10_000,
+    )
+    memory = NarrativeMemory(config=narrative_config)
+    event = NarrativeEvent(
+        id="synthetic-memory-e2e-event",
+        scope="user",
+        scope_id="owner-a",
+        period_start=100,
+        period_end=100,
+        title="Synthetic Alpha memory acceptance",
+        summary="Owner A uses an isolated fixture for narrative recall verification.",
+        importance=90,
+        source_refs=["synthetic-memory-e2e-source"],
+        created_at=100,
+    )
+    assert memory.ingest(event, scope="user", scope_id="owner-a", now=100).stored == 1
+    assert memory.regenerate(scope="user", scope_id="owner-a", now=100).status == "ok"
+
+    config = _config(
+        narrative=narrative_config.model_dump(mode="python"),
+        scenarios={"enabled": True, "storage_path": str(tmp_path / "routing")},
+    )
+    import alpha.config.memory_config as memory_config_module
+
+    monkeypatch.setattr(memory_config_module, "get_memory_config", lambda: config)
+    owner_a = prompt_module._get_memory_context("lead", user_id="owner-a", declared_intent="Fix this Python error")
+    owner_b = prompt_module._get_memory_context("lead", user_id="owner-b", declared_intent="Fix this Python error")
+
+    assert "scenario=coding" in owner_a
+    assert "Synthetic Alpha memory acceptance" in owner_a
+    assert "Owner A uses an isolated fixture" in owner_a
+    assert "Synthetic Alpha memory acceptance" not in owner_b
+
+
 def test_all_types_off_leaves_the_existing_block_untouched(collaborators: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """Default-OFF must be invisible in the real prompt, not just in isolation."""
     block = _context(_config(l1={"enabled": True}), monkeypatch)
@@ -141,6 +221,60 @@ def test_injection_disabled_yields_no_block(collaborators: None, monkeypatch: py
     """`injection_enabled: false` must stay a real off-switch, as before."""
     config = MemoryConfig.model_validate({"enabled": True, "injection_enabled": False, "narrative": {"enabled": True}})
     assert _context(config, monkeypatch) == ""
+
+
+def test_opt_in_codebase_memory_refreshes_explicit_workspace_and_reaches_prompt(
+    collaborators: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = "def calculate_memory_budget(query: str) -> int:\n    return len(query)\n"
+    (repo / "memory_budget.py").write_text(source, encoding="utf-8")
+    import alpha.config.memory_config as memory_config_module
+
+    config = _config(codebase={"enabled": True, "storage_path": str(tmp_path / "state")})
+    monkeypatch.setattr(memory_config_module, "get_memory_config", lambda: config)
+
+    app_config = type("AppConfigStub", (), {"memory": config})()
+    kwargs = {
+        "app_config": app_config,
+        "user_id": "owner-a",
+        "declared_intent": "Find calculate_memory_budget in this repository",
+        "repo_root": str(repo),
+    }
+    prompt_module._get_memory_context("lead", **kwargs)
+
+    import time
+
+    snapshot_root = tmp_path / "state"
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline and not list(snapshot_root.rglob("snapshots.json")):
+        time.sleep(0.01)
+    block = prompt_module._get_memory_context("lead", **kwargs)
+
+    assert "Current repository structure" in block
+    assert "memory_budget.py" in block
+    assert "calculate_memory_budget" in block
+    assert "return len(query)" not in block
+    assert list(snapshot_root.rglob("snapshots.json"))
+
+
+def test_codebase_memory_never_scans_without_explicit_root(collaborators: None, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    config = _config(codebase={"enabled": True, "storage_path": str(tmp_path / "state")})
+    import alpha.config.memory_config as memory_config_module
+
+    monkeypatch.setattr(memory_config_module, "get_memory_config", lambda: config)
+    block = prompt_module._get_memory_context(
+        "lead",
+        app_config=type("AppConfigStub", (), {"memory": config})(),
+        user_id="owner-a",
+        declared_intent="Find hidden files",
+    )
+
+    assert "Current repository structure" not in block
+    assert list((tmp_path / "state").rglob("snapshots.json")) == []
 
 
 def test_composition_import_failure_is_swallowed(collaborators: None, monkeypatch: pytest.MonkeyPatch) -> None:

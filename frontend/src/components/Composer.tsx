@@ -1225,14 +1225,14 @@ export function Composer({
                 disabled={isLoading}
                 onChange={(event) => onDelegationModeChange(event.target.value)}
                 aria-label="Subagent mode"
-                title={subagentCatalogError ? `Subagent catalog unavailable: ${subagentCatalogError}` : "Choose whether and how Alpha delegates this message"}
+                title={subagentCatalogError ? `Subagent catalog unavailable: ${subagentCatalogError}` : delegationMode === "category:quick" ? "Quick is limited to 15 turns and 120 seconds per delegated task" : "Choose whether and how Alpha delegates this message"}
                 className={`max-w-44 rounded-lg border border-border/70 bg-muted/60 px-2 py-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 ${delegationMode !== "off" ? "border-primary/40 text-primary" : "text-muted-foreground"}`}
               >
                 <option value="off">Subagents: Off</option>
                 <option value="auto">Subagents: Auto</option>
                 <option value="category:general">General · standard bounded helper</option>
                 <option value="category:research">Research · multi-source specialist</option>
-                <option value="category:quick">Quick · low-latency specialist</option>
+                <option value="category:quick">Quick · 15 turns / 2 min</option>
                 <option value="category:deep-research">Deep research · five-pass evidence workflow</option>
                 {subagentCatalogError && <option disabled>Worker catalog unavailable · see details</option>}
                 {subagentChoices?.length === 0 && <option disabled>No named workers reported</option>}

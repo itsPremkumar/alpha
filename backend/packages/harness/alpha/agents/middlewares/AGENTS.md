@@ -1,5 +1,11 @@
 ### Middleware Chain
 
+The dynamic context middleware passes only the explicit runtime `repo_root`
+into lead memory recall. Do not infer a repository from cwd, message text or a
+filesystem search; the opt-in codebase memory reader owns its bounded parser and
+worker-thread refresh. See `agents/AGENTS.md` and
+`tests/test_memory_recall_wiring.py`.
+
 `AutonomousCommandMiddleware` evaluates natural-language lifecycle intent once
 per real user message id; it must not execute a trigger again on every model/tool
 cycle for the same turn. If a message has no provider/framework id, the middleware
@@ -76,6 +82,16 @@ path and DurableContext rendering, so malformed persisted metadata cannot abort
 ordinary compaction or a model call.
 
 **Shared runtime base** (`build_lead_runtime_middlewares`; subagents reuse most of this via `build_subagent_runtime_middlewares`):
+
+The lead-specific tail also appends `ProspectiveMemoryMiddleware` only when
+`memory.enabled && memory.prospective.enabled`. It writes explicitly requested
+reminders after the turn using runtime owner identity and a stable source key,
+stamps a bounded unambiguous due time from the captured phrase via
+`alpha.memory.prospective.dates` (ambiguous or false-matched phrases stay
+undated, and the phrase/rule provenance is persisted in the record metadata),
+and does not schedule notifications. Keep owner isolation,
+idempotency, and default-off behavior covered by
+`tests/test_prospective_memory_middleware.py`.
 
 1. **InputSanitizationMiddleware** - First, so it is the outermost `wrap_model_call` wrapper; every inner middleware (including LLM retries) sees sanitized messages. `additional_kwargs.original_user_content` is server-owned provenance: Gateway strips caller-supplied values for non-internal run requests, trusted IM calls may carry the string they captured before adding transport/file context, and the middleware replaces any non-string value before wrapping. Uploads and sanitization retain first-writer-wins only for validated strings.
 2. **ToolOutputBudgetMiddleware** - Caps tool output size (per app config) before it re-enters the model context. Oversized results are externalized to `tool_output.storage_subdir` (default `.tool-results`, shared constant `TOOL_RESULTS_DIRNAME`) under the thread outputs dir with a typed synopsis + `read_file` reference left in context; those files are process feedback, so the workspace-changes scanner excludes that directory and run delivery verification never counts them as produced artifacts. Per-tool externalization thresholds resolve `tool_overrides` > `prune_tiers` > `externalize_min_chars` via `_resolve_externalize_threshold` (shared by the budget path and the `_effective_trigger` pre-scan); `0` disables externalization at the matching layer

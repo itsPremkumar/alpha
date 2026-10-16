@@ -127,11 +127,14 @@ export function ConversationGoalPanel({
               aria-label={`Open goal details: ${goal}`}
               className="min-w-0 flex-1 text-left"
             >
-              <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                <span className="shrink-0 text-[11px] font-semibold text-primary">
-                  {completed ? "Goal completed" : "Pursuing goal"}
+              <span className="grid min-w-0 flex-1 gap-1">
+                <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="shrink-0 text-[11px] font-semibold text-primary">
+                    {completed ? "Goal completed" : "Pursuing goal"}
+                  </span>
+                  <span className="min-w-0 flex-1 whitespace-normal break-words text-xs leading-relaxed text-foreground [overflow-wrap:anywhere]" title={goal}>{goal}</span>
                 </span>
-                <span className="min-w-0 flex-1 whitespace-normal break-words text-xs leading-relaxed text-foreground [overflow-wrap:anywhere]" title={goal}>{goal}</span>
+                <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
                 {details?.status ? (
                   <span className="shrink-0 rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                     {details.status}
@@ -143,6 +146,7 @@ export function ConversationGoalPanel({
                     <Clock3 className="size-3" aria-hidden="true" />{timestamp}
                   </span>
                 ) : null}
+                </span>
               </span>
             </button>
             <button

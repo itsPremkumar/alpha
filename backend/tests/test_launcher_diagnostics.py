@@ -275,6 +275,8 @@ $fake = @(
     [pscustomobject]@{ ProcessId = 333; CommandLine = 'C:\other\uv.exe run --no-sync uvicorn app.gateway.app:app --host 127.0.0.1 --port 8999' }
     [pscustomobject]@{ ProcessId = 444; CommandLine = 'C:\node.exe node_modules/next/dist/bin/next dev -p 3000' }
     [pscustomobject]@{ ProcessId = 555; CommandLine = 'C:\node.exe node_modules/next/dist/bin/next start -p 3000' }
+    [pscustomobject]@{ ProcessId = 888; CommandLine = 'C:\node.exe node_modules/next/dist/bin/next dev --hostname 127.0.0.1 -p 3000' }
+    [pscustomobject]@{ ProcessId = 999; CommandLine = 'C:\node.exe node_modules/next/dist/bin/next start --hostname 127.0.0.1 -p 3000' }
     [pscustomobject]@{ ProcessId = 666; CommandLine = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\alpha\start.ps1' }
     [pscustomobject]@{ ProcessId = 777; CommandLine = $null }
 )
@@ -306,7 +308,7 @@ def test_orphan_chain_sweep_targets_only_the_port_qualified_incarnation(tmp_path
     out = _run(HARNESS_SWEEP, tmp_path, {})
 
     assert out["RESULT_KILLED_GW"] == "111,222", f"gateway sweep must kill both chain links on its port only, got {out!r}"
-    assert out["RESULT_KILLED_FE"] == "444,555", f"frontend sweep must kill dev and start forms, got {out!r}"
+    assert out["RESULT_KILLED_FE"] == "444,555,888,999", f"frontend sweep must kill legacy and loopback dev/start forms, got {out!r}"
 
 
 # ===========================================================================

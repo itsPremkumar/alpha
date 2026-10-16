@@ -149,37 +149,49 @@ class MemorySurfaceRegistry:
 
 
 def _default_surfaces() -> tuple[MemorySurface, ...]:
-    """Metadata for surfaces that exist in Alpha today.
-
-    These values are intentionally conservative.  They describe the currently
-    injected surfaces without pretending that the wave packages are wired.
-    """
+    """Metadata for concrete surfaces rendered by the lead-agent prompt."""
 
     every = tuple(SCENARIOS)
     return (
         MemorySurface(
-            name="l1",
-            description="Typed L1 scene-segmented working memory and user directives.",
-            scenarios=every,
-            base_weight=0.90,
-            cost_units=3,
-            priority=90,
+            name="affective",
+            description="Recent emotional context relevant to the current conversation.",
+            scenarios=[Scenario.CONVERSATION, Scenario.LEARNING, Scenario.INCIDENT],
+            base_weight=0.30,
+            cost_units=1,
+            priority=30,
         ),
         MemorySurface(
-            name="cognitive",
-            description="Cognitive working memory, procedural playbooks, and belief surfaces.",
+            name="prospective",
+            description="Pending user reminders and commitments.",
+            scenarios=[Scenario.CODING, Scenario.RESEARCH, Scenario.OPERATIONS, Scenario.PLANNING, Scenario.INCIDENT],
+            base_weight=0.95,
+            cost_units=1,
+            priority=95,
+        ),
+        MemorySurface(
+            name="entities",
+            description="Known people, projects, tools, and related entities.",
             scenarios=every,
-            base_weight=0.78,
+            base_weight=0.55,
             cost_units=2,
-            priority=80,
+            priority=55,
         ),
         MemorySurface(
-            name="dormant_context",
-            description="Low-priority dormant context retained for selective recall.",
-            scenarios=every,
+            name="social",
+            description="User-scoped relationship and counterpart context.",
+            scenarios=[Scenario.CONVERSATION, Scenario.PLANNING, Scenario.RESEARCH],
             base_weight=0.35,
             cost_units=1,
             priority=35,
+        ),
+        MemorySurface(
+            name="narrative",
+            description="A bounded timeline of relevant user events and experiences.",
+            scenarios=every,
+            base_weight=0.40,
+            cost_units=1,
+            priority=40,
         ),
     )
 

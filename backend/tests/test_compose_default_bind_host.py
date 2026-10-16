@@ -148,6 +148,15 @@ def test_every_compose_file_publishes_nothing_unbound():
     assert not offenders, f"compose files publishing on all interfaces (add a bind address): {offenders}"
 
 
+def test_local_nginx_entry_is_loopback_only():
+    """The bare-metal dev entry must not expose the local stack to the LAN."""
+    config = (REPO_ROOT / "docker/nginx/nginx.local.conf").read_text(encoding="utf-8")
+    assert "listen 127.0.0.1:2026;" in config
+    assert "listen [::1]:2026;" in config
+    assert "listen 2026;" not in config
+    assert "listen [::]:2026;" not in config
+
+
 @pytest.mark.parametrize("variant", sorted(COMPOSE_PATHS))
 def test_nginx_entry_defaults_to_loopback(variant: str):
     """With BIND_HOST unset, the entry port must bind 127.0.0.1, not 0.0.0.0.

@@ -29,7 +29,7 @@ import pytest
 from alpha.agents.memory.l1.cleaner import sweep
 from alpha.agents.memory.l1.dedup import apply_decisions, candidate_records
 from alpha.agents.memory.l1.gates import l1_enabled
-from alpha.agents.memory.l1.models import DedupOutcome, MemoryRecord
+from alpha.agents.memory.l1.models import DedupDecision, DedupOutcome, MemoryRecord
 from alpha.agents.memory.l1.parser import (
     conflict_status_known,
     extraction_status_known,
@@ -66,6 +66,24 @@ def make_config(tmp_path: Any, **l1_overrides: Any) -> MemoryConfig:
     l1 = {"enabled": True, "storage_path": str(tmp_path / "l1"), "debounce_seconds": 0.0}
     l1.update(l1_overrides)
     return MemoryConfig.model_validate({"enabled": True, "l1": l1})
+
+
+def make_additive_capture_config(tmp_path: Any, **l1_overrides: Any) -> MemoryConfig:
+    """L1 plus the default-off entity/narrative stores under a test root."""
+    l1 = {"enabled": True, "storage_path": str(tmp_path / "l1"), "debounce_seconds": 0.0}
+    l1.update(l1_overrides)
+    return MemoryConfig.model_validate(
+        {
+            "enabled": True,
+            "l1": l1,
+            "entities": {"enabled": True, "storage_path": str(tmp_path / "entities")},
+            "narrative": {
+                "enabled": True,
+                "storage_path": str(tmp_path / "narrative"),
+                "max_chars": 2000,
+            },
+        }
+    )
 
 
 class FakeModel:
@@ -827,6 +845,203 @@ def test_pipeline_end_to_end_run_reports_honestly(tmp_path) -> None:
     assert {r.type for r in records} == {"episodic", "persona"}
     scene_names = {r.scene_name for r in records}
     assert scene_names == {"planning the kyoto trip"}
+
+
+def test_pipeline_captures_persisted_records_into_real_additive_stores(tmp_path) -> None:
+    from alpha.memory.entities.memory import EntityMemory
+    from alpha.memory.narrative.memory import NarrativeMemory
+
+    extraction = json.dumps(
+        [
+            {
+                "scene_name": "payments deployment",
+                "message_ids": ["m1"],
+                "memories": [
+                    {
+                        "content": "Priya owns the Argo Rollouts canary promotion for the payments service.",
+                        "type": "work_fact",
+                        "priority": 90,
+                    }
+                ],
+            }
+        ]
+    )
+    cfg = make_additive_capture_config(tmp_path, persona_enabled=False)
+    store = L1RecordStore(cfg.l1.storage_path)
+    pipeline = L1Pipeline(config=cfg, store=store, model=FakeModel(extraction=extraction))
+
+    report = pipeline.run_job(make_job(TURNS))
+
+    assert report.status == "succeeded"
+    assert report.capture_outcome["wrote_anything"] is True, report.capture_outcome
+    statuses = {item["surface"]: item["status"] for item in report.capture_outcome["surfaces"]}
+    assert statuses["narrative"] == "written", report.capture_outcome
+    assert statuses["entities"] == "written", report.capture_outcome
+    record_id = report.persisted_record_ids[0]
+    assert store.get(record_id, user_id="u1", agent_name="lead") is not None
+
+    # The downstream stores are owner-scoped. The user-facing narrative and
+    # entity surfaces can read the captured data for this owner only.
+    narrative = NarrativeMemory(config=cfg.narrative)
+    user_events = narrative.store.list_events(scope="user", scope_id="u1")
+    assert user_events
+    assert record_id in user_events[0].source_refs
+    assert narrative.store.list_events(scope="user", scope_id="u2") == []
+    entities = EntityMemory(config=cfg.entities)
+    assert entities.store.list_entities(user_id="u1")
+    assert entities.store.list_entities(user_id="u2") == []
+
+
+def test_pipeline_capture_reloads_only_records_that_survive_retention(monkeypatch, tmp_path) -> None:
+    from alpha.memory import capture_composition
+
+    cfg = make_additive_capture_config(tmp_path, retention_max_records=1, persona_enabled=False)
+    store = L1RecordStore(cfg.l1.storage_path)
+    captured: list[dict[str, Any]] = []
+
+    def writer(_config, records, **_kwargs):
+        captured.extend(records)
+        return len(records), "test"
+
+    monkeypatch.setitem(capture_composition._WRITERS, "entities", writer)
+    monkeypatch.setitem(capture_composition._WRITERS, "narrative", writer)
+    pipeline = L1Pipeline(config=cfg, store=store, model=FakeModel(extraction=EXTRACTION_OK))
+
+    report = pipeline.run_job(make_job(TURNS))
+
+    live_ids = {record.id for record in store.list_records("u1", "lead")}
+    assert report.status == "succeeded"
+    assert report.retention["capped"] == 1
+    assert len(captured) == 2  # The same one surviving fact reaches both surfaces.
+    assert {record["id"] for record in captured} == live_ids
+    assert len(live_ids) == 1
+
+
+def test_pipeline_capture_excludes_a_dedup_merged_away_record(monkeypatch, tmp_path) -> None:
+    from alpha.agents.memory.l1 import pipeline as l1_pipeline_module
+    from alpha.memory import capture_composition
+
+    cfg = make_additive_capture_config(tmp_path, persona_enabled=False)
+    store = L1RecordStore(cfg.l1.storage_path)
+    old = MemoryRecord.create("Older Kyoto trip note", memory_type="episodic", priority=60)
+    store.put_records([old], user_id="u1", agent_name="lead")
+    observed: list[dict[str, Any]] = []
+
+    def writer(_config, records, **_kwargs):
+        observed.extend(records)
+        return len(records), "test"
+
+    monkeypatch.setitem(capture_composition._WRITERS, "entities", writer)
+    monkeypatch.setitem(capture_composition._WRITERS, "narrative", writer)
+
+    class MergeOneCandidate:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def detect(self, candidates, **_kwargs):
+            decisions = [
+                DedupDecision(
+                    record_id=candidates[0].id,
+                    action="merge",
+                    target_ids=[old.id],
+                    merged_content="Merged Kyoto trip note with updated detail.",
+                    merged_type=candidates[0].type,
+                    merged_priority=90,
+                )
+            ]
+            decisions.extend(DedupDecision(record_id=candidate.id, action="store") for candidate in candidates[1:])
+            return DedupOutcome(status="ok", decisions=decisions)
+
+    monkeypatch.setattr(l1_pipeline_module, "L1Dedup", MergeOneCandidate)
+    pipeline = L1Pipeline(config=cfg, store=store, model=FakeModel(extraction=EXTRACTION_OK))
+
+    report = pipeline.run_job(make_job(TURNS))
+
+    assert report.status == "succeeded"
+    assert store.get(old.id, user_id="u1", agent_name="lead") is None
+    assert old.id not in {record["id"] for record in observed}
+    assert {record["id"] for record in observed} == {record.id for record in store.list_records("u1", "lead")}
+
+
+def test_pipeline_optional_capture_errors_are_visible_without_failing_l1(monkeypatch, tmp_path, caplog) -> None:
+    from alpha.memory import capture_composition
+
+    cfg = make_additive_capture_config(tmp_path, persona_enabled=False)
+    store = L1RecordStore(cfg.l1.storage_path)
+
+    def failed_writer(*_args, **_kwargs):
+        raise OSError("entity disk unavailable")
+
+    monkeypatch.setitem(capture_composition._WRITERS, "entities", failed_writer)
+    pipeline = L1Pipeline(config=cfg, store=store, model=FakeModel(extraction=EXTRACTION_OK))
+
+    report = pipeline.run_job(make_job(TURNS))
+
+    assert report.status == "succeeded"
+    assert store.count("u1", "lead") == 2
+    statuses = {item["surface"]: item["status"] for item in report.capture_outcome["surfaces"]}
+    assert statuses["entities"] == "error"
+    assert statuses["narrative"] in {"written", "empty"}
+    assert "L1 additive memory capture failed for surface=entities" in caplog.text
+
+
+def test_pipeline_default_off_additive_capture_never_constructs_stores(monkeypatch, tmp_path) -> None:
+    from alpha.memory import capture_composition
+
+    cfg = make_config(tmp_path, persona_enabled=False)
+    store = L1RecordStore(cfg.l1.storage_path)
+
+    def should_not_run(*_args, **_kwargs):
+        pytest.fail("default-off additive capture must not construct a writer")
+
+    monkeypatch.setattr(capture_composition, "compose_capture", should_not_run)
+    pipeline = L1Pipeline(config=cfg, store=store, model=FakeModel(extraction=EXTRACTION_OK))
+
+    report = pipeline.run_job(make_job(TURNS))
+
+    assert report.status == "succeeded"
+    assert report.capture_outcome == {}
+    assert store.count("u1", "lead") == 2
+
+
+def test_pipeline_wires_enabled_admission_policy_before_additive_writes(monkeypatch, tmp_path) -> None:
+    from alpha.memory import capture_composition
+    from alpha.memory.policy.engine import AdmissionEngine
+
+    cfg = make_additive_capture_config(tmp_path, persona_enabled=False)
+    cfg.policy.enabled = True
+    store = L1RecordStore(cfg.l1.storage_path)
+
+    class RejectAll:
+        def evaluate(self, _candidate):
+            class Decision:
+                admit = False
+                rule_id = "test_reject"
+                action = type("Action", (), {"value": "reject"})()
+
+            return Decision()
+
+    engine = RejectAll()
+    monkeypatch.setattr(AdmissionEngine, "from_config", classmethod(lambda _cls, _config: engine))
+    monkeypatch.setitem(
+        capture_composition._WRITERS,
+        "entities",
+        lambda *_args, **_kwargs: pytest.fail("policy-rejected entities must not reach the store"),
+    )
+    monkeypatch.setitem(
+        capture_composition._WRITERS,
+        "narrative",
+        lambda *_args, **_kwargs: pytest.fail("policy-rejected narratives must not reach the store"),
+    )
+    pipeline = L1Pipeline(config=cfg, store=store, model=FakeModel(extraction=EXTRACTION_OK))
+
+    report = pipeline.run_job(make_job(TURNS))
+
+    assert report.status == "succeeded"
+    assert store.count("u1", "lead") == 2
+    assert report.capture_outcome["wrote_anything"] is False
+    assert report.capture_outcome["rejected_count"] == 4
+    assert {item["status"] for item in report.capture_outcome["surfaces"]} == {"rejected_by_policy"}
 
 
 def test_pipeline_skips_when_gate_off(tmp_path) -> None:

@@ -776,6 +776,11 @@ test("a lost link is red, names the backend's own retry, and offers a Retry", ()
     /Retry the internet connection check/,
     "the control needs an accessible name",
   );
+  const navigableMarkup = renderLinked(offline, { onOpenVitals: () => {} });
+  const clusterLabel = navigableMarkup.indexOf('aria-label="Open the full Vitals page — Backend connection"');
+  const clusterEnd = navigableMarkup.indexOf("</button>", clusterLabel);
+  const retryButton = navigableMarkup.indexOf('data-internet-retry="idle"');
+  assert.ok(clusterLabel >= 0 && clusterEnd >= 0 && retryButton > clusterEnd, "Retry must be a sibling of the clickable Vitals cluster");
   // A null latency is never drawn as 0 ms.
   assert.doesNotMatch(text, /0 ms internet/);
 });

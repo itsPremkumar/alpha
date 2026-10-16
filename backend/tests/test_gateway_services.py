@@ -1804,6 +1804,7 @@ def test_merge_run_context_overrides_forwards_context_only_keys():
         {
             "github_token": "ghs_installation_token",
             "disable_clarification": True,
+            "repo_root": "C:/work/project",
             "agent_name": "coding-llm-gateway",
         },
         internal=True,
@@ -1812,11 +1813,13 @@ def test_merge_run_context_overrides_forwards_context_only_keys():
     # Forwarded into runtime context — what tools/middlewares read.
     assert config["context"]["github_token"] == "ghs_installation_token"
     assert config["context"]["disable_clarification"] is True
+    assert config["context"]["repo_root"] == "C:/work/project"
     assert config["context"]["agent_name"] == "coding-llm-gateway"
 
     # NOT written into configurable (checkpoint-persisted).
     assert "github_token" not in config.get("configurable", {})
     assert "disable_clarification" not in config.get("configurable", {})
+    assert "repo_root" not in config.get("configurable", {})
 
 
 def test_context_only_keys_are_internal_only():
@@ -1838,14 +1841,17 @@ def test_context_only_keys_are_internal_only():
         {
             "github_token": "attacker-supplied",
             "disable_clarification": True,
+            "repo_root": "C:/private",
             "agent_name": "coding-llm-gateway",
         },
     )
 
     assert "github_token" not in config["context"]
     assert "disable_clarification" not in config["context"]
+    assert "repo_root" not in config["context"]
     assert "github_token" not in config.get("configurable", {})
     assert "disable_clarification" not in config.get("configurable", {})
+    assert "repo_root" not in config.get("configurable", {})
     # Whitelisted agent-config keys still come through for ordinary callers.
     assert config["context"]["agent_name"] == "coding-llm-gateway"
 
@@ -3127,22 +3133,24 @@ def test_strip_internal_context_keys_scrubs_config_smuggled_context_only_keys():
 
     via_context = build_run_config(
         "thread-1",
-        {"context": {"github_token": "attacker-supplied", "disable_clarification": True, "model_name": "gpt"}},
+        {"context": {"github_token": "attacker-supplied", "disable_clarification": True, "repo_root": "C:/private", "model_name": "gpt"}},
         None,
     )
     strip_internal_context_keys(via_context)
     assert "github_token" not in via_context["context"]
     assert "disable_clarification" not in via_context["context"]
+    assert "repo_root" not in via_context["context"]
     assert via_context["context"]["model_name"] == "gpt"
 
     via_configurable = build_run_config(
         "thread-1",
-        {"configurable": {"github_token": "attacker-supplied", "disable_clarification": True}},
+        {"configurable": {"github_token": "attacker-supplied", "disable_clarification": True, "repo_root": "C:/private"}},
         None,
     )
     strip_internal_context_keys(via_configurable)
     assert "github_token" not in via_configurable["configurable"]
     assert "disable_clarification" not in via_configurable["configurable"]
+    assert "repo_root" not in via_configurable["configurable"]
 
 
 def test_strip_internal_context_keys_scrubs_project_context_from_both_sections():

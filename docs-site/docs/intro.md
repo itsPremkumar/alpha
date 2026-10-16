@@ -161,6 +161,6 @@ Alpha is licensed under the **MIT License** — see [LICENSE](https://github.com
 
 **Made with ❤️ by [Prem Kumar](https://github.com/itsPremkumar) and contributors**
 
-[⭐ Star us on GitHub](https://github.com/itsPremkumar/alpha) • [🐛 Report Bug](https://github.com/itsPremkumar/alpha/issues/new?template=bug_report.md) • [💡 Request Feature](https://github.com/itsPremkumar/alpha/issues/new?template=feature_request.md)
+[⭐ Star us on GitHub](https://github.com/itsPremkumar/alpha) • [🐛 Report Bug](https://github.com/itsPremkumar/alpha/issues/new?template=bug_report.yml) • [💡 Request Feature](https://github.com/itsPremkumar/alpha/issues/new?template=feature_request.yml)
 
 </div>

@@ -391,6 +391,14 @@ test("the control lives in the strip and is disabled while a probe is in flight"
   assert.match(button, /Retrying…/, "an in-flight probe must say so rather than look idle");
   // …and it is only offered when the view says a recheck could change the answer.
   assert.match(src, /link\.canRetry && onRetryConnectivity/);
+  const backendClusterStart = src.indexOf('<Cluster\n        label="Backend connection"');
+  const backendClusterEnd = src.indexOf("</Cluster>", backendClusterStart);
+  assert.ok(backendClusterStart >= 0 && backendClusterEnd > backendClusterStart);
+  assert.doesNotMatch(
+    src.slice(backendClusterStart, backendClusterEnd),
+    /ConnectivityRetry/,
+    "the retry button must be a sibling of the clickable summary cluster, not nested inside it",
+  );
 });
 
 test("the retry handler does not shadow the client function it calls", () => {

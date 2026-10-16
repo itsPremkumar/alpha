@@ -1,6 +1,7 @@
 import asyncio
 import json
 import threading
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -9,6 +10,8 @@ from fastapi.testclient import TestClient
 
 from alpha.agents.memory import MemoryConflictError, MemoryCorruptionError
 from alpha.agents.memory.backends.deermem.deer_mem import DeerMem
+from alpha.agents.memory.l1.paths import generation_log_path
+from alpha.agents.memory.l1.provenance import read_recent_capture_entry
 from app.gateway.routers import memory
 
 
@@ -558,6 +561,243 @@ def test_memory_status_route_returns_501_for_unsupported_backend() -> None:
         with TestClient(app) as client:
             response = client.get("/api/memory/status")
     assert response.status_code == 501
+
+
+def test_memory_status_projects_latest_owner_scoped_l1_capture_without_content(tmp_path) -> None:
+    app = FastAPI()
+    app.include_router(memory.router)
+    now = datetime(2026, 10, 16, 12, tzinfo=UTC).timestamp()
+    day = datetime.fromtimestamp(now, tz=UTC).strftime("%Y-%m-%d")
+    log = generation_log_path(tmp_path, "owner-a", day)
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        json.dumps(
+            {
+                "ts": "2026-10-16T11:59:00+00:00",
+                "status": "succeeded",
+                "content": "secret memory text must not be projected",
+                "capture_outcome": {"surfaces": [{"surface": "entities", "status": "written", "written": 2, "considered": 3, "rejected": 1, "detail": "private detail"}]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    config = SimpleNamespace(
+        enabled=True,
+        mode="middleware",
+        injection_enabled=True,
+        shutdown_flush_timeout_seconds=30.0,
+        manager_class="deermem",
+        backend_config={},
+        l1=SimpleNamespace(enabled=True, provenance_enabled=True, storage_path=str(tmp_path)),
+    )
+    manager = MagicMock()
+    manager.get_memory.return_value = _sample_memory()
+    with (
+        patch("app.gateway.routers.memory.get_memory_manager", return_value=manager),
+        patch("app.gateway.routers.memory.get_memory_config", return_value=config),
+        patch("app.gateway.routers.memory._resolve_memory_user_id", return_value="owner-a"),
+    ):
+        with TestClient(app) as client:
+            response = client.get("/api/memory/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["l1_capture"] == {
+        "status": "available",
+        "window_days": 7,
+        "latest": {
+            "timestamp": "2026-10-16T11:59:00+00:00",
+            "run_status": "succeeded",
+            "surfaces": [{"surface": "entities", "status": "written", "written": 2, "considered": 3, "rejected": 1}],
+        },
+    }
+    serialized = json.dumps(payload)
+    assert "secret memory text" not in serialized
+    assert "private detail" not in serialized
+
+
+def test_memory_status_projects_prospective_health_counts_without_content(tmp_path) -> None:
+    from alpha.memory.prospective.config import ProspectiveConfig
+    from alpha.memory.prospective.store import ProspectiveStore, prospective_items_path
+
+    app = FastAPI()
+    app.include_router(memory.router)
+    prospective_config = ProspectiveConfig(enabled=True, storage_path=str(tmp_path))
+    store = ProspectiveStore(prospective_config)
+    store.create(user_id="owner-a", content="private reminder text")
+    store.create(user_id="owner-b", content="another owner's reminder")
+    config = SimpleNamespace(
+        enabled=True,
+        mode="middleware",
+        injection_enabled=True,
+        shutdown_flush_timeout_seconds=30.0,
+        manager_class="deermem",
+        backend_config={},
+        l1=SimpleNamespace(enabled=False, provenance_enabled=False),
+        prospective=prospective_config,
+    )
+    manager = MagicMock()
+    manager.get_memory.return_value = _sample_memory()
+    with (
+        patch("app.gateway.routers.memory.get_memory_manager", return_value=manager),
+        patch("app.gateway.routers.memory.get_memory_config", return_value=config),
+        patch("app.gateway.routers.memory._resolve_memory_user_id", return_value="owner-a"),
+        TestClient(app) as client,
+    ):
+        response = client.get("/api/memory/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["prospective"] == {
+        "status": "available",
+        "pending": 1,
+        "fired": 0,
+        "done": 0,
+        "cancelled": 0,
+        "expired": 0,
+    }
+    assert "private reminder text" not in json.dumps(payload)
+    assert "another owner's reminder" not in json.dumps(payload)
+    assert prospective_items_path(tmp_path, "owner-b").exists()
+
+
+def test_memory_status_discloses_unsupported_prospective_store_format(tmp_path) -> None:
+    from alpha.memory.prospective.config import ProspectiveConfig
+    from alpha.memory.prospective.store import prospective_items_path
+
+    app = FastAPI()
+    app.include_router(memory.router)
+    prospective_config = ProspectiveConfig(enabled=True, storage_path=str(tmp_path))
+    path = prospective_items_path(tmp_path, "owner-a")
+    path.parent.mkdir(parents=True)
+    original = '{"schema":2,"items":[],"future":true}'
+    path.write_text(original, encoding="utf-8")
+    config = SimpleNamespace(
+        enabled=True,
+        mode="middleware",
+        injection_enabled=True,
+        shutdown_flush_timeout_seconds=30.0,
+        manager_class="deermem",
+        backend_config={},
+        l1=SimpleNamespace(enabled=False, provenance_enabled=False),
+        prospective=prospective_config,
+    )
+    manager = MagicMock()
+    manager.get_memory.return_value = _sample_memory()
+    with (
+        patch("app.gateway.routers.memory.get_memory_manager", return_value=manager),
+        patch("app.gateway.routers.memory.get_memory_config", return_value=config),
+        patch("app.gateway.routers.memory._resolve_memory_user_id", return_value="owner-a"),
+        TestClient(app) as client,
+    ):
+        response = client.get("/api/memory/status")
+
+    assert response.status_code == 200
+    assert response.json()["prospective"] == {"status": "degraded", "reason": "unsupported_store_format", "pending": 0, "fired": 0, "done": 0, "cancelled": 0, "expired": 0}
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_prospective_memory_routes_list_and_transition_only_the_authenticated_owner(tmp_path) -> None:
+    from alpha.memory.prospective.config import ProspectiveConfig
+    from alpha.memory.prospective.store import ProspectiveStore
+
+    app = FastAPI()
+    app.include_router(memory.router)
+    prospective_config = ProspectiveConfig(enabled=True, storage_path=str(tmp_path))
+    store = ProspectiveStore(prospective_config)
+    owned = store.create(user_id="owner-a", content="Review the migration checklist")
+    foreign = store.create(user_id="owner-b", content="Private note from another account")
+    config = SimpleNamespace(enabled=True, prospective=prospective_config)
+
+    with (
+        patch("app.gateway.routers.memory.get_memory_config", return_value=config),
+        patch("app.gateway.routers.memory._resolve_memory_user_id", return_value="owner-a"),
+        TestClient(app) as client,
+    ):
+        listed = client.get("/api/memory/prospective")
+        completed = client.post(f"/api/memory/prospective/{owned.item.id}/complete", json={"reason": "verified in UI"})
+        foreign_cancel = client.post(f"/api/memory/prospective/{foreign.item.id}/cancel", json={"reason": "should not cross owners"})
+
+    assert listed.status_code == 200
+    assert listed.json()["status"] == "succeeded"
+    assert [item["id"] for item in listed.json()["items"]] == [owned.item.id]
+    assert "Private note from another account" not in listed.text
+    assert completed.status_code == 200
+    assert completed.json()["item"]["status"] == "done"
+    assert foreign_cancel.status_code == 404
+    assert store.get(owned.item.id, user_id="owner-a").status.value == "done"
+    assert store.get(foreign.item.id, user_id="owner-b").status.value == "pending"
+
+
+def test_prospective_memory_routes_disclose_unsupported_format_and_refuse_mutation(tmp_path) -> None:
+    from alpha.memory.prospective.config import ProspectiveConfig
+    from alpha.memory.prospective.store import prospective_items_path
+
+    app = FastAPI()
+    app.include_router(memory.router)
+    prospective_config = ProspectiveConfig(enabled=True, storage_path=str(tmp_path))
+    path = prospective_items_path(tmp_path, "owner-a")
+    path.parent.mkdir(parents=True)
+    original = '{"schema":2,"items":[],"future":true}'
+    path.write_text(original, encoding="utf-8")
+    config = SimpleNamespace(enabled=True, prospective=prospective_config)
+
+    with (
+        patch("app.gateway.routers.memory.get_memory_config", return_value=config),
+        patch("app.gateway.routers.memory._resolve_memory_user_id", return_value="owner-a"),
+        TestClient(app) as client,
+    ):
+        listed = client.get("/api/memory/prospective")
+        mutation = client.post("/api/memory/prospective/unknown/complete", json={})
+
+    assert listed.status_code == 503
+    assert "unsupported_store_format" in listed.json()["detail"]
+    assert mutation.status_code == 503
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_memory_status_reports_no_recent_l1_runs_for_another_owner(tmp_path) -> None:
+    now = datetime(2026, 10, 16, 12, tzinfo=UTC).timestamp()
+    day = datetime.fromtimestamp(now, tz=UTC).strftime("%Y-%m-%d")
+    log = generation_log_path(tmp_path, "owner-a", day)
+    log.parent.mkdir(parents=True)
+    log.write_text('{"capture_outcome":{"surfaces":[]}}\n', encoding="utf-8")
+
+    result = read_recent_capture_entry(user_id="owner-b", storage_path=str(tmp_path), now=now)
+    assert result["status"] == "no_recent_runs"
+    assert result["entry"] is None
+
+
+def test_read_recent_l1_capture_distinguishes_corrupt_from_missing(tmp_path) -> None:
+    now = datetime(2026, 10, 16, 12, tzinfo=UTC).timestamp()
+    day = datetime.fromtimestamp(now, tz=UTC).strftime("%Y-%m-%d")
+    log = generation_log_path(tmp_path, "owner-a", day)
+    log.parent.mkdir(parents=True)
+    log.write_text("{not-json}\n", encoding="utf-8")
+
+    result = read_recent_capture_entry(user_id="owner-a", storage_path=str(tmp_path), now=now)
+    assert result["status"] == "unreadable"
+    assert result["reason"] == "generation_log_unreadable"
+
+
+def test_read_recent_l1_capture_uses_a_bounded_tail(tmp_path) -> None:
+    now = datetime(2026, 10, 16, 12, tzinfo=UTC).timestamp()
+    day = datetime.fromtimestamp(now, tz=UTC).strftime("%Y-%m-%d")
+    log = generation_log_path(tmp_path, "owner-a", day)
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        json.dumps({"ts": "old", "capture_outcome": {"surfaces": []}}) + "\n" + "x" * 5000 + "\n" + json.dumps({"ts": "latest", "capture_outcome": {"surfaces": []}}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = read_recent_capture_entry(
+        user_id="owner-a",
+        storage_path=str(tmp_path),
+        now=now,
+        max_bytes_per_day=1024,
+    )
+    assert result["status"] == "available"
+    assert result["entry"]["ts"] == "latest"
 
 
 def test_clear_memory_route_returns_501_for_unsupported_backend() -> None:

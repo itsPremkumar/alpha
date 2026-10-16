@@ -16,8 +16,8 @@ body:
       options:
         - label: I've searched existing issues and this isn't a duplicate
           required: true
-        - [ ] I'm using the latest version (main branch or latest release)
-        - [ ] I've checked the [documentation](https://docs.alpha.itsPremkumar.com) and this isn't a configuration issue
+        - label: I'm using the latest version (main branch or latest release)
+        - label: I've checked the [documentation](https://docs.alpha.itsPremkumar.com) and this isn't a configuration issue
 
   - type: dropdown
     id: component

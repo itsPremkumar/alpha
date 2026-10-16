@@ -33,7 +33,7 @@ narrower than the type implies), **WAVE** (being built in the current wave),
 | 16 | Autobiographical / narrative | A life story: ordered, human-readable timeline synthesized from episodes and records | `alpha/memory/narrative/` (+ `memory.narrative` config) | BUILT — package + config landed; **capture/recall wiring pending** |
 | 17 | Entity / graph-linked | Named entities extracted from memories with alias resolution and entity-scoped recall | `alpha/memory/entities/` (+ `memory.entities` config) | BUILT — package + config landed; **capture/recall wiring pending** |
 | 18 | Social / shared | Who the agent deals with, relationships, and team-shared knowledge with audience scoping | `alpha/memory/social/` (+ `memory.social` config) | BUILT — package + config landed; **capture/recall wiring pending** |
-| 19 | Scenario-conditioned recall | Which memory surfaces matter for the kind of work in progress (coding vs research vs ops vs planning) | `alpha/memory/scenarios/` (+ `memory.scenarios` config) | BUILT — package + config landed; **routing/recall wiring pending** |
+| 19 | Scenario-conditioned recall | Which enabled memory surfaces matter for the current work (coding vs research vs ops vs planning) | `alpha/memory/scenarios/` + lead prompt + `memory.scenarios` config | PARTIAL — deterministic current-request routing reaches the prompt when enabled; feature is off by default, and model classification/session-persistent plan freezing are not wired |
 
 ### Cross-cutting memory infrastructure (not taxonomy rows)
 

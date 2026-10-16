@@ -744,6 +744,20 @@ def build_middlewares(
             )
         )
 
+    # Prospective memory owns explicit future reminders and is independent of
+    # L1 factual extraction. It stays absent from the middleware stack unless
+    # both master and prospective gates are enabled.
+    prospective_config = getattr(resolved_app_config.memory, "prospective", None)
+    if resolved_app_config.memory.enabled and getattr(prospective_config, "enabled", False):
+        from alpha.agents.middlewares.prospective_memory_middleware import ProspectiveMemoryMiddleware
+
+        middlewares.append(
+            ProspectiveMemoryMiddleware(
+                agent_name=agent_name,
+                memory_config=resolved_app_config.memory,
+            )
+        )
+
     # Add LearningForkMiddleware after MemoryMiddleware.
     # Runs a post-turn aux-model replay with whitelisted tools (memory + proposals).
     from alpha.agents.middlewares.learning_fork_middleware import build_learning_fork_middleware

@@ -42,8 +42,10 @@ dev:
 gateway:
 	$(RUN_ENV) uv run --locked uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001
 
+# `tests/` plus `packages/` mirrors pyproject `testpaths` so the package-level
+# suites (e.g. packages/harness/tests) are executed, not only collected.
 test:
-	$(RUN_ENV) uv run pytest -m "not live" --ignore=tests/blocking_io tests/ -v
+	$(RUN_ENV) uv run pytest -m "not live" --ignore=tests/blocking_io tests/ packages/ -v
 
 test-live:
 	$(RUN_ENV_LIVE) uv run pytest -m live tests/ -v -s
@@ -84,7 +86,7 @@ ifeq ($(SPLIT_BALANCE),)
 	@echo "         Every test still runs; only the per-shard balance degrades." 1>&2
 	@echo "         Run 'make test-shard-durations' and commit the file to restore it." 1>&2
 endif
-	$(RUN_ENV) uv run pytest -m "not live" --ignore=tests/blocking_io --splits $(SPLITS) --group $(GROUP) $(SPLIT_BALANCE) tests/ -q
+	$(RUN_ENV) uv run pytest -m "not live" --ignore=tests/blocking_io --splits $(SPLITS) --group $(GROUP) $(SPLIT_BALANCE) tests/ packages/ -q
 
 # Regenerate .test_durations from the full offline (non-live, non-blocking-I/O)
 # suite so duration-aware sharding reflects real wall-clock cost. Run locally or

@@ -50,9 +50,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
-      # Duration-aware split: `make test-shard` balances the shards by real
-      # wall-clock cost from backend/.test_durations (read-only for shards, so
-      # concurrent jobs never race writes on it). Every test runs exactly once.
+      # Duration-aware split when the committed backend/.test_durations baseline
+      # is present: `make test-shard` balances the shards by real wall-clock cost
+      # (read-only for shards, so concurrent jobs never race writes on it). That
+      # baseline is not committed in this tree, so the shards currently fall
+      # back to pytest-split's file-count balancing and backend/Makefile prints
+      # the warning at run time. Every test runs exactly once either way.
       # Fail-fast is off so a failing shard reports its tests without cancelling
       # its peers.
       fail-fast: false

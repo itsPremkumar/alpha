@@ -223,21 +223,29 @@ class PersistedRunReport(RunReport):
       landed (see ``dedup.apply_decisions`` for the per-outcome table).
     - It is ``()`` for every run that wrote nothing, including a run that
       never reached the write step.
-    - It is NOT part of ``to_dict()`` on purpose: ``to_dict()`` is the
-      generation-log entry, and widening it would change provenance output.
-      Read this attribute directly.
+    - It is NOT part of ``to_dict()`` on purpose: payloads and record ids stay
+      out of the generation log. The bounded per-surface ``capture_outcome``
+      is included so optional capture failures remain observable.
 
     No truncation is applied, so nothing is silently shortened. The list is
     bounded upstream by ``memory.l1.max_memories_per_run`` (config-validated,
     ``le=200``) and by the per-user record quota, and it lives on the returned
     object only — it never enters a stored artifact.
 
-    ``RunReport`` itself is left untouched, so every existing caller and the
-    ``l1.__init__`` lazy export map stay byte-identical; this subclass is an
-    ``isinstance``-compatible addition, and ``run_job`` always returns it.
+    The report's existing fields and lazy export map stay compatible; the
+    additive ``capture_outcome`` field contains statuses only, never content.
+    This subclass remains an ``isinstance``-compatible addition, and
+    ``run_job`` always returns it.
     """
 
     persisted_record_ids: tuple[str, ...] = ()
+    #: Per-surface outcome for optional additive memory capture. Statuses and
+    #: counts only; IDs and remembered content never enter the generation log.
+    capture_outcome: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Extend the persisted report while preserving the base report ABI."""
+        return {**RunReport.to_dict(self), "capture_outcome": dict(self.capture_outcome)}
 
 
 # ---------------------------------------------------------------------------
@@ -595,7 +603,18 @@ class L1Pipeline:
         else:
             report.persona_status = "disabled" if not l1.persona_enabled else "no_changes"
 
-        # 9. Advance the cursor ONLY after a usable extraction.
+        # 9. Compose only records that survived dedup AND retention. This
+        # optional, default-off path must never turn an already durable L1
+        # write into a failed run. CaptureJob carries no project_id, so the
+        # additive types currently receive the same owner scope as their
+        # existing user-scoped stores.
+        report.capture_outcome = self._capture_persisted_records(
+            cfg,
+            job,
+            report.persisted_record_ids,
+        )
+
+        # 10. Advance the cursor ONLY after a usable extraction.
         store.mark_processed(
             job.thread_id,
             new_keys,
@@ -610,12 +629,92 @@ class L1Pipeline:
                 agent_name=job.agent_name,
             )
 
-        # 10. Credits + provenance.
+        # 11. Credits + provenance.
         if quota is not None:
             quota.add_credits(report.credits_used)
         self._provenance(cfg, job, report)
         report.duration_ms = int((time.monotonic() - started) * 1000)
         return report
+
+    def _capture_persisted_records(
+        self,
+        cfg: MemoryConfig,
+        job: CaptureJob,
+        record_ids: tuple[str, ...],
+    ) -> dict[str, Any]:
+        """Feed confirmed, still-live L1 records into enabled additive types.
+
+        The L1 ID list is confirmed immediately after writes, but retention may
+        remove entries later in this run. Re-read each ID through the exact
+        owner/agent scope before composing capture so a merge, eviction, or
+        concurrent deletion cannot create a phantom downstream memory.
+        """
+        if not cfg.enabled or not record_ids:
+            return {}
+
+        from alpha.memory.capture_composition import CAPTURE_SURFACE_ORDER, compose_capture
+
+        surfaces = tuple(name for name in CAPTURE_SURFACE_ORDER if bool(getattr(getattr(cfg, name, None), "enabled", False)))
+        if not surfaces:
+            return {}
+        if not isinstance(job.user_id, str) or not job.user_id.strip():
+            logger.warning("L1 additive memory capture skipped: owner identity is unavailable")
+            return {"status": "skipped", "reason": "owner_id_unavailable", "surfaces": []}
+
+        try:
+            store = self._store_for()
+            records = []
+            for record_id in record_ids:
+                record = store.get(record_id, user_id=job.user_id, agent_name=job.agent_name)
+                if record is not None:
+                    records.append(record.model_dump(mode="json"))
+            if not records:
+                return {}
+
+            policy_engine = None
+            if cfg.policy.enabled:
+                from alpha.memory.policy.engine import AdmissionEngine
+
+                policy_engine = AdmissionEngine.from_config(cfg.policy)
+
+            result = compose_capture(
+                cfg,
+                records,
+                user_id=job.user_id,
+                agent_name=job.agent_name,
+                policy_engine=policy_engine,
+                surfaces=surfaces,
+            )
+            surface_results = [
+                {
+                    "surface": item.surface,
+                    "status": item.status,
+                    "written": item.written,
+                    "considered": item.considered,
+                    "rejected": item.rejected,
+                    "detail": item.detail,
+                }
+                for item in result.surfaces
+            ]
+            for item in result.surfaces:
+                if item.status == "error":
+                    logger.warning(
+                        "L1 additive memory capture failed for surface=%s detail=%s",
+                        item.surface,
+                        item.detail or "unknown",
+                    )
+            return {
+                "wrote_anything": result.wrote_anything,
+                "rejected_count": result.rejected_count,
+                "surfaces": surface_results,
+            }
+        except Exception as exc:  # noqa: BLE001 - optional capture cannot fail the L1 write
+            logger.warning(
+                "L1 additive memory capture failed; durable L1 write remains successful (%s)",
+                type(exc).__name__,
+                exc_info=True,
+            )
+            return {"status": "error", "detail": type(exc).__name__, "surfaces": []}
 
     def _provenance(self, cfg: MemoryConfig, job: CaptureJob, report: RunReport) -> None:
         if not cfg.l1.provenance_enabled:

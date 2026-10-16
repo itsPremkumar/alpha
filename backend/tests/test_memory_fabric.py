@@ -44,7 +44,7 @@ from alpha.memory.fabric import (
     transition_allowed,
 )
 from alpha.memory.fabric.forget import forget as module_forget
-from alpha.memory.fabric.store import scope_document_path
+from alpha.memory.fabric.store import MemoryFabricStoreUnavailable, scope_document_path
 
 DAY = 86_400.0
 
@@ -481,6 +481,58 @@ def test_store_preserves_corrupt_document_and_never_silently_overwrites_it(tmp_p
     replacement = recovered_store.create("after recovery", scope=scope, types="semantic", id="new", now=2.0)
     assert replacement.ok is True
     assert [record.id for record in recovered_store.list(scope, now=2.0)] == ["new"]
+
+
+def test_future_schema_refuses_forget_enumeration_and_delete_without_modifying_file(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    scope = make_scope()
+    initial = MemoryEnvelopeStore(config)
+    assert initial.create("before upgrade", scope=scope, types="semantic", id="existing", now=1.0).ok
+    path = scope_document_path(initial.root, scope)
+    future_document = json.dumps(
+        {
+            "schema": 999,
+            "scope": scope.model_dump(mode="json"),
+            "records": [{"id": "owned-by-newer-build"}],
+        },
+        ensure_ascii=False,
+    )
+    path.write_text(future_document, encoding="utf-8")
+    store = MemoryEnvelopeStore(config)
+
+    candidates = store.ids_for_forget_result(scope, actor_scope=scope)
+    assert candidates.status == "format_unsupported"
+    assert candidates.reason == "document_format_unsupported"
+    assert candidates.error
+    with pytest.raises(MemoryFabricStoreUnavailable, match="document_format_unsupported"):
+        store.ids_for_forget(scope, actor_scope=scope)
+
+    report = forget_scope(scope, store=store, actor_scope=scope, now=2.0)
+    assert report.status == "format_unsupported"
+    assert report.reason == "document_format_unsupported"
+    assert report.error
+
+    single_report = forget(
+        "existing",
+        store=store,
+        actor_scope=scope,
+        scope=scope,
+        now=2.5,
+    )
+    assert single_report.status == "format_unsupported"
+    assert single_report.reason == "document_format_unsupported"
+
+    deletion = store.remove(
+        ["existing"],
+        scope=scope,
+        actor_scope=scope,
+        reason="future-format regression",
+        now=3.0,
+    )
+    assert deletion.status == "format_unsupported"
+    assert deletion.reason == "document_format_unsupported"
+    assert deletion.storage_status == "format_unsupported"
+    assert path.read_text(encoding="utf-8") == future_document
 
 
 def test_store_bounds_growth_with_deterministic_disclosed_eviction(tmp_path: Path) -> None:

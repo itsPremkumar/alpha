@@ -136,6 +136,9 @@ def test_memory_lookup_uses_runtime_user_id():
         None,
         app_config=None,
         user_id="runtime-user",
+        declared_intent="Hi",
+        thread_id=None,
+        repo_root=None,
     )
 
 

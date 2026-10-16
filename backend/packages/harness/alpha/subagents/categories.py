@@ -146,9 +146,10 @@ BUILTIN_CATEGORIES: dict[str, SubagentCategoryConfig] = {
         max_turns=100,
     ),
     "quick": SubagentCategoryConfig(
-        description="Terse low-latency execution for small bounded tasks.",
+        description="Terse low-latency execution for small bounded tasks (15 turns, 120 seconds).",
         prompt_append=("Optimize for latency: be terse, skip exhaustive verification, and prefer the cheapest credible path that satisfies the task."),
-        max_turns=30,
+        max_turns=15,
+        timeout_seconds=120,
     ),
     "deep-research": SubagentCategoryConfig(
         description="Autonomous multi-hop deep research with 5-pass search, recursive gap filling, contradiction detection, and publication-ready citations.",

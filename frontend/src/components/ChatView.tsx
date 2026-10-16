@@ -949,6 +949,24 @@ export default function ChatView({
   // deliberately closed it (which disables auto-open for this thread).
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [workspaceDismissed, setWorkspaceDismissed] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const openWorkspace = () => {
+    setWorkspaceDismissed(false);
+    setInspectorOpen(false);
+    setWorkspaceOpen(true);
+  };
+  const openInspector = () => {
+    setWorkspaceDismissed(true);
+    setWorkspaceOpen(false);
+    setInspectorOpen(true);
+  };
+  const toggleInspector = () => {
+    if (inspectorOpen) {
+      setInspectorOpen(false);
+      return;
+    }
+    openInspector();
+  };
   const workspaceContent = useMemo(
     () => collectWorkspaceContent(messages),
     [messages],
@@ -960,9 +978,11 @@ export default function ChatView({
   useEffect(() => {
     setWorkspaceDismissed(false);
     setWorkspaceOpen(false);
+    setInspectorOpen(true);
   }, [activeThreadId]);
   useEffect(() => {
     if (workspaceContent.total > 0 && !workspaceDismissed && !workspaceOpen) {
+      setInspectorOpen(false);
       setWorkspaceOpen(true);
     }
   }, [workspaceContent.total, workspaceDismissed, workspaceOpen]);
@@ -991,7 +1011,6 @@ export default function ChatView({
   const [projects, setProjects] = useState<Project[]>([]);
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
   const [omnisearchOpen, setOmnisearchOpen] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
   const [activeContextTab, setActiveContextTab] = useState<
     "conversation" | "files" | "tasks" | "knowledge" | "agent"
   >("conversation");
@@ -3415,7 +3434,7 @@ export default function ChatView({
               onOpenProjectDetails={openProjectDetails}
               activeTab={activeContextTab}
               onTabChange={(tab) => setActiveContextTab(tab)}
-              onToggleInspector={() => setInspectorOpen((v) => !v)}
+              onToggleInspector={toggleInspector}
               inspectorOpen={inspectorOpen}
             />
           )}
@@ -3942,6 +3961,7 @@ export default function ChatView({
                 "I scrolled up" state reachable without a pointer, and that state
                 is what disarms auto-follow below. */}
                     <div
+                      data-lion-pet-keepout=""
                       className="flex-1 overflow-y-auto px-4 py-6"
                       ref={transcriptRef}
                       onScroll={handleTranscriptScroll}
@@ -4017,7 +4037,7 @@ export default function ChatView({
                                 userName={operator.name}
                                 returning={threads.length > 0}
                                 onPickStarter={(prompt) => setInput(prompt)}
-                                onReviewProject={() => setInspectorOpen(true)}
+                                onReviewProject={openInspector}
                               />
                             </div>
                           </div>
@@ -4331,7 +4351,7 @@ export default function ChatView({
                             onClick={() =>
                               workspaceOpen
                                 ? closeWorkspace()
-                                : setWorkspaceOpen(true)
+                                : openWorkspace()
                             }
                             aria-pressed={workspaceOpen}
                             title={
@@ -4517,7 +4537,7 @@ export default function ChatView({
                   </aside>
                 )}
                 {view === "chat" && inspectorOpen && (
-                  <aside className="w-80 shrink-0 h-full hidden lg:block overflow-hidden">
+                  <aside data-lion-pet-keepout="" className="w-80 shrink-0 h-full hidden lg:block overflow-hidden">
                     <ProjectDetailPanel
                       project={activeProject}
                       activeBot={activeBot}

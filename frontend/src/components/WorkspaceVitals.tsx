@@ -517,9 +517,9 @@ export function VitalsStrip({
 
         {/* The internet link, from the durable-runtime connectivity monitor.
             It sits with "is the backend there" rather than with the host-load
-            numbers because that is the question it answers, and it carries its
-            own Retry because that is the one control here an operator can
-            actually press. A healthy row stays quiet: the server's
+            numbers because that is the question it answers. The Retry button is
+            rendered beside this clickable summary group below, so interactive
+            controls are never nested. A healthy row stays quiet: the server's
             "Connectivity confirmed." sentence is not repeated beside a green
             dot, the same rule every passing subsystem row follows. */}
         <span className="inline-flex items-center" data-connectivity-state={vitals.connectivity?.state ?? "unmeasured"}>
@@ -538,9 +538,6 @@ export function VitalsStrip({
             <span className="whitespace-nowrap text-muted-foreground" data-connectivity-detail>
               — {link.detail}
             </span>
-          )}
-          {link.canRetry && onRetryConnectivity && (
-            <ConnectivityRetry onRetry={onRetryConnectivity} pending={rechecking} error={recheckError} />
           )}
         </span>
 
@@ -585,6 +582,10 @@ export function VitalsStrip({
           />
         )}
       </Cluster>
+
+      {link.canRetry && onRetryConnectivity && (
+        <ConnectivityRetry onRetry={onRetryConnectivity} pending={rechecking} error={recheckError} />
+      )}
 
       {/* ── Cluster 2 · how much work this workspace has done ───────────────── */}
       <Cluster

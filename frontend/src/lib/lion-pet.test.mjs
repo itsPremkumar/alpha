@@ -199,6 +199,19 @@ test("global, project, and section navigation headers are companion keep-outs", 
   assert.match(chatSource, /\{view !== "chat" && \(\s*<header data-lion-pet-keepout/);
 });
 
+test("the companion yields to the transcript so it cannot cover answers", () => {
+  assert.match(
+    chatSource,
+    /data-lion-pet-keepout=""\s+className="flex-1 overflow-y-auto px-4 py-6"\s+ref=\{transcriptRef\}/,
+    "the visible conversation transcript must be measured as a companion keep-out",
+  );
+  assert.match(
+    chatSource,
+    /<aside data-lion-pet-keepout="" className="w-80 shrink-0 h-full hidden lg:block overflow-hidden">\s*<ProjectDetailPanel/,
+    "the project inspector must be measured so it cannot cover project controls",
+  );
+});
+
 test("no keep-out, or no viewport, leaves the requested position untouched", () => {
   const base = {
     desiredRight: 400,

@@ -472,6 +472,25 @@ network itself remains disabled by default.
   when `browser_navigate` is configured.
 - Production readiness is partial. The evidence-backed open items live in
   `docs/PRODUCTION_READINESS_INVENTORY.md`.
+- L1 memory redacts recognized credential patterns before deriving record IDs,
+  and its durable writer refuses unsanitized direct writes. Detection is
+  heuristic and does not scrub legacy records. Memory-fabric forget operations
+  refuse unsupported future-schema or unrecoverable data instead of calling it
+  empty and preserve the file. The local JSON stores do not provide
+  cross-process exactly-once behavior; see
+  https://github.com/itsPremkumar/alpha/blob/main/docs/MEMORY.md.
+- Optional scenario-conditioned recall classifies the request that triggers
+  the first applicable memory injection per thread/date and selects among
+  enabled concrete memory surfaces; it is off by default. Same-day turns reuse
+  that snapshot. The host does not construct the optional model classifier or
+  persist frozen routing plans across prompt calls.
+- Default-off codebase memory refreshes a bounded AST and dependency summary for
+  an explicitly trusted internal workspace in a background worker, then recalls
+  query-matched module/symbol context without injecting source code. The first
+  prompt schedules indexing and can recall only a prior published snapshot;
+  its file-backed store is single-process state, not cross-process exactly-once
+  or an independent project ACL. See
+  https://github.com/itsPremkumar/alpha/blob/main/docs/MEMORY.md.
 - The current `frontend/package.json` declares `typecheck` and `verify`, not
   `check`, lint, or test scripts; use `pnpm verify`.
 

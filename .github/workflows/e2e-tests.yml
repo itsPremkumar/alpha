@@ -1,17 +1,18 @@
 name: E2E Tests (disabled - no browser suite in tree)
 
-# DISABLED. This workflow referenced a Playwright suite that is not in the
-# repository: frontend/package.json declares no @playwright/* dependency, and
-# there is no playwright.config.ts, no playwright.auth.config.ts, and no
-# *.spec.ts anywhere in the tree. `pnpm exec playwright test` could therefore
-# only fail with "command not found", and `npx playwright install` would
-# prompt to download a browser package on a runner.
+# DISABLED. This workflow's own Playwright suite is not in the repository:
+# there is no playwright.config.ts and no playwright.auth.config.ts, so
+# `pnpm exec playwright test` could only fail with "command not found".
+# A Playwright toolchain DOES exist, but it belongs to the record/replay
+# front-back contract suite (frontend/playwright.real-backend.config.ts +
+# frontend/tests/e2e-real-backend/*.spec.ts), which runs in replay-e2e.yml.
 #
 # It is kept, disabled, rather than deleted so the removal is visible in
-# review. To re-enable: add the Playwright dependency to frontend/package.json,
-# commit a playwright.config.ts plus specs, then delete this banner and restore
-# `on:` and the job below. Until then the offline gates (backend unit tests,
-# blocking-io, lint, frontend unit tests) are the real coverage.
+# review. To re-enable: commit a playwright.config.ts (and, for the auth
+# recovery job, a playwright.auth.config.ts) plus specs, then delete this
+# banner and restore `on:` and the job below. Until then the offline gates
+# (backend unit tests, blocking-io, lint, frontend unit tests) plus the
+# replay-e2e front-back contract suite are the real coverage.
 #
 # Replace the whole file with the following when the suite returns:
 #

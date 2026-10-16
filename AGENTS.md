@@ -61,7 +61,9 @@ Both compose files publish that entry as `"${BIND_HOST:-127.0.0.1}:${PORT:-2026}
 published nginx port is the whole external surface, so any new published port
 needs an explicit bind address — `backend/tests/test_compose_default_bind_host.py`
 pins this for every service in both files. The root `PORT` is Docker ingress
-config only. Windows launcher (`start.ps1`) rules are consolidated in
+config only. The bare-metal `make nginx` entry also binds only to
+`127.0.0.1:2026` and `[::1]:2026`; do not add wildcard listeners to
+`docker/nginx/nginx.local.conf`. Windows launcher (`start.ps1`) rules are consolidated in
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#agent-guidance-reference-windows-launcher-startps1).
 
 ## Repository map
@@ -244,7 +246,8 @@ Use the guide that owns each contract; this root file is only the repository map
 These apply repo-wide; module guides own the module-specific detail.
 
 - **Documentation update policy**, **test-driven development** (backend tests in
-  `backend/tests/`, frontend in `frontend/tests/`) and **format-before-push**
+  `backend/tests/` plus package-level suites in `backend/packages/*/tests/`,
+  frontend in `frontend/tests/`) and **format-before-push**
   (`ruff format --check` in backend CI) are stated once in
   **[backend/AGENTS.md](backend/AGENTS.md)**. Keep `README.md` current for
   user-facing changes and the relevant `AGENTS.md` for development/architecture

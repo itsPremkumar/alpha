@@ -29,6 +29,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import PrivateAttr
 
 from alpha.agents.memory import MemoryManager, get_memory_manager, reset_memory_manager
+from alpha.agents.memory.l1.models import MemoryRecord
+from alpha.agents.memory.l1.store import L1RecordStore
 from alpha.agents.memory.manager import MEMORY_REDACTION_METADATA_KEY
 from alpha.config.memory_config import MemoryConfig, get_memory_config, set_memory_config
 from alpha.security import memory_redaction
@@ -122,6 +124,40 @@ def test_benign_config_text_passes_through_unredacted(text: str) -> None:
     assert result.count == 0
     assert result.redactions == []
     assert result.redacted_text == text
+
+
+def test_l1_record_constructor_redacts_content_and_metadata_before_id_assignment() -> None:
+    record = MemoryRecord.create(
+        f"Use this API_KEY={FAKE_OPENAI_KEY}",
+        scene_name=f"OPENAI_API_KEY={FAKE_OPENAI_KEY}",
+        tags=[f"token={FAKE_BEARER_VALUE}"],
+        timestamps=[f"session={FAKE_SESSION_VALUE}"],
+        metadata={"provider_token": FAKE_BEARER_VALUE, "source": "conversation"},
+    )
+
+    assert FAKE_OPENAI_KEY not in record.content
+    assert FAKE_BEARER_VALUE not in json.dumps(record.metadata)
+    assert FAKE_OPENAI_KEY not in record.scene_name
+    assert FAKE_BEARER_VALUE not in json.dumps(record.tags)
+    assert FAKE_SESSION_VALUE not in json.dumps(record.timestamps)
+    assert record.content.endswith("[REDACTED:generic_key_assignment]")
+    assert record.metadata["provider_token"] == "[REDACTED:secret_named_key]"
+    assert record.metadata["memory_redaction"]["redacted_count"] == 5
+    assert "secret_assignment" in record.metadata["memory_redaction"]["redacted_kinds"]
+    assert "mapping_secret_key" in record.metadata["memory_redaction"]["redacted_kinds"]
+    assert FAKE_OPENAI_KEY not in record.id
+
+
+def test_l1_store_refuses_records_that_bypass_the_redacting_constructor(tmp_path) -> None:
+    store = L1RecordStore(str(tmp_path))
+    record = MemoryRecord(id="raw-secret", content=f"API_KEY={FAKE_OPENAI_KEY}")
+
+    with pytest.raises(ValueError, match="refusing persistence") as exc_info:
+        store.put_records([record], user_id="owner-a", agent_name="lead")
+
+    assert FAKE_OPENAI_KEY not in str(exc_info.value)
+    assert store.count("owner-a", "lead") == 0
+    assert not list(tmp_path.rglob("*.json"))
 
 
 def test_overlapping_matches_merge_to_one_report() -> None:

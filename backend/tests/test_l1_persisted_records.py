@@ -731,11 +731,12 @@ def test_run_job_returns_a_backwards_compatible_report(tmp_path) -> None:
     assert isinstance(report, PersistedRunReport)
     assert report.ok is True
     assert report.duration_ms >= 0
+    assert "capture_outcome" in report.to_dict()
+    assert "persisted_record_ids" not in report.to_dict()
 
 
 def test_persisted_ids_are_not_written_into_the_provenance_entry(tmp_path) -> None:
-    """The generation log is a provenance artifact: widening it would change
-    provenance output, so the ids stay on the returned object only."""
+    """Provenance stores bounded outcomes, but never record ids or memory text."""
     day = datetime.now(UTC).strftime("%Y-%m-%d")
     cfg = make_config(tmp_path)
     store = L1RecordStore(cfg.l1.storage_path)
@@ -749,6 +750,7 @@ def test_persisted_ids_are_not_written_into_the_provenance_entry(tmp_path) -> No
     entry = entries[0]
     assert "persisted_record_ids" not in entry
     assert set(entry) == set(RunReport(status="succeeded").to_dict()) | {
+        "capture_outcome",
         "ts",
         "component",
         "thread_id",
@@ -757,6 +759,9 @@ def test_persisted_ids_are_not_written_into_the_provenance_entry(tmp_path) -> No
         "mode",
         "trace_id",
     }
+    assert isinstance(entry["capture_outcome"], dict)
+    assert "The user plans to visit Kyoto" not in json.dumps(entry)
+    assert "The user prefers window seats" not in json.dumps(entry)
     assert entry["stored"] == 2
 
 

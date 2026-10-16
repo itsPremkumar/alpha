@@ -70,3 +70,17 @@ enforcement at the existing pre-tool-call boundary rather than adding another
 subagent execution path. Tests: `tests/test_subagent_limit_middleware.py`.
 
 **Direct subagent runtime**: `create_alpha_agent(..., subagent_runtime=runtime)` is the explicit dependency-injection path for direct graph callers. Reuse one `alpha.subagents.SubagentRuntime` across every graph that belongs to the same application capacity boundary. With the default subagent feature it binds middleware concurrency/total limits, the ordinary `task` tool, one real execution controller, and any active durable-batch submitter to the same snapshot. A caller-owned batch repository requires `await runtime.start()` (or `async with runtime`) before graph construction and `stop()` at shutdown; the factory fails closed while that worker is stopped, and already-built bound batch tools must fail unavailable after it stops rather than falling through to another process-global submitter. The factory never creates SQL infrastructure, renders the caller-owned `system_prompt`, or mounts Gateway API/UI routes. Full middleware takeover cannot be combined with this runtime; direct callers and custom subagent middleware remain responsible for model-visible call-policy wording.
+
+**L1 additive capture and status**: `agents/memory/l1/pipeline.py` passes only confirmed records that remain after retention to `memory/capture_composition.py`. Entity and narrative captures are independently gated and default off; configured policy admission runs before each downstream write. Outcomes contain counts/status only and are appended to the owner-scoped L1 provenance log. `GET /api/memory/status` exposes a bounded latest-outcome projection for the authenticated owner, and the existing Memory overview renders it. The projection scans seven days, at most 128 KiB and 500 lines per day; it omits content and record IDs. L1 `CaptureJob` does not carry project identity, so this path is owner/agent scoped, not project isolated. Tests: `tests/test_l1_memory_pipeline.py`, `tests/test_memory_router.py`.
+
+**L1 credential boundary**: `agents/memory/l1/models.py::MemoryRecord.create()` redacts recognized secret patterns from content and metadata before deriving the record ID; `agents/memory/l1/store.py::L1RecordStore.put_records()` refuses a direct write that bypasses redaction, without echoing matched text. Detection is heuristic, applies to new writes, and does not scrub legacy snapshots. Tests: `tests/test_memory_secret_filter.py`.
+
+**Coding-task codebase memory**: when `memory.codebase.enabled` and memory
+injection are enabled, the lead prompt refreshes the bounded structure index
+only from the runtime's explicit `repo_root`, then injects query-matched module,
+symbol and dependency summaries. The filesystem indexer is read-only, does not
+import/execute project files, and runs in a worker thread; no root means no scan.
+The snapshot key includes owner and resolved workspace root, but this remains a
+single-process JSON store and is not cross-process exactly-once or project ACL
+enforcement. Source code itself is not included in the injected block. Tests:
+`tests/test_memory_recall_wiring.py`, `tests/test_memory_codebase.py`.

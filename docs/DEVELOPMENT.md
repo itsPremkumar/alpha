@@ -344,6 +344,9 @@ backend/tests/
 ├── test_*_blocking_io.py  # Blocking I/O detection
 ├── fixtures/              # Test fixtures
 └── conftest.py            # Pytest configuration
+
+backend/packages/harness/tests/
+└── test_*.py              # Package-level unit tests (same suite, same shards)
 ```
 
 #### Running Tests
@@ -1005,6 +1008,12 @@ and stops the Gateway started by this invocation. Regression tests live in
 `backend/tests/test_serve_frontend_skip_build.py`. Deployment fixture tests in
 `backend/tests/test_gateway_startup.py` resolve Git Bash explicitly on Windows
 instead of invoking the WSL shim through bare `bash`.
+
+The local Gateway and Next.js listeners bind to `127.0.0.1`; the frontend is
+opened at that loopback address as well. Do not change the Windows launcher to
+bind either service to all network interfaces. Its orphan sweep continues to
+match both the previous unqualified Next.js command and the loopback-bound
+command so upgrades clean up an older listener safely.
 
 `start.ps1` checks listening ports through both `Get-NetTCPConnection` and a
 `netstat.exe` fallback: restricted hosts can false-negative on the cmdlet, and

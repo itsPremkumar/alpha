@@ -60,11 +60,6 @@ ALLOWED_ORPHANS: dict[str, str] = {
     # production wiring lands only with a genuine test-runner seam.
     "alpha.testing.mutation_fuzzer": "audit F8: honest mutation engine; its only consumer was the deleted fake run_mutation_testing_audit tool — dormant until a real test-runner seam wires it",
     "alpha.synthesis.speculative_tournament": "audit F9: honest speculative-synthesis engine; its only consumer was the deleted fabricated run_speculative_synthesis_tournament tool — dormant until wired honestly",
-    # Memory capture (write side) is the symmetric twin of the already-shipped
-    # read side: recall_composition is referenced only from here, so neither
-    # half has a production caller yet. Both land together with the
-    # per-memory-type registration wave, which is why half a pair is correct.
-    "alpha.memory.capture_composition": "write-side twin of alpha.memory.recall_composition; the pair is wired together by the per-memory-type registration wave, so neither half is referenced until then",
     # Ambient writer binding is the injection-free instrumentation seam for
     # the injected BehaviourTraceWriter. Its named consumers (alpha.tools.selection
     # rank_candidates, alpha.runtime.escalation HandoffLedger.append) cannot

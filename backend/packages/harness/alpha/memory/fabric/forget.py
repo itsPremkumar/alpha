@@ -162,7 +162,15 @@ def forget_scope(
         return ForgetReport(status="skipped", operation="forget_scope", reason="disabled")
     selected_ids = record_ids
     if selected_ids is None:
-        selected_ids = store.ids_for_forget(scope, actor_scope=actor_scope)
+        candidates = store.ids_for_forget_result(scope, actor_scope=actor_scope)
+        if not candidates.ok:
+            return ForgetReport(
+                status=candidates.status,
+                operation="forget_scope",
+                reason=candidates.reason,
+                error=candidates.error,
+            )
+        selected_ids = candidates.record_ids
     if not selected_ids:
         return ForgetReport(status="empty", operation="forget_scope", reason="no_visible_records")
     result = store.remove(

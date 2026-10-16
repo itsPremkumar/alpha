@@ -16,7 +16,7 @@ proprietary backend.
 [![CI](https://github.com/itsPremkumar/alpha/actions/workflows/backend-unit-tests.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/backend-unit-tests.yml)
 [![Lint](https://github.com/itsPremkumar/alpha/actions/workflows/lint-check.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/lint-check.yml)
 [![Frontend](https://github.com/itsPremkumar/alpha/actions/workflows/frontend-unit-tests.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/frontend-unit-tests.yml)
-[![E2E](https://github.com/itsPremkumar/alpha/actions/workflows/e2e-tests.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/e2e-tests.yml)
+[![Front-Back E2E](https://github.com/itsPremkumar/alpha/actions/workflows/replay-e2e.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/replay-e2e.yml)
 [![Drift Gate](https://github.com/itsPremkumar/alpha/actions/workflows/generated-drift-gate.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/generated-drift-gate.yml)
 [![Windows Installer](https://github.com/itsPremkumar/alpha/actions/workflows/windows-installer.yml/badge.svg?branch=main)](https://github.com/itsPremkumar/alpha/actions/workflows/windows-installer.yml)
 [![Release](https://img.shields.io/github/v/release/itsPremkumar/alpha?label=release&logo=github)](https://github.com/itsPremkumar/alpha/releases)
@@ -385,6 +385,10 @@ make install     # backend (uv) + frontend (pnpm) dependencies
 make dev         # start Gateway :8001, Frontend :3000, Nginx :2026
 ```
 
+The local Nginx entry binds to loopback (`127.0.0.1` and `::1`) by default, so
+the unauthenticated development stack is not exposed to other machines on the
+network.
+
 You need Python 3.12+, Node.js 22+, `uv`, `pnpm` and Git first. Full matrix and
 the production paths: [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
@@ -541,7 +545,9 @@ make doctor    # verify the environment
   3 and 6). Team Ops → Arena exposes server-supported bracket modes, profiles,
   custom competitor counts and the explicit spend-confirmation gate; Workflows
   exposes the seven execution paradigms declared by the backend. Unsupported
-  Arena modes stay unavailable rather than being presented as executable.
+  Arena modes stay unavailable rather than being presented as executable. The
+  Quick subagent category is capped at 15 turns and 120 seconds by default;
+  operators can override its limits in `config.yaml`.
 - **Live subagent progress cards** — task events show status, a readable latest
   step or tool-call summary, reported step count and measured usage; structured
   messages remain available to durable run receipts.
@@ -787,7 +793,7 @@ exactly-once execution.
   Autonomous command receipts show the Gateway's execution status and returned
   output; intent detection alone is not presented as proof that an action ran.
 - **Workspace-aware lion companion** — the movable companion clears navigation,
-  chat controls, archive actions and open dialogs; it rechecks every marked
+  chat answers, project inspector controls, chat controls, archive actions and open dialogs; it rechecks every marked
   region as layouts change and ignores its own UI mutations. Its hit area and
   status bubble also scale for narrow screens so it stays within its measured
   placement box.
@@ -867,6 +873,31 @@ exactly-once execution.
   `users/{owner}/cognitive_memory`, with a per-owner/per-directory process cache
   and atomic fsync-backed snapshots; a store that cannot be read fails closed
   instead of bootstrapping over existing data.
+- **L1 capture observability** — the Memory overview shows the latest owner-scoped
+  typed-memory capture outcome from a bounded seven-day provenance scan, including
+  surface status and counts. It does not expose remembered content or claim
+  project-level isolation; unreadable and unreported states stay explicit.
+- **Memory extraction health** — the Memory overview shows whether automatic
+  fact extraction is healthy, degraded, disabled or unknown, with model/source,
+  recent timestamps and aggregate counters. Raw provider errors and owner/thread
+  identifiers are not rendered; the health record resets when the Gateway restarts.
+- **Coding-task repository memory** — when `memory.codebase.enabled` is opted
+  in and a run supplies an explicit repository workspace, Alpha refreshes a
+  bounded AST/structure snapshot off the event loop and retrieves only
+  query-matched modules, symbols, and dependency summaries. It does not execute
+  or import project files, scan the process working directory, or inject source
+  contents. Snapshot state is per owner/workspace but remains a local
+  single-process JSON store; it is not a distributed coordination guarantee.
+- **L1 secret protection** — recognized credential patterns are redacted from
+  record content and metadata before content-derived IDs are assigned, and the
+  durable store refuses records that bypass that sanitizing constructor. Detection
+  is heuristic, not exhaustive; see [the memory guide](docs/MEMORY.md).
+- **Prospective reminders** — when both memory gates are enabled, Alpha captures
+  clear “remind me to …” requests with owner/agent scope and idempotent source IDs,
+  and stamps an unambiguous bounded due time on the record (relative offsets,
+  clock phrases, weekdays, next week/month) with the matched phrase and rule
+  recorded for audit; ambiguous phrases stay undated rather than guessed.
+  Scheduled delivery and notifications remain unimplemented.
 - **ReasoningBank** — durable, evidence-gated procedure memory: strategies that
   worked are stored with their verdict and measured wins/attempts, then recalled
   deterministically for similar tasks. The `ralph_loop` self-improvement tool is
@@ -878,8 +909,10 @@ exactly-once execution.
   than suggested.
 - **Durable runtime** — the guarantee that a process, UI, network, provider or
   Windows restart never becomes a task failure: session lifecycle, connectivity as
-  a first-class state, a per-effect `UNKNOWN` + reconciliation ledger, a
-  crash-loop-bounded process supervisor, and an ordered, honestly reported shutdown.
+  a first-class state, a per-effect `UNKNOWN` + reconciliation ledger, and an
+  ordered, honestly reported shutdown. Crash-loop backoff policy ships in
+  `alpha.runtime.supervisor` but is **not yet wired into the process launcher** —
+  no crash-loop bounding is claimed until it is.
 - **Workflow fork, dry run & templates** — fork a new run from any point in an
   event history without repeating inherited work, dry-run a graph on a throwaway
   engine (zero side effects, zero tokens, labelled `dry_run_simulation`), and gate

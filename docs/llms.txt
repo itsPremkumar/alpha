@@ -57,7 +57,7 @@ Operator console: the Mods workspace view renders the ordered chain and each mod
 - [System One roadmap](SYSTEM_ONE_ALPHA_ROADMAP.md): implementation roadmap for System One.
 - [System One laptop control](SYSTEM_ONE_LAPTOP_CONTROL_IDEAS.md): computer-use architecture and Alpha's fit.
 - [System One browser eval](SYSTEM_ONE_BROWSER_AGENT_EVAL.md): measured evaluation of a browser agent.
-- [Memory](MEMORY.md): the layered memory plane, vector memory, episodic replay, and dreaming consolidation.
+- [Memory](https://github.com/itsPremkumar/alpha/blob/main/docs/MEMORY.md): layered memory, task-aware typed recall (opt-in), trusted-workspace code structure memory (default-off), L1 credential redaction limits, prospective reminders, and fail-closed memory-fabric deletion.
 - [Memory types](MEMORY_TYPES.md): the canonical memory taxonomy and Alpha's coverage of it.
 - [Memory fabric plan](MEMORY_FABRIC_PLAN.md): memory fabric boundaries and deferred work.
 - [Third-party memory notices](THIRD_PARTY_MEMORY_NOTICES.md): subsystem-level attribution for adapted memory code.

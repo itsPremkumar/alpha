@@ -125,6 +125,22 @@ class StoreResult:
 
 
 @dataclass(slots=True)
+class ForgetCandidatesResult:
+    """Disclosed result for preparing an authorized scope-forget request."""
+
+    status: str
+    record_ids: list[str] = field(default_factory=list)
+    reason: str = ""
+    error: str = ""
+
+    @property
+    def ok(self) -> bool:
+        """Whether candidate enumeration completed against a supported store."""
+
+        return self.status in {"succeeded", "empty"}
+
+
+@dataclass(slots=True)
 class _ScopeDocument:
     scope: MemoryScope
     records: list[MemoryEnvelope]
@@ -444,16 +460,50 @@ class MemoryEnvelopeStore:
         return len(self.list(scope, reader_scope=reader_scope, now=now))
 
     def ids_for_forget(self, scope: MemoryScope, *, actor_scope: MemoryScope) -> list[str]:
-        """List ids an authorized actor may hard-delete, including expired rows."""
+        """List authorized delete ids, raising instead of disguising unreadable state as empty."""
+
+        result = self.ids_for_forget_result(scope, actor_scope=actor_scope)
+        if result.status == "skipped":
+            return []
+        if not result.ok:
+            detail = f": {result.error}" if result.error else ""
+            raise MemoryFabricStoreUnavailable(f"{result.reason or result.status}{detail}")
+        return result.record_ids
+
+    def ids_for_forget_result(self, scope: MemoryScope, *, actor_scope: MemoryScope) -> ForgetCandidatesResult:
+        """Enumerate forget candidates without collapsing storage failures into empty."""
 
         if not self.enabled:
-            return []
+            return ForgetCandidatesResult(status="skipped", reason="disabled")
+        if not isinstance(scope, MemoryScope) or not isinstance(actor_scope, MemoryScope):
+            return ForgetCandidatesResult(status="failed", reason="invalid_scope", error="expected MemoryScope")
         with self._registry_lock:
             with self._lock_for(scope):
-                records, load_status, _ = self._raw_records_unlocked(scope)
+                records, load_status, error = self._raw_records_unlocked(scope)
         if load_status == "failed":
-            return []
-        return [record.id for record in records if record.scope.permits(actor_scope) and record.security.permits(actor_scope)]
+            return ForgetCandidatesResult(
+                status="failed",
+                reason="corrupt_document_preservation_failed",
+                error=error,
+            )
+        if load_status == STORE_FORMAT_UNSUPPORTED:
+            return ForgetCandidatesResult(
+                status=STORE_FORMAT_UNSUPPORTED,
+                reason="document_format_unsupported",
+                error=error,
+            )
+        if load_status == "recovered":
+            return ForgetCandidatesResult(
+                status="recovered",
+                reason="corrupt_document_preserved",
+                error=error,
+            )
+        record_ids = [record.id for record in records if record.scope.permits(actor_scope) and record.security.permits(actor_scope)]
+        return ForgetCandidatesResult(
+            status="succeeded" if record_ids else "empty",
+            record_ids=record_ids,
+            reason="authorized_records_found" if record_ids else "no_visible_records",
+        )
 
     def get_result(
         self,
@@ -1066,6 +1116,14 @@ class MemoryEnvelopeStore:
                     return StoreResult(
                         status="failed",
                         reason="corrupt_document_preservation_failed",
+                        error=load_error,
+                        requested=len(requested_ids),
+                        storage_status=load_status,
+                    )
+                if load_status == STORE_FORMAT_UNSUPPORTED:
+                    return StoreResult(
+                        status=STORE_FORMAT_UNSUPPORTED,
+                        reason="document_format_unsupported",
                         error=load_error,
                         requested=len(requested_ids),
                         storage_status=load_status,

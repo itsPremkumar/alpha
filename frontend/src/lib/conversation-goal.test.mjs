@@ -85,6 +85,14 @@ test("goal save discloses the Gateway reason when a run is in flight", async () 
   assert.equal(dependencies.goalDraft, "Finish the verified production-readiness task");
 });
 
+test("goal strip gives the objective a separate row from status metadata", () => {
+  assert.match(panelSource, /className="grid min-w-0 flex-1 gap-1"/);
+  assert.match(
+    panelSource,
+    /Pursuing goal[\s\S]*?\{goal\}[\s\S]*?<span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0\.5">\s*\{details\?\.status/,
+  );
+});
+
 test("thread goal hydration starts before potentially slow history and archive reads", () => {
   let loadMessagesBody;
   function findLoader(node) {

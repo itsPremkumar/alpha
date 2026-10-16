@@ -35,11 +35,11 @@ Join the Alpha community to connect with other users, get help, and contribute.
 
 ### Bug Reports
 
-Use the [bug report template](https://github.com/itsPremkumar/alpha/issues/new?template=bug_report.md)
+Use the [bug report template](https://github.com/itsPremkumar/alpha/issues/new?template=bug_report.yml)
 
 ### Feature Requests
 
-Use the [feature request template](https://github.com/itsPremkumar/alpha/issues/new?template=feature_request.md)
+Use the [feature request template](https://github.com/itsPremkumar/alpha/issues/new?template=feature_request.yml)
 
 ---
 

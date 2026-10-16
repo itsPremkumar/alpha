@@ -284,6 +284,31 @@ def test_corrupt_document_is_preserved_and_scope_restarts_empty(tmp_path: Path) 
     assert [item.content for item in recovered_store.list_items("u1")] == ["after recovery"]
 
 
+def test_future_store_format_is_disclosed_by_public_read_apis(tmp_path: Path) -> None:
+    store = make_store(tmp_path)
+    path = prospective_items_path(store.root, "u1")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original = json.dumps({"schema": 2, "items": [], "future_field": True})
+    path.write_text(original, encoding="utf-8")
+
+    listed = store.list_items_result("u1")
+    fetched = store.get_result("missing", user_id="u1")
+    created = store.create(user_id="u1", content="must not overwrite a newer schema")
+    completed = store.complete("missing", user_id="u1")
+    expired = store.expire_due(user_id="u1")
+
+    assert listed.status == "format_unsupported"
+    assert listed.reason == "unsupported_store_format"
+    assert "format_unsupported" in listed.error
+    assert listed.ok is False
+    assert fetched.status == listed.status
+    assert fetched.reason == listed.reason
+    assert created.status == "failed" and created.reason == "unsupported_store_format"
+    assert completed.status == "failed" and completed.reason == "unsupported_store_format"
+    assert expired.status == "failed" and expired.reason == "unsupported_store_format"
+    assert path.read_text(encoding="utf-8") == original
+
+
 def test_provenance_records_each_state_change(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     store = ProspectiveStore(config)

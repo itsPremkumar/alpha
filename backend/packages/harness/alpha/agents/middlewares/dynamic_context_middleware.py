@@ -398,7 +398,7 @@ class DynamicContextMiddleware(AgentMiddleware):
         """Declare the injected date's effective timezone for assembly identity."""
         return {"current_date_timezone": _effective_date_timezone_name()}
 
-    def _build_full_reminder(self, runtime: Runtime | None = None) -> tuple[str, str | None]:
+    def _build_full_reminder(self, runtime: Runtime | None = None, *, user_message: str | None = None) -> tuple[str, str | None]:
         """Return (date_reminder, memory_block | None).
 
         Framework-owned data (date) is separated from user-owned data (memory)
@@ -409,11 +409,26 @@ class DynamicContextMiddleware(AgentMiddleware):
         from alpha.agents.lead_agent.prompt import _get_memory_context
 
         injection_enabled = self._app_config.memory.injection_enabled if self._app_config else True
+        runtime_context = getattr(runtime, "context", None)
+        thread_id = runtime_context.get("thread_id") if isinstance(runtime_context, dict) else None
+        try:
+            from alpha.context_files import resolve_runtime_repo_root
+
+            repo_root = resolve_runtime_repo_root(runtime)
+        except Exception as exc:
+            logger.warning(
+                "Could not resolve project root for memory context; continuing without repository context (%s)",
+                exc,
+            )
+            repo_root = None
         memory_context = (
             _get_memory_context(
                 self._agent_name,
                 app_config=self._app_config,
                 user_id=resolve_runtime_user_id(runtime),
+                declared_intent=user_message,
+                thread_id=str(thread_id) if thread_id else None,
+                repo_root=repo_root,
             )
             if injection_enabled
             else ""
@@ -564,7 +579,14 @@ class DynamicContextMiddleware(AgentMiddleware):
             target_idx = next((i for i in reversed(range(len(messages))) if _is_user_injection_target(messages[i])), None)
             if target_idx is None:
                 return None
-            date_reminder, memory_block = self._build_full_reminder(runtime)
+            current_user_message = messages[target_idx].content
+            if isinstance(current_user_message, list):
+                # Classify only text parts. Multimodal payloads can contain
+                # large base64/image/audio values and are not intent signals.
+                current_user_message = " ".join(part.get("text", "") for part in current_user_message if isinstance(part, dict) and isinstance(part.get("text"), str))
+            elif not isinstance(current_user_message, str):
+                current_user_message = ""
+            date_reminder, memory_block = self._build_full_reminder(runtime, user_message=current_user_message)
             logger.info(
                 "DynamicContextMiddleware: injecting full reminder (has_memory=%s) into last HumanMessage id=%r",
                 memory_block is not None,

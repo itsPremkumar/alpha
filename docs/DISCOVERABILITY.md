@@ -65,7 +65,7 @@ lawful:
 | Security policy | [`SECURITY.md`](../SECURITY.md) | ✅ with private reporting |
 | Citation metadata | [`CITATION.cff`](../CITATION.cff) | ✅ |
 | Issue and PR templates | `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md` | ✅ |
-| CI badges | README header | ✅ 6 workflows, all passing required |
+| CI badges | README header | ✅ 6 workflows, all passing required: backend-unit-tests (`CI`), lint-check, frontend-unit-tests, replay-e2e (front-back contract), generated-drift-gate, windows-installer. The disabled `e2e-tests.yml` (no suite in tree) carries no badge |
 | Release history | GitHub Releases | Tag with SemVer; a repo with releases ranks and is cited differently from one without |
 
 ### 1.3 Naming hygiene
