@@ -303,3 +303,36 @@ test("an absent membership count stays null rather than becoming zero", () => {
   assert.equal(entries[0].node.direct_count, null);
   assert.equal(entries[0].node.effective_count, null);
 });
+
+/* ---------------- Visibility (the filtered tree) ---------------- */
+
+test("visibleTreeNodes hides exactly the rooms the flat list hid", () => {
+  const nodes = [
+    node("r1", "community"),
+    node("r2", "backend", { parents: ["r1"] }),
+    node("r3", "api", { parents: ["r2"] }),
+  ];
+  const shown = tree.visibleTreeNodes(
+    nodes,
+    new Set(["backend", "api"]),
+    new Set(["community", "backend", "api"]),
+  );
+  assert.deepEqual(
+    shown.map((n) => n.name),
+    ["backend", "api"],
+    "the hidden parent is dropped",
+  );
+  // …and the surviving child is promoted to a ROOT by `buildTree` rather than
+  // vanishing inside the parent the filter hid.
+  const entries = tree.buildTree(shown, {});
+  assert.deepEqual(entries.map((e) => e.node.name), ["backend"]);
+  assert.equal(entries[0].children[0].node.name, "api");
+});
+
+test("a room the flat list never reported stays visible", () => {
+  // Two reads of the same server can disagree; a branch must not disappear
+  // because only one of them knew it existed.
+  const nodes = [node("r1", "community"), node("r9", "only-in-tree")];
+  const shown = tree.visibleTreeNodes(nodes, new Set(), new Set(["community"]));
+  assert.deepEqual(shown.map((n) => n.name), ["only-in-tree"]);
+});

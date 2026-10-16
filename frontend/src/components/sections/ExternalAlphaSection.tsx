@@ -374,7 +374,7 @@ function TracePanel({ conversationId, runId }: { conversationId: string; runId: 
   );
 }
 
-export function ExternalAlphaSection() {
+export function ExternalAlphaSection({ chatOnly = false }: { chatOnly?: boolean } = {}) {
   const [tab, setTab] = useState<SubTab>("conversations");
   const [index, setIndex] = useState<TranscriptIndexEntry[]>([]);
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -549,22 +549,24 @@ export function ExternalAlphaSection() {
         <Notice message="The Alpha peer network is disabled on this installation (ALPHA_PEER_NETWORK_ENABLED is not set). An empty transcript below means the plane is off, not that no peers exist." />
       )}
 
-      <div className="flex gap-1 rounded-xl bg-muted/60 p-1 w-fit">
-        {SUB_TABS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            onClick={() => setTab(entry.id)}
-            className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold ${
-              tab === entry.id ? "bg-card shadow" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
+      {!chatOnly && (
+        <div className="flex gap-1 rounded-xl bg-muted/60 p-1 w-fit">
+          {SUB_TABS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => setTab(entry.id)}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold ${
+                tab === entry.id ? "bg-card shadow" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {tab === "overview" && (
+      {!chatOnly && tab === "overview" && (
         <div className="space-y-3">
           {analyticsError && <ErrorBox message={`Overview: ${analyticsError}`} />}
           {!analytics && !analyticsError && <SkeletonList rows={4} />}
@@ -612,7 +614,7 @@ export function ExternalAlphaSection() {
         </div>
       )}
 
-      {tab === "search" && (
+      {!chatOnly && tab === "search" && (
         <div className="space-y-2">
           <div className="flex items-end gap-2 flex-wrap">
             <div className="flex-1 min-w-[16rem]">
@@ -756,7 +758,7 @@ export function ExternalAlphaSection() {
         </div>
       )}
 
-      {tab === "timeline" && (
+      {!chatOnly && tab === "timeline" && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
             <Btn variant={live ? "primary" : "ghost"} onClick={() => setLive((previous) => !previous)}>
@@ -795,7 +797,7 @@ export function ExternalAlphaSection() {
         </div>
       )}
 
-      {tab === "forensics" && (
+      {!chatOnly && tab === "forensics" && (
         <div className="space-y-2">
           {!selectedId ? (
             <EmptyState title="Select a conversation first" hint="Forensics shows one local Agent turn in full: events, tool calls, tokens and errors." />

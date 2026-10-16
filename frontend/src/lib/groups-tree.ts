@@ -221,6 +221,27 @@ export function flattenTree(entries: TreeEntry[], collapsed: ReadonlySet<string>
 }
 
 /**
+ * The tree nodes the current filter and search leave.
+ *
+ * The GROUPS header counts the flat conversation list's visible rows, so the
+ * tree must render exactly those rooms or the header disagrees with what sits
+ * under it. Two rules keep that honest:
+ *
+ * - A node the flat list knows but the filter hid is dropped. `buildTree`
+ *   then treats a visible child whose parent was dropped as a **root**, so
+ *   the child is promoted rather than vanishing inside its hidden parent.
+ * - A node the flat list never reported at all stays visible: two reads of
+ *   the same server disagreeing must not silently delete a branch.
+ */
+export function visibleTreeNodes(
+  nodes: readonly TreeNode[],
+  visible: ReadonlySet<string>,
+  known: ReadonlySet<string>,
+): TreeNode[] {
+  return nodes.filter((n) => visible.has(n.name) || !known.has(n.name));
+}
+
+/**
  * Every room in a branch, including the branch root.
  *
  * Used to render "this group and its N subgroups" and to name what a cascade

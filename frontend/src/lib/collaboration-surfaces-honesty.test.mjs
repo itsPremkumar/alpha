@@ -1328,6 +1328,167 @@ test("the details toggle is not inert below the lg breakpoint", () => {
   );
 });
 
+test("a pinned message says so in its own meta row", () => {
+  // The Gateway reports `pinned` on every group row and the client maps it,
+  // but until this badge existed the transcript showed nothing — a pinned
+  // message looked exactly like any other, and the room's pins were
+  // invisible where operators read.
+  const code = codeOnly(read("../components/sections/MessagesSection.tsx"));
+  assert.match(
+    code,
+    /\{m\.pinned && \(/,
+    "the meta row must render only when the server reported the pin",
+  );
+  assert.match(
+    code,
+    /title="Pinned to this room"/,
+    "the badge must say what it means, not show a bare icon",
+  );
+  assert.match(code, /<Pin\b/, "the pin icon must be the shared lucide glyph");
+});
+
+test("the group profile reads by default and edits only on request", () => {
+  // The panel was a live form on arrival: a charter meant to be *displayed*
+  // opened with four focused inputs and one stray keystroke away from a
+  // pending write. It now renders read-only with an explicit Edit control,
+  // and only the confirmed save closes the editor it opened.
+  const code = codeOnly(read("../components/sections/GroupProfilePanel.tsx"));
+  assert.match(
+    code,
+    /\[editingProfile, setEditingProfile\] = useState\(false\)/,
+    "the edit state must default to closed — the panel arrives as a details read",
+  );
+  assert.match(
+    code,
+    /Edit this group's profile/,
+    "the read-only view must offer the edit, with a title that says what it does",
+  );
+  assert.match(
+    code,
+    /\{editingProfile \? \(/,
+    "the form fields must be gated behind the edit state, not rendered by default",
+  );
+  assert.match(
+    code,
+    /onClick=\{onCancelProfile\}/,
+    "a cancelled edit must discard the draft and return to the read view",
+  );
+  assert.match(
+    code,
+    /not set/,
+    "an unset field must say so — an empty box reads as cleared, not never-set",
+  );
+});
+
+test("every details block is view-only by default and writes only on request", () => {
+  // The profile edit landed, but the blocks below it stayed live forms on
+  // arrival: the link inputs, the goal toggle, the project-id field and the
+  // clone name were all directly typeable the moment the pane opened. The
+  // rule now holds across the panel — each block is a details row first and a
+  // form only after its own explicit control.
+  const code = codeOnly(read("../components/sections/GroupProfilePanel.tsx"));
+  for (const state of ["editingLinks", "editingGoals", "linkingProject", "cloneFormOpen"]) {
+    assert.match(
+      code,
+      new RegExp(`\\[${state}, set${state[0].toUpperCase()}${state.slice(1)}\\] = useState\\(false\\)`),
+      `${state} must default to closed — the block arrives as a details read`,
+    );
+  }
+  // Links: the add form and the destructive row control are inside the gate.
+  assert.match(code, /\{editingLinks && \(/, "the link add form must render only in edit mode");
+  const rmAt = code.indexOf("onRemoveLink(link.link_id)");
+  assert.ok(rmAt > 0, "the link list must still offer removal — but only inside the gate");
+  assert.match(
+    code.slice(rmAt - 400, rmAt),
+    /editingLinks/,
+    "the remove control must sit inside the edit gate, not hoisted out of it",
+  );
+  // Goals: the completion toggle is a write, so it is edit-mode-only.
+  assert.match(code, /\{editingGoals \? \(/, "the goal toggle must be gated behind the edit state");
+  assert.match(code, /\{editingGoals && \(/, "the goal add row must render only in edit mode");
+  // Binding + clone: the inputs are one explicit control away, not live.
+  assert.match(
+    code,
+    /Link a project/,
+    "the unbound project section must offer the write instead of staging it",
+  );
+  assert.match(
+    code,
+    /Clone this group…/,
+    "the clone input must sit behind its own control, not open on arrival",
+  );
+  // An answered "no binding" must not masquerade as a perpetual "Reading…".
+  assert.match(
+    code,
+    /\[projectRead, setProjectRead\] = useState\(false\)/,
+    "the binding section needs a read-answered flag distinct from the value",
+  );
+  assert.match(
+    code,
+    /: !projectRead \? \(/,
+    "the reading state must key on the answered flag, not on a null value",
+  );
+  assert.match(code, /setProjectRead\(true\)/, "a successful read must record the answer");
+  // A room switch closes every block — the next room never inherits the last.
+  assert.match(code, /setEditingLinks\(false\)[\s\S]{0,160}?setCloneFormOpen\(false\)/,
+    "the room-change effect must reset every edit gate");
+});
+
+test("the details pane's action forms are staged, not live", () => {
+  // Supervise and the council were always-live inputs in the details pane —
+  // the same defect the profile fix addressed, one section down. Each now
+  // takes one explicit control, and a new selection starts closed.
+  const code = codeOnly(read("../components/sections/MessagesSection.tsx"));
+  assert.match(
+    code,
+    /\[supervising, setSupervising\] = useState\(false\)/,
+    "the supervised-run form must default to closed",
+  );
+  assert.match(
+    code,
+    /\[openCouncil, setOpenCouncil\] = useState\(false\)/,
+    "the council form must default to closed",
+  );
+  assert.match(
+    code,
+    /Start a run…/,
+    "the supervise block must offer an explicit control instead of a live goal input",
+  );
+  assert.match(
+    code,
+    /Ask the council…/,
+    "the council block must offer an explicit control instead of a live topic field",
+  );
+  assert.match(
+    code,
+    /setSupervising\(false\);\s*\n\s*setOpenCouncil\(false\);\s*\n\s*\}, \[paneSelKey\]\);/,
+    "switching rooms must close both forms",
+  );
+});
+
+test("the room preview read is never cancelled by its own in-flight flag", () => {
+  // The preview's loading flag sat in this effect's own dependency array, so
+  // its `setState(true)` re-ran the effect, fired the cleanup, and discarded
+  // the response the run had just requested: the strip said "checking with
+  // the room…" forever and a failure could never surface. The cleanup may
+  // cancel superseded reads only — never the read it just started.
+  const code = codeOnly(read("../components/sections/MessagesSection.tsx"));
+  assert.match(code, /previewMentions\(sel\.name, draft, OPERATOR\)/);
+  assert.doesNotMatch(
+    code,
+    /serverPreviewLoading/,
+    "an in-flight flag must not be a dependency of the effect that sets it",
+  );
+  const at = code.indexOf("previewMentions(sel.name");
+  const effectTail = code.slice(at, at + 900);
+  assert.match(effectTail, /cancelled = true/, "superseded reads must still be cancelled");
+  assert.match(
+    effectTail,
+    /\}, \[sel, draft\]\);/,
+    "the effect re-runs on the selection or the draft, nothing else",
+  );
+});
+
 /* ══ 13. Recorded as CORRECT — pinned so they cannot silently regress ═══ */
 
 test("three-state group message reading in Team Ops is intact", () => {

@@ -69,7 +69,7 @@ test("the tab is labelled for the cross-installation surface", () => {
 });
 
 test("the section is exported both ways ChatView consumes it", () => {
-  assert.match(section, /export function ExternalAlphaSection\(\)/);
+  assert.match(section, /export function ExternalAlphaSection\(\{\s*chatOnly = false\s*}/);
   assert.match(section, /export default ExternalAlphaSection/);
 });
 

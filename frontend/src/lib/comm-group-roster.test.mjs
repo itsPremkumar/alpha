@@ -275,6 +275,36 @@ test("a row with no optional fields maps them to null, not to empty strings", as
   assert.equal(m.at, null);
 });
 
+test("pin state maps from the server's boolean, never from a local default", async () => {
+  // The Gateway always sends `pinned` (plus `pinned_at`/`pinned_by`) on every
+  // group message row, so `false` here is the server's own answer. A pin the
+  // server did not report must never appear, and a pin it did report must
+  // survive the mapping or the transcript has no way to show it.
+  const { comm } = client(() => ({
+    room: {
+      name: "r",
+      members: [],
+      messages: [
+        {
+          id: "p1",
+          sender: "s",
+          content: "c",
+          pinned: true,
+          pinned_at: "2026-01-01T12:00:00+00:00",
+          pinned_by: "operator",
+        },
+        { id: "p2", sender: "s", content: "c", pinned: false },
+        { id: "p3", sender: "s", content: "c" },
+      ],
+    },
+  }));
+  const msgs = (await comm.getRoom("r")).messages;
+  assert.equal(msgs[0].pinned, true);
+  assert.equal(msgs[1].pinned, false);
+  // A row that somehow omits the key is not pinned — never `true` by default.
+  assert.equal(msgs[2].pinned, false);
+});
+
 test("a deleted message keeps its id so replies still resolve", async () => {
   const { comm } = client(() => ({
     room: { name: "r", members: [], messages: [{ id: "m2", sender: "s", content: "", deleted: true }] },
@@ -312,8 +342,12 @@ test("the composer offers `decision`, the kind the verdict path posts", () => {
   assert.equal(new Set(KINDS).size, KINDS.length, "a kind is listed once");
 });
 
+// The server's `alpha.groups.room.MessageIntent` — all eighteen values in
+// `VALID_INTENTS` order. Thirteen of these were once the whole client list,
+// which silently withheld the five harness-native intents from the picker.
 const KINDS = [
-  "discussion", "question", "answer", "request", "status", "handoff", "decision",
+  "discussion", "proposal", "vote", "action", "pass", "card_update",
+  "question", "answer", "request", "status", "handoff", "decision",
   "blocker", "warning", "approval_request", "escalation", "task_assignment", "task_completion",
 ];
 

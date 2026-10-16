@@ -47,19 +47,54 @@ export interface ConversationSection {
   rows: ConversationRow[];
 }
 
+/** The two fields the A→U lens reads: who wrote a row, and who it was for. */
+export interface DirectedMessage {
+  sender: string;
+  to?: string | null;
+}
+
 /**
- * Split rows into "Groups" then "Direct".
+ * Did an agent address one of these messages *to the user* — the A→U direction?
+ *
+ * A per-agent inbox is only half a conversation: it holds what that agent sent
+ * to you **and** what it sent to other agents (the row carries the recipient, so
+ * the two are separable). Reading the sender alone would count an
+ * `architect → docs-writer` handoff as mail to the operator, which is exactly
+ * the confusion a separate A→U chip exists to remove.
+ *
+ * Absent or empty `to` is *not* a match. The mailbox mapper turns a missing
+ * `receiver_name` into `""`, and a row whose recipient was never reported
+ * cannot be claimed as addressed to anyone — hence the `me` guard, so an empty
+ * operator name can never equal an empty recipient.
+ */
+export function isInboundToUser(
+  messages: readonly DirectedMessage[],
+  me: string,
+): boolean {
+  if (!me) return false;
+  return messages.some((m) => m.sender !== me && m.to === me);
+}
+
+/**
+ * Split rows into the "Groups" section then the direct-thread section.
  *
  * An empty section is omitted entirely rather than rendered with a count of
  * zero: a header over nothing invites the reader to look for rows that are not
- * coming, and "Direct (0)" says the server measured a zero when in fact there
+ * coming, and "A2A (0)" says the server measured a zero when in fact there
  * were simply no DM threads to place under it.
+ *
+ * `directLabel` is the word the chip that produced these rows carries (`A2A`
+ * when the whole direct mailbox is on screen, `A→U` when the inbox has been
+ * narrowed to mail addressed to the operator). The header repeats the pressed
+ * chip rather than a word the reader never chose — the same rule that keeps a
+ * chip and the column under it from disagreeing.
  *
  * Row order is preserved — the caller already sorted by recency, and re-sorting
  * here would silently disagree with that decision.
  */
 export function sectionConversations(
   rows: readonly ConversationRow[],
+  directLabel: string = "A2A",
 ): ConversationSection[] {
   const groups = rows.filter((r) => r.kind === "group");
   const direct = rows.filter((r) => r.kind === "dm");
@@ -67,7 +102,7 @@ export function sectionConversations(
   if (groups.length > 0)
     out.push({ key: "groups", label: "Groups", rows: groups });
   if (direct.length > 0)
-    out.push({ key: "direct", label: "Direct", rows: direct });
+    out.push({ key: "direct", label: directLabel, rows: direct });
   return out;
 }
 

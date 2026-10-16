@@ -114,7 +114,7 @@ export function GroupActivityPanel({
   const pending = snapshot === null && !error;
 
   return (
-    <section className="mt-3">
+    <section className="rounded-lg border border-border/40 bg-muted/25 p-2.5">
       <p className="text-[11px] font-bold mb-1.5 flex items-center gap-1.5">
         <FileCode2 className="size-3" aria-hidden="true" />
         Live activity
@@ -182,7 +182,7 @@ function ActivityRow({ agent }: { agent: AgentActivity }) {
   const held = agent.held_paths.length > 0 ? agent.held_paths.join(", ") : null;
   const crashed = agent.activity === "crashed";
   return (
-    <li className="flex items-start gap-1.5 text-[11px]">
+    <li className="flex items-start gap-1.5 text-[11px] rounded-md px-1.5 py-1 hover:bg-muted/40 transition-colors dur-fast">
       <span className={`${dot(tone)} mt-1`} aria-hidden="true" />
       <span className="min-w-0 flex-1">
         <span className="font-medium">{agent.bot_name}</span>

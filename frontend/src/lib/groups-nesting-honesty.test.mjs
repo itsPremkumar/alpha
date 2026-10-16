@@ -100,6 +100,105 @@ test("the forest read failure is surfaced rather than leaving every group a leaf
   assert.match(messages, /could not be read, not empty/);
 });
 
+test("group rooms are listed once — one lens at a time, not a second listing", () => {
+  // The sidebar used to render every room twice: a "Group structure" card in
+  // the header above a flat Groups list. The section is now a tabbed surface
+  // (list / tree / working) where exactly one lens renders, so a second
+  // <GroupTreeSidebar> would be a second listing again.
+  assert.equal(
+    messages.split("<GroupTreeSidebar").length - 1,
+    1,
+    "exactly one group listing in source",
+  );
+  assert.match(
+    messages,
+    /section\.key === "groups" \? \(/,
+    "the lens lives inside the conversation list's Groups section",
+  );
+  assert.match(
+    messages,
+    /groupsTab === "tree" \? \(/,
+    "the tree renders only behind its tab",
+  );
+});
+
+test("the GROUPS section is a tabbed surface, and the list is its default lens", () => {
+  assert.match(
+    messages,
+    /useState<GroupsTab>\("all"\)/,
+    "the flat list with live bots is the default view",
+  );
+  assert.match(messages, /role="tablist"/);
+  assert.match(messages, /aria-label="Group views"/);
+  assert.match(messages, /aria-selected=\{groupsTab === t\.key\}/);
+  assert.match(messages, /groupsTab === "working" \? \(/);
+});
+
+test("every group row's roster is read, not just the open room's", () => {
+  // The list states "who is in this group, and is any of them working" for
+  // every row, and a claim needs a read: the light presence path runs for
+  // every room on each poll (`load()` produces a fresh `rooms` array).
+  const slice = messages.slice(
+    messages.indexOf("const loadPresence"),
+    messages.indexOf("const loadMembers"),
+  );
+  assert.match(slice, /listRoomMembers\(name\)/);
+  assert.match(
+    messages,
+    /for \(const r of rooms\) void loadPresence\(r\.name\);/,
+  );
+});
+
+test("the working lens counts only measured presence, and says what it missed", () => {
+  assert.match(
+    messages,
+    /const working = rows\.filter\(\(c\) => groupBusyCount\(c\.id\) > 0\)/,
+  );
+  assert.match(messages, /No bots are working right now/);
+  assert.match(messages, /Presence was not read for/);
+  assert.match(
+    messages,
+    /nothing unmeasured is shown as working/,
+    "an unread roster is never dressed up as a quiet one",
+  );
+});
+
+test("a group row carries its members' measured presence, honestly", () => {
+  assert.match(
+    messages,
+    /presenceDotClass\(entry\?\.state \?\? null\)/,
+    "the dot comes from the shared vocabulary",
+  );
+  assert.match(
+    messages,
+    /presence not read/,
+    "hover says why a dot is neutral",
+  );
+  assert.match(messages, /state not reported/);
+});
+
+test("the list rows and the roster panel share one presence vocabulary", () => {
+  assert.match(messages, /function presenceDotClass/);
+  assert.match(messages, /const dot = presenceDotClass;/);
+});
+
+test("the embedded tree drops its second title", () => {
+  // Under the sticky GROUPS header, the component's own "Group structure"
+  // caption would be a second name for one list.
+  assert.match(sidebar, /!props\.embedded &&/);
+  assert.match(messages, /embedded\s+nodes=/);
+});
+
+test("an unread room carries the shared label on its tree row", () => {
+  assert.match(sidebar, /unreadByRoom/);
+  assert.match(
+    sidebar,
+    /props\.unread > 0 &&/,
+    "a room whose history was never read shows no badge — not a measured zero",
+  );
+  assert.match(sidebar, /\{unreadLabel\(props\.unread\)\}/);
+});
+
 test("a partial merge reports the counts the server returned", () => {
   // "Merged 3 of 4" — never a bare success for a merge that skipped one.
   assert.match(messages, /Merged \$\{merged\} of \$\{total\} subgroups/);
@@ -115,6 +214,59 @@ test("the add-a-group-inside control is disabled with a reason when no group is 
 test("the subgroup form only opens for an open group", () => {
   assert.match(messages, /subgroupFor && \(/);
   assert.match(messages, /NewSubgroupForm/);
+});
+
+test("group creation renders inside the Groups section, never the header", () => {
+  // The header used to carry the creation controls above the list; both act on
+  // the groups listing, so they render from the Groups section now. The only
+  // other call site is the "No chats yet" empty state, which is unreachable
+  // while a Groups section is on screen.
+  const sectionAt = messages.indexOf('section.key === "groups" ? (');
+  assert.ok(sectionAt > -1, "the Groups section marker moved");
+  assert.equal(
+    messages.split("renderGroupControls()").length - 1,
+    2,
+    "one call site in the Groups section, one in the empty state",
+  );
+  assert.ok(
+    messages.indexOf("renderGroupControls()", sectionAt) > sectionAt,
+    "the Groups section renders the controls",
+  );
+  assert.equal(
+    messages.split("Add group inside").length - 1,
+    1,
+    "one control, rendered once",
+  );
+  assert.equal(messages.split("<NewSubgroupForm").length - 1, 1);
+});
+
+test("the creation controls are rows of the list, with the group icon", () => {
+  const slice = messages.slice(
+    messages.indexOf("const renderGroupControls"),
+    messages.indexOf("const groupTabs"),
+  );
+  assert.match(
+    slice,
+    /<Avatar\s+name="__new_group__"\s+group\s+size="lg">/,
+    "the first row wears the same group glyph every group row wears",
+  );
+  assert.match(
+    slice,
+    /w-full flex items-center gap-3 px-3 py-2\.5 text-left border-b/,
+    "creation rows share the conversation-row shape",
+  );
+});
+
+test("the no-chats empty state can still create the first group", () => {
+  // The Groups section is omitted while it is empty, so the creation controls
+  // must not depend on it existing — otherwise a fresh workspace could never
+  // create its first group.
+  const emptyAt = messages.indexOf("Create a group to get started");
+  assert.ok(emptyAt > -1, "the empty-state hint moved");
+  assert.ok(
+    messages.indexOf("renderGroupControls()", emptyAt) > emptyAt,
+    "the empty state offers the controls",
+  );
 });
 
 test("the header renders the breadcrumb for a nested group only", () => {

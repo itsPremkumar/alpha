@@ -28,6 +28,16 @@ export interface ChatMsg {
   at: string | null;
   kind: string;
   read?: boolean;
+  /**
+   * The *named* recipient on a direct row, from the mailbox's own
+   * `receiver_name`.
+   *
+   * Optional because only mailboxes carry it: a room message is addressed to
+   * the room, and an older Gateway may omit the field. Absent therefore means
+   * "no reported recipient" — the A→U lens treats that as *not* addressed to
+   * you (see `isInboundToUser`) rather than guessing from the sender.
+   */
+  to?: string | null;
   /** Id of the message this replies to, or `null` when it is not a reply. */
   replyTo?: string | null;
   /** `{room, sender}` when this message was forwarded here, else `null`. */
@@ -38,6 +48,12 @@ export interface ChatMsg {
   deleted?: boolean;
   /** emoji -> the actors who reacted. */
   reactions?: Record<string, string[]>;
+  /**
+   * Server-reported pin state for a group message. The Gateway always sends
+   * the boolean (`pinned`, with `pinned_at`/`pinned_by`), so `false` is the
+   * server's own answer rather than an absent field defaulted to "not pinned".
+   */
+  pinned?: boolean;
 }
 
 function asTime(value: unknown): string | null {
@@ -79,6 +95,7 @@ function toMsg(m: Record<string, unknown>, i: number): ChatMsg {
     editedAt: edited,
     deleted: pick<boolean | undefined>(m, ["deleted"], false) === true,
     reactions: asReactions(pick<unknown>(m, ["reactions"], null)),
+    pinned: pick<unknown>(m, ["pinned"], null) === true,
   };
 }
 
@@ -208,9 +225,11 @@ export async function listDmThreads(threadId: string, me = OPERATOR): Promise<Dm
       try {
         const inbox = await fetchInbox(threadId, n);
         for (const m of inbox) {
-          // Carry the row's own stamp through — this was hardcoded to "",
-          // which is why DM bubbles never showed a time.
-          all.push({ id: m.id, sender: m.from, content: m.content, at: m.createdAt, kind: "message", read: m.read, to: m.to });
+          // Carry the row's own stamp *and kind* through — the stamp was
+          // hardcoded to "" (no time on DM bubbles) and the kind to
+          // "message" (every DM rendered as an untyped note, so a decision
+          // or warning never took its colour).
+          all.push({ id: m.id, sender: m.from, content: m.content, at: m.createdAt, kind: m.kind, read: m.read, to: m.to });
         }
       } catch {
         /* per-agent tolerance: a single inbox may be inaccessible by design */
@@ -227,7 +246,7 @@ export async function listDmThreads(threadId: string, me = OPERATOR): Promise<Dm
     const peer = m.sender === me ? m.to : m.sender;
     if (!peer || peer === "?" || peer === "all") continue;
     if (!byPeer.has(peer)) byPeer.set(peer, []);
-    byPeer.get(peer)!.push({ id: m.id, sender: m.sender, content: m.content, at: m.at, kind: m.kind, read: m.read });
+    byPeer.get(peer)!.push({ id: m.id, sender: m.sender, content: m.content, at: m.at, kind: m.kind, read: m.read, to: m.to });
   }
   return Array.from(byPeer.entries()).map(([peer, messages]) => ({
     id: `dm:${peer}`,
@@ -631,15 +650,25 @@ export function markSeen(convId: string, messages: ChatMsg[]): void {
 /**
  * The room's intent vocabulary.
  *
- * Mirrors `alpha.groups.room.MessageIntent` on the server, which is the single
- * source of truth. This list previously declared its own thirteen kinds while
- * the router validated against a separate six-value tuple, so seven of the
- * options in the composer — including `decision`, sent by "Post as group
- * decision" — were rejected with a 422. The server now accepts the union, and
- * the client asks it rather than assuming.
+ * Mirrors `alpha.groups.room.MessageIntent` on the server — all eighteen
+ * values, in the order `VALID_INTENTS` declares them ("the order a picker
+ * should offer them"). This list previously declared its own thirteen kinds
+ * while the router validated against a separate six-value tuple, so seven of
+ * the options in the composer — including `decision`, sent by "Post as group
+ * decision" — were rejected with a 422; the five harness-native intents
+ * (`proposal`, `vote`, `action`, `pass`, `card_update`) were then missing from
+ * the picker entirely. A kind added server-side must be added here too —
+ * there is no intents endpoint to read it from.
  */
 export const MESSAGE_KINDS = [
+  // harness-native
   "discussion",
+  "proposal",
+  "vote",
+  "action",
+  "pass",
+  "card_update",
+  // typed A2A layer
   "question",
   "answer",
   "request",
@@ -655,6 +684,34 @@ export const MESSAGE_KINDS = [
 ] as const;
 
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
+
+/**
+ * Envelope kinds for direct agent↔agent messages. Mirrors
+ * `alpha.subagents.messaging.MESSAGE_KINDS` — a *separate* vocabulary from the
+ * group intents above (`blocker`/`discussion` are rejected on the DM route and
+ * `incident`/`review` are rejected on the group route), so the composer picks
+ * from whichever list the open conversation actually accepts.
+ */
+export const DM_MESSAGE_KINDS = [
+  "message",
+  "request",
+  "task_assignment",
+  "task_handoff",
+  "question",
+  "answer",
+  "status",
+  "progress",
+  "warning",
+  "incident",
+  "recovery",
+  "decision",
+  "approval",
+  "escalation",
+  "result",
+  "review",
+] as const;
+
+export type DmMessageKind = (typeof DM_MESSAGE_KINDS)[number];
 
 /** Emoji the room accepts for a reaction; mirrors `alpha.groups.room.REACTION_EMOJI`. */
 export const REACTION_EMOJI = ["👍", "👎", "🎉", "🚀", "👀", "❤️", "🔥", "🤔"] as const;

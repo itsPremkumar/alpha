@@ -552,6 +552,7 @@ export const MessageItem = React.memo(function MessageItem({
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={markdownComponents}
+                    urlTransform={(uri) => uri}
                   >
                     {displayContent}
                   </ReactMarkdown>

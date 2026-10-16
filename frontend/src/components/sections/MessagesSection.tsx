@@ -17,6 +17,7 @@ import {
   senderColor,
   kindTone,
   MESSAGE_KINDS,
+  DM_MESSAGE_KINDS,
   REACTION_EMOJI,
   OPERATOR,
   ChatMsg,
@@ -49,6 +50,7 @@ import {
   buildTree,
   stateLabel,
   stateTone,
+  visibleTreeNodes,
 } from "@/lib/groups-tree";
 import {
   GroupTreeSidebar,
@@ -84,6 +86,7 @@ import {
   hiddenSummary,
   unreadLabel,
   groupMessageRuns,
+  isInboundToUser,
 } from "@/lib/messages-view";
 import { orgEvents } from "@/lib/teamops";
 import {
@@ -101,6 +104,7 @@ import {
   Search,
   Users,
   User,
+  UserPlus,
   Plus,
   Send,
   ArrowLeft,
@@ -127,9 +131,42 @@ import {
   ArrowLeftRight,
   Loader2,
   AlertTriangle,
+  Pin,
 } from "lucide-react";
 
-type Filter = "all" | "unread" | "groups" | "direct" | "decisions" | "blockers";
+type Filter = "all" | "unread" | "groups" | "direct" | "a2u" | "decisions" | "blockers";
+
+/**
+ * The chip labels, one place, because the key is not always the word.
+ *
+ * `direct` is labelled **A2A** and `a2u` **A→U**: the pair names the two
+ * directions of the same mailbox. **A2A** is every direct thread — agent to
+ * agent and agent to you alike, which is what the workspace's own vocabulary
+ * calls that list. **A→U** narrows it to the threads carrying mail an agent
+ * addressed *to you by name*. The keys stay `direct`/`a2u` — they are the
+ * wire/state vocabulary, not copy.
+ */
+const FILTER_LABELS: Record<Filter, string> = {
+  all: "All",
+  unread: "Unread",
+  groups: "Groups",
+  direct: "A2A",
+  a2u: "A→U",
+  decisions: "Decisions",
+  blockers: "Blockers",
+};
+
+
+/**
+ * Which lens of the GROUPS section is on screen.
+ *
+ * `all` — the flat list of every group with its live bots — is the default
+ * because "who is here, and what are they doing" is the question the list
+ * answers; the nested `tree` and the live `working` lens are one click away.
+ * Exactly one renders at a time, so a room is still listed once.
+ */
+type GroupsTab = "all" | "tree" | "working";
+
 type Selection = { kind: "group"; name: string } | { kind: "dm"; peer: string };
 
 /**
@@ -154,7 +191,7 @@ function busySummary(entries: MemberPresence[]): string {
   return `${busy} of ${entries.length} working now`;
 }
 
-/** One icon-only per-message control. */
+/** One icon-only per-message control in the floating hover toolbar. */
 function BubbleAction(props: {
   title: string;
   onClick: () => void;
@@ -166,13 +203,83 @@ function BubbleAction(props: {
       type="button"
       onClick={props.onClick}
       title={props.title}
-      className={`p-1 rounded-full border border-border/70 bg-card elev-1 hover:bg-muted ${
-        props.danger ? "text-destructive" : "text-muted-foreground"
+      className={`p-1.5 rounded-full transition-colors dur-fast hover:bg-muted ${
+        props.danger
+          ? "text-destructive"
+          : "text-muted-foreground hover:text-foreground"
       }`}
     >
       {props.children}
     </button>
   );
+}
+
+/** The two-character mark a name collapses to: "backend-dev" -> "BD". */
+function initials(name: string): string {
+  const parts = name
+    .replace(/^#\s*/, "")
+    .trim()
+    .split(/[\s_\-.]+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "••";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+}
+
+/**
+ * The one avatar mark this surface renders.
+ *
+ * The tint is `senderColor` — the same hash the sender names already use — so a
+ * bot is the same colour in the list, the header and the roster. A room has no
+ * sender name to hash, so it keeps one fixed tint and a people glyph: invented
+ * initials like "PA" for `project-atlas` would read as an agent's name, which
+ * is a claim about the roster that no read made.
+ */
+function Avatar(props: {
+  name: string;
+  group?: boolean;
+  size?: "sm" | "md" | "lg";
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  const sizing = {
+    sm: "size-6 text-[9px]",
+    md: "size-8 text-[10px]",
+    lg: "size-10 text-[12px]",
+  }[props.size ?? "md"];
+  return (
+    <span className={`relative inline-flex shrink-0 ${props.className ?? ""}`}>
+      <span
+        className={`${sizing} rounded-full inline-flex items-center justify-center font-bold text-white ring-1 ring-black/10 dark:ring-white/10`}
+        style={{
+          backgroundColor: props.group ? "#5566ff" : senderColor(props.name),
+        }}
+        aria-hidden="true"
+      >
+        {props.group ? <Users className="size-4" /> : initials(props.name)}
+      </span>
+      {props.children}
+    </span>
+  );
+}
+
+/**
+ * The presence dot, from the server's resolved state.
+ *
+ * Matched whole against a fixed set — the earlier version chained regexes
+ * over the raw status word, where `idle` appeared in the *first* branch
+ * (drawing a green "working" dot for an idle agent) and `inactive` matched
+ * `active` (drawing a green dot for a suspended one). The server now resolves
+ * a closed vocabulary, so there is nothing left to pattern-match: an absent
+ * state is a neutral dot and never an online one. The list rows and the
+ * roster panel share this one mapping so a bot is the same colour in both.
+ */
+function presenceDotClass(state: PresenceState | null): string {
+  if (state === "online") return "bg-emerald-500";
+  if (state === "busy") return "bg-amber-500";
+  if (state === "idle") return "bg-muted-foreground";
+  if (state === "offline") return "bg-destructive";
+  return "bg-muted-foreground/40";
 }
 
 interface Conv {
@@ -288,6 +395,8 @@ export function MessagesSection(props: {
   const [sending, setSending] = useState(false);
   /** Caret offset for @ tag palette — tracked explicitly since @ opens mid-sentence. */
   const [caret, setCaret] = useState<number>(0);
+  /** Which palette row the arrow keys have highlighted. */
+  const [mentionIndex, setMentionIndex] = useState<number>(0);
   /** Dismissal state for the @ palette. */
   const [mentionDismissed, setMentionDismissed] = useState<boolean>(false);
   /* ── Message features ── */
@@ -307,6 +416,14 @@ export function MessagesSection(props: {
   const [forwardingBusy, setForwardingBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(true);
+  /* Below `lg` the details pane is a full-coverage overlay (see `DetailsPane`),
+     so landing on the section with it open would hide the list and transcript
+     behind a page the operator never asked for. Start closed at those widths
+     only; the `true` default still gives `lg`+ its column on first paint. This
+     runs after hydration, so server and client markup stay identical. */
+  useEffect(() => {
+    if (window.innerWidth < 1024) setShowDetails(false);
+  }, []);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroup, setNewGroup] = useState({ name: "", members: "" });
   const [newDm, setNewDm] = useState("");
@@ -331,6 +448,15 @@ export function MessagesSection(props: {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   /** Parent for the open "add a group inside this one" form. */
   const [subgroupFor, setSubgroupFor] = useState<string | null>(null);
+  /**
+   * Which view of the GROUPS section is on screen — the list by default.
+   *
+   * The flat list answers "who is here and what are they doing" for every
+   * group at a glance; the nested tree and the live working lens are one
+   * click away. Exactly one lens renders at a time, so the section never
+   * lists a room twice.
+   */
+  const [groupsTab, setGroupsTab] = useState<GroupsTab>("all");
   const bottomRef = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
   /**
@@ -415,6 +541,24 @@ export function MessagesSection(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.threadId]);
 
+  /**
+   * The composer's type list is surface-specific.
+   *
+   * Group rooms validate against the group intent vocabulary and direct
+   * threads against the A2A mailbox vocabulary — the two overlap but are not
+   * equal (`blocker` is a group-only intent, `incident` a DM-only kind).
+   * Carrying a selection across the surfaces would render a `<select>` with
+   * no matching option and be refused with a 422 on send, so an invalid
+   * carry-over resets to the surface's own default.
+   */
+  useEffect(() => {
+    const vocab = sel?.kind === "dm" ? DM_MESSAGE_KINDS : MESSAGE_KINDS;
+    if (!(vocab as readonly string[]).includes(kind)) {
+      setKind(sel?.kind === "dm" ? "message" : "discussion");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel?.kind]);
+
   useEffect(() => {
     if (live) timer.current = window.setInterval(() => load(true), 10000);
     return () => {
@@ -496,11 +640,16 @@ export function MessagesSection(props: {
     }
   };
 
-  /** Re-read one room's roster. Success replaces the entry; failure records the reason. */
-  const loadMembers = async (name: string) => {
-    // Presence and the split roster are two different reads and settle
-    // separately: a roster that names who is inherited can still fail while the
-    // presence dots succeed.
+  /**
+   * Read one room's member presence alone.
+   *
+   * The list tab states who is in each group and what they are doing, and a
+   * claim needs a read: `loadMembers` also pulls the split roster and the
+   * breadcrumbs, which only the open room needs, so the bulk list read stays
+   * on this lighter path. Failures land in `membersError`, per room — one
+   * unread room must never dress up as "nobody is working".
+   */
+  const loadPresence = async (name: string) => {
     try {
       const members = await listRoomMembers(name);
       setMembersByRoom((prev) => ({ ...prev, [name]: members }));
@@ -512,6 +661,14 @@ export function MessagesSection(props: {
     } catch (e) {
       setMembersError((prev) => ({ ...prev, [name]: errMsg(e) }));
     }
+  };
+
+  /** Re-read one room's roster. Success replaces the entry; failure records the reason. */
+  const loadMembers = async (name: string) => {
+    // Presence and the split roster are two different reads and settle
+    // separately: a roster that names who is inherited can still fail while the
+    // presence dots succeed.
+    await loadPresence(name);
     try {
       const roster = await roomRoster(name);
       setRosters((prev) => ({ ...prev, [name]: roster }));
@@ -531,6 +688,20 @@ export function MessagesSection(props: {
       setError(errMsg(e));
     }
   };
+
+  /**
+   * Presence for EVERY group row, not just the open one.
+   *
+   * The list tab claims "which bots are here, and is any of them working" for
+   * every room, so every room's roster is read — `load()` produces a fresh
+   * `rooms` array on each poll, which is what makes the dots follow real time.
+   * Rooms settle independently through `loadPresence`'s per-room writes, so a
+   * slow or failed room never blocks or blanks the rest of the list.
+   */
+  useEffect(() => {
+    for (const r of rooms) void loadPresence(r.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rooms]);
 
   const onCreateSubgroup = async (
     parentName: string,
@@ -672,6 +843,15 @@ export function MessagesSection(props: {
     if (f === "groups" && c.kind !== "group") return false;
     if (f === "direct" && c.kind !== "dm") return false;
     if (f === "unread" && c.unread === 0) return false;
+    if (f === "a2u") {
+      // The A→U direction only. A mailbox holds what its agent sent to you
+      // *and* what it sent to other agents, so this asks the loaded rows who
+      // each one was addressed to — never the sender alone, which would count
+      // an `architect → docs-writer` handoff as mail to the operator.
+      if (c.kind !== "dm") return false;
+      const msgs = dms.find((d) => d.id === c.id)?.messages;
+      if (!msgs || !isInboundToUser(msgs, OPERATOR)) return false;
+    }
     if (f === "decisions" || f === "blockers") {
       // Only rooms whose history has actually been READ can be searched
       // for a decision or a blocker. Filtering on `roomMsgs[...] || []`
@@ -696,6 +876,32 @@ export function MessagesSection(props: {
   /** The rows actually on screen: the active filter plus the search text. */
   const convs = allConvs.filter((c) => matchesFilter(c, filter, query));
   /**
+   * What the GROUPS section shows — derived once, used by both renderers.
+   *
+   * The section's own count is `section.rows.length` (the flat list's visible
+   * rooms), so the tree is narrowed to exactly those rooms or the header would
+   * disagree with what sits under it. A room the flat read never reported
+   * stays (two reads disagreeing must not delete a branch), and a matching
+   * child is promoted to root when the filter hid its parent.
+   */
+  const groupVisibleTree = visibleTreeNodes(
+    tree,
+    new Set(convs.filter((c) => c.kind === "group").map((c) => c.title.slice(2))),
+    new Set(allConvs.filter((c) => c.kind === "group").map((c) => c.title.slice(2))),
+  );
+  /** room name -> measured unread, for the tree rows; an unopened room carries no badge. */
+  const unreadByRoom: Record<string, number> = {};
+  for (const c of allConvs) {
+    if (c.kind === "group") unreadByRoom[c.title.slice(2)] = c.unread;
+  }
+  /** room name -> measured busy count (working now), or absent when presence was never read. */
+  const busyByRoom: Record<string, number> = {};
+  for (const [name, list] of Object.entries(membersByRoom)) {
+    busyByRoom[name] = list.filter(
+      (m) => m.state === "busy" || m.state === "online",
+    ).length;
+  }
+  /**
    * What each chip would show under the current search — measured, not guessed.
    * `all` counts every row the search leaves, so it also reads as the denominator.
    */
@@ -706,6 +912,7 @@ export function MessagesSection(props: {
       "unread",
       "groups",
       "direct",
+      "a2u",
       "decisions",
       "blockers",
     ] as Filter[]) {
@@ -948,17 +1155,24 @@ export function MessagesSection(props: {
    * and the fan-out ceiling. The client mirror is used only for DMs.
    */
   const [serverTagStatus, setServerTagStatus] = useState<MentionPreviewResponse | null>(null);
-  const [serverPreviewLoading, setServerPreviewLoading] = useState(false);
   const [serverPreviewError, setServerPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!sel || sel.kind !== "group" || serverPreviewLoading) return;
+    if (!sel || sel.kind !== "group") return;
     if (countMentionTokens(draft) === 0) {
       setServerTagStatus(null);
+      setServerPreviewError(null);
       return;
     }
+    // The previous draft's resolution must never stand in for this one, and a
+    // superseded read must never land: clear first, then let the cleanup
+    // cancel whatever this run replaces. An in-flight flag is deliberately NOT
+    // a dependency of this effect — a setState in its own dependency array
+    // re-ran the effect, fired the cleanup, and discarded the response the run
+    // had just requested, so the strip said "checking with the room…" forever
+    // and a failure could never surface.
     let cancelled = false;
-    setServerPreviewLoading(true);
+    setServerTagStatus(null);
     setServerPreviewError(null);
     previewMentions(sel.name, draft, OPERATOR)
       .then((res) => {
@@ -966,17 +1180,101 @@ export function MessagesSection(props: {
       })
       .catch((err) => {
         if (!cancelled) setServerPreviewError(errMsg(err));
-      })
-      .finally(() => {
-        if (!cancelled) setServerPreviewLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [sel, draft, serverPreviewLoading]);
+  }, [sel, draft]);
 
   /** The authoritative status: server in a room, client mirror in a DM. */
   const authoritativeStatus = sel?.kind === "group" ? serverTagStatus : tagStatus;
+
+  // Narrowing the query — or moving the caret into a new token — starts the
+  // highlight over, because the row order changes under the cursor on every
+  // keystroke.
+  useEffect(() => {
+    setMentionIndex(0);
+  }, [mentionTrigger]);
+
+  /**
+   * What the tag strip renders, and which authority it came from.
+   *
+   * For a room the server's preview is the authority. When that read fails the
+   * strip falls back to the client mirror *and says so* — a tag the room would
+   * have resolved (or the reverse) is the one lie this strip exists to
+   * prevent.
+   */
+  const tagStrip = authoritativeStatus ?? (serverPreviewError ? tagStatus : null);
+  const tagStripFromRoom = Boolean(authoritativeStatus) && sel?.kind === "group";
+  const tagStripFromMirror =
+    !authoritativeStatus && Boolean(serverPreviewError) && Boolean(tagStatus);
+
+  /** The palette row the arrow keys act on, clamped to what it is showing. */
+  const activeMention =
+    mentionRows.length === 0
+      ? -1
+      : Math.min(mentionIndex, mentionRows.length - 1);
+
+  /**
+   * Apply one palette row: the token written is `row.token` verbatim.
+   *
+   * Every insertion is the canonical `@bot:` / `@role:` / `@everyone` spelling
+   * the server resolves. The palette never writes the raw characters the
+   * operator typed, because an abbreviated handle the server cannot match is
+   * how a tag silently addresses nobody.
+   */
+  const chooseMention = (row: MentionRow) => {
+    if (!mentionTrigger || row.refusal) return;
+    const applied = applyMention(draft, mentionTrigger, row);
+    setDraft(applied.text);
+    setCaret(applied.caret);
+    setMentionIndex(0);
+  };
+
+  /**
+   * The composer's keys, with the palette owning the ones it is showing.
+   *
+   * While the palette is open, ↑/↓ walk it, Enter/Tab apply the highlighted
+   * row and Escape dismisses it — each handled before Enter's send, so one
+   * keypress can never both pick a tag and post a half-finished message.
+   */
+  const onComposerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (mentionRows.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((i) => (i + 1) % mentionRows.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => (i - 1 + mentionRows.length) % mentionRows.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        if (activeMention >= 0) chooseMention(mentionRows[activeMention]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionDismissed(true);
+        return;
+      }
+    }
+    if (e.key === "Enter") send();
+  };
+
+  /** Open (or reuse) a direct thread with a named agent. */
+  const startDm = () => {
+    const name = newDm.trim();
+    if (!name || !props.threadId) return;
+    ensureRosterAgent(props.threadId, name)
+      .then(() => {
+        setNewDm("");
+        load();
+      })
+      .catch((er) => setError(errMsg(er)));
+  };
 
   const send = async () => {
     if (!draft.trim() || sending) return;
@@ -1009,6 +1307,7 @@ export function MessagesSection(props: {
           OPERATOR,
           sel.peer,
           draft.trim(),
+          kind,
         );
         setDraft("");
         await load(true);
@@ -1199,6 +1498,325 @@ export function MessagesSection(props: {
     target?.focus();
   };
 
+  /**
+   * Group creation, rendered as the list rows it sits among.
+   *
+   * Both controls wear the same row shape as the rooms below — creation is a
+   * listing action, not a header toolbar — and the first one wears the group
+   * icon every group row wears. The two call sites are the Groups section
+   * itself and the "No chats yet" empty state (reachable exactly when no
+   * conversation, and so no Groups section, exists), so the controls are
+   * never offered in two places at once.
+   */
+  const renderGroupControls = () => (
+    <div>
+      <button
+        type="button"
+        onClick={() => setShowNewGroup((v) => !v)}
+        aria-expanded={showNewGroup}
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-border/40 transition-colors dur-fast hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60"
+      >
+        {/* The same group glyph every group row wears — creation is a row of
+            this list, not a toolbar button parked above it. */}
+        <Avatar name="__new_group__" group size="lg">
+          <span
+            className="absolute -right-0.5 -bottom-0.5 size-3.5 rounded-full bg-primary text-primary-foreground ring-2 ring-background inline-flex items-center justify-center"
+            aria-hidden="true"
+          >
+            <Plus className="size-2.5" />
+          </span>
+        </Avatar>
+        <span className="flex-1 text-xs font-semibold">New group</span>
+      </button>
+      {/* Nested groups: nest one inside the open group, at any time. */}
+      <button
+        type="button"
+        onClick={() => setSubgroupFor(sel?.kind === "group" ? sel.name : null)}
+        disabled={!sel || sel.kind !== "group"}
+        title={
+          sel?.kind === "group"
+            ? `Add a group inside ${sel.name}`
+            : "Open a group first"
+        }
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-border/40 transition-colors dur-fast hover:bg-muted/40 disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60"
+      >
+        <span className="size-10 shrink-0 rounded-full bg-muted text-muted-foreground inline-flex items-center justify-center">
+          <FolderPlus className="size-4" aria-hidden="true" />
+        </span>
+        <span className="flex-1 text-xs font-semibold">
+          Add group inside
+          {sel?.kind === "group" && (
+            <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+              — {sel.name}
+            </span>
+          )}
+        </span>
+      </button>
+      {subgroupFor && (
+        <div className="px-3 py-2">
+          <NewSubgroupForm
+            parentName={subgroupFor}
+            onCreate={(body) => onCreateSubgroup(subgroupFor, body)}
+            onCancel={() => setSubgroupFor(null)}
+          />
+        </div>
+      )}
+      {showNewGroup && (
+        <div className="px-3 py-2">
+          <div className="rounded-xl border border-border/60 p-2.5 space-y-2 bg-card">
+            <Field label="Group name">
+              <input
+                value={newGroup.name}
+                onChange={(e) =>
+                  setNewGroup({ ...newGroup, name: e.target.value })
+                }
+                placeholder="project-atlas"
+                className={`${inputCls} font-mono`}
+              />
+            </Field>
+            <Field label="Members (comma-separated bot names)">
+              <input
+                value={newGroup.members}
+                onChange={(e) =>
+                  setNewGroup({ ...newGroup, members: e.target.value })
+                }
+                placeholder="architect, backend, qa"
+                className={inputCls}
+              />
+            </Field>
+            <Btn
+              onClick={() => {
+                if (!newGroup.name.trim()) return;
+                createRoom(
+                  newGroup.name.trim(),
+                  newGroup.members
+                    .split(",")
+                    .map((m) => m.trim())
+                    .filter(Boolean),
+                )
+                  .then(() => {
+                    setNewGroup({ name: "", members: "" });
+                    setShowNewGroup(false);
+                    load();
+                  })
+                  .catch((e) => setError(errMsg(e)));
+              }}
+              disabled={!newGroup.name.trim()}
+            >
+              Create group
+            </Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  /** The lenses over the GROUPS section; exactly one renders at a time. */
+  const groupTabs = [
+    { key: "all", label: "All" },
+    { key: "tree", label: "Tree" },
+    { key: "working", label: "Working now" },
+  ] as const;
+
+  const renderGroupTabs = () => (
+    <div
+      className="flex gap-1 px-3 pt-2 pb-1"
+      role="tablist"
+      aria-label="Group views"
+    >
+      {groupTabs.map((t) => (
+        <button
+          key={t.key}
+          type="button"
+          role="tab"
+          aria-selected={groupsTab === t.key}
+          onClick={() => setGroupsTab(t.key)}
+          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md transition-colors dur-fast ${
+            groupsTab === t.key
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  /**
+   * The "Working now" lens: rooms whose measured roster has a working member.
+   *
+   * A room whose presence was never read is NOT quietly "not working" — that
+   * would dress an unread roster up as a quiet one. It stays out of the list
+   * and is named in the notice above it, or becomes the empty state itself
+   * when every room is unread.
+   */
+  const renderWorkingTab = (rows: Conv[]) => {
+    const working = rows.filter((c) => groupBusyCount(c.id) > 0);
+    const unread = rows.filter(
+      (c) =>
+        c.kind === "group" &&
+        (membersByRoom[c.title.slice(2)] === undefined ||
+          !!membersError[c.title.slice(2)]),
+    );
+    if (working.length === 0) {
+      return (
+        <div className="p-3">
+          <EmptyState
+            title={
+              unread.length === 0
+                ? "No bots are working right now"
+                : "Nothing shown as working"
+            }
+            hint={
+              unread.length === 0
+                ? "Every group roster was read, and none report a working member. This is live presence, not an error."
+                : `Presence was not read for ${unread.length} group${unread.length === 1 ? "" : "s"} — a member could be working in one, but nothing unmeasured is shown as working.`
+            }
+          />
+        </div>
+      );
+    }
+    return (
+      <>
+        {unread.length > 0 && (
+          <p className="px-3 py-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+            {unread.length} group{unread.length === 1 ? "" : "s"} not shown —
+            presence was not read for {unread.length === 1 ? "it" : "them"}.
+          </p>
+        )}
+        {working.map(renderConvRow)}
+      </>
+    );
+  };
+
+  /**
+   * One flat conversation row.
+   *
+   * Direct threads always render through this. Group rooms render through it
+   * as the GROUPS section's default list — each row carrying its members'
+   * live presence — through the "Working now" lens, and as the fallback while
+   * the tree read is unavailable; never beside the tree, so a room is still
+   * listed only once at a time.
+   */
+  const renderConvRow = (c: Conv) => {
+    const isActive =
+      sel &&
+      ((sel.kind === "group" && c.id === `group:${sel.name}`) ||
+        (sel.kind === "dm" && c.id === `dm:${sel.peer}`));
+    return (
+      <button
+        key={c.id}
+        type="button"
+        data-conv-row
+        onClick={() =>
+          c.kind === "group"
+            ? openRoom(c.title.slice(2))
+            : openDm(
+                c.title,
+                dms.find((d) => d.id === c.id)?.messages || [],
+              )
+        }
+        aria-current={isActive ? "true" : undefined}
+        className={`relative w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-border/40 transition-colors dur-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60 ${isActive ? "bg-primary/[0.07]" : "hover:bg-muted/40"}`}
+      >
+        {isActive && (
+          <span
+            className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-primary"
+            aria-hidden="true"
+          />
+        )}
+        <Avatar
+          name={c.title}
+          group={c.kind === "group"}
+          size="lg"
+        >
+          {/* A group row shows how many of its members are actually
+              working. Counted from the measured roster, and only
+              once the roster was read — an unread roster shows no
+              dot rather than a green one. */}
+          {c.kind === "group" && groupBusyCount(c.id) > 0 && (
+            <span
+              className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background"
+              title={`${groupBusyCount(c.id)} member${groupBusyCount(c.id) === 1 ? "" : "s"} working now`}
+              aria-label={`${groupBusyCount(c.id)} members working now`}
+            />
+          )}
+        </Avatar>
+        <span className="flex-1 min-w-0">
+          <span className="flex items-center gap-1.5">
+            <span
+              className={`text-xs truncate flex-1 ${c.unread > 0 ? "font-bold" : "font-semibold"}`}
+            >
+              {c.title}
+            </span>
+            <span
+              className={`text-[10px] shrink-0 tabular-nums ${c.unread > 0 ? "text-primary font-semibold" : "text-muted-foreground"}`}
+            >
+              {fmtTime(c.lastAt)}
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5 mt-0.5">
+            <span
+              className={`text-[11px] truncate flex-1 ${c.unread > 0 ? "text-foreground/90" : "text-muted-foreground"}`}
+            >
+              {c.subtitle} — {c.lastText || "…"}
+            </span>
+            {c.unread > 0 && (
+              <span
+                className="text-[10px] font-bold bg-primary text-primary-foreground rounded-full min-w-5 h-5 inline-flex items-center justify-center px-1 shrink-0 tabular-nums"
+                aria-label={`${c.unread} unread message${c.unread === 1 ? "" : "s"} in ${c.title}`}
+              >
+                {unreadLabel(c.unread)}
+              </span>
+            )}
+          </span>
+          {/* The bots themselves, with their measured presence — the row is a
+              claim about who is in the room, so the roster behind it is read
+              for every group (see the presence effect) and a dot only appears
+              once that read answered. An unread roster shows neutral dots and
+              says so on hover, never a green one nobody measured. */}
+          {c.kind === "group" && c.members.length > 0 && (
+            <span className="flex items-center gap-1 mt-1">
+              {c.members.slice(0, 4).map((m) => {
+                const list = membersByRoom[c.title.slice(2)];
+                const read =
+                  list !== undefined && !membersError[c.title.slice(2)];
+                const entry = list?.find((x) => x.name === m);
+                return (
+                  <span
+                    key={m}
+                    className="relative"
+                    title={
+                      read
+                        ? `${entry?.displayName || m} — ${entry?.state ?? "state not reported"}`
+                        : `${m} — presence not read`
+                    }
+                  >
+                    <Avatar name={m} size="sm" />
+                    <span
+                      className={`absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-1 ring-background ${
+                        read
+                          ? presenceDotClass(entry?.state ?? null)
+                          : "bg-muted-foreground/30"
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </span>
+                );
+              })}
+              {c.members.length > 4 && (
+                <span className="text-[9px] text-muted-foreground pl-0.5">
+                  +{c.members.length - 4}
+                </span>
+              )}
+            </span>
+          )}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <div className="max-w-none w-full flex-1 flex min-h-0 relative">
@@ -1273,35 +1891,36 @@ export function MessagesSection(props: {
                 measured from the same predicate the list renders with. A chip
                 with no number invites the reader to press it to find out, and a
                 chip that reads `0` is the useful answer: nothing to see. */}
-            <div className="flex gap-1 flex-wrap">
+            <div className="flex gap-1 overflow-x-auto flex-nowrap -mx-0.5 px-0.5 pb-0.5">
               {(
                 [
                   "all",
                   "unread",
                   "groups",
                   "direct",
+                  "a2u",
                   "decisions",
                   "blockers",
                 ] as Filter[]
               ).map((f) => {
                 const active = filter === f;
                 const count = chipCounts[f];
-                const label = f[0].toUpperCase() + f.slice(1);
+                const label = FILTER_LABELS[f];
                 return (
                   <button
                     key={f}
                     type="button"
                     onClick={() => setFilter(f)}
                     aria-pressed={active}
-                    className={`text-[11px] px-2.5 py-1 rounded-full font-semibold inline-flex items-center gap-1 ${
+                    className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-semibold inline-flex items-center gap-1 transition-colors dur-fast ${
                       active
-                        ? "bg-primary text-primary-foreground"
+                        ? "bg-primary text-primary-foreground elev-1"
                         : count === 0
                           ? // An empty chip is dimmed so it reads as "none", not as
                             // a filter waiting to be tried — but never hidden: a
                             // chip that disappears would take the zero with it.
-                            "bg-muted/40 text-muted-foreground/70 hover:text-foreground"
-                          : "bg-muted/60 text-muted-foreground hover:text-foreground"
+                            "bg-muted/40 text-muted-foreground/70 hover:text-foreground hover:bg-muted/60"
+                          : "bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted"
                     }`}
                   >
                     {label}
@@ -1352,151 +1971,62 @@ export function MessagesSection(props: {
                   </p>
                 ) : null;
               })()}
-            <div className="flex gap-2">
-              <Btn variant="ghost" onClick={() => setShowNewGroup((v) => !v)}>
-                <Plus className="size-3.5" /> New group
-              </Btn>
-            </div>
-
-            {/* Nested groups: add a group inside any existing one, at any time. */}
-            <div className="flex gap-2">
-              <Btn
-                variant="ghost"
-                onClick={() =>
-                  setSubgroupFor(sel?.kind === "group" ? sel.name : null)
-                }
-                disabled={!sel || sel.kind !== "group"}
-                title={
-                  sel?.kind === "group"
-                    ? `Add a group inside ${sel.name}`
-                    : "Open a group first"
-                }
-              >
-                <FolderPlus className="size-3.5" /> Add group inside
-              </Btn>
-            </div>
-            {subgroupFor && (
-              <NewSubgroupForm
-                parentName={subgroupFor}
-                onCreate={(body) => onCreateSubgroup(subgroupFor, body)}
-                onCancel={() => setSubgroupFor(null)}
-              />
-            )}
-
-            {/* The forest. Every group, with the groups nested inside it.
-                Bounded on purpose: `GroupTreeSidebar` is `space-y-0.5` with no
-                height of its own, and this block sits in the sidebar's
-                non-scrolling header above the conversation list. An org with a
-                few levels of nesting therefore grew the header without limit
-                and squeezed the list — the actual inbox — down to nothing, with
-                no scrollbar anywhere to explain where the rows had gone. */}
-            {(treeError || tree.length > 0) && (
-              <div
-                className="max-h-[38vh] overflow-y-auto overscroll-contain rounded-lg border border-border/40 p-1.5"
-                aria-label="Group structure"
-              >
-                {treeError ? (
-                  <ErrorBox
-                    message={`Group structure unavailable — subgroups could not be read, not empty. (${treeError})`}
-                    onRetry={() => load()}
-                  />
-                ) : tree.length > 0 ? (
-                  <GroupTreeSidebar
-                    nodes={tree}
-                    busyByRoom={Object.fromEntries(
-                      Object.entries(membersByRoom).map(([name, list]) => [
-                        name,
-                        list.filter(
-                          (m) => m.state === "busy" || m.state === "online",
-                        ).length,
-                      ]),
-                    )}
-                    errorsByRoom={membersError}
-                    activeRoom={sel?.kind === "group" ? sel.name : null}
-                    collapsed={collapsed}
-                    onToggle={(id) =>
-                      setCollapsed((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(id)) next.delete(id);
-                        else next.add(id);
-                        return next;
-                      })
-                    }
-                    onOpen={(name) => openRoom(name)}
-                    onNewSubgroup={(name) => setSubgroupFor(name)}
-                    onMerge={onMergeSubgroups}
-                  />
-                ) : null}
-              </div>
-            )}
-            {showNewGroup && (
-              <div className="rounded-xl border border-border/60 p-2.5 space-y-2 bg-card">
-                <Field label="Group name">
-                  <input
-                    value={newGroup.name}
-                    onChange={(e) =>
-                      setNewGroup({ ...newGroup, name: e.target.value })
-                    }
-                    placeholder="project-atlas"
-                    className={`${inputCls} font-mono`}
-                  />
-                </Field>
-                <Field label="Members (comma-separated bot names)">
-                  <input
-                    value={newGroup.members}
-                    onChange={(e) =>
-                      setNewGroup({ ...newGroup, members: e.target.value })
-                    }
-                    placeholder="architect, backend, qa"
-                    className={inputCls}
-                  />
-                </Field>
-                <Btn
-                  onClick={() => {
-                    if (!newGroup.name.trim()) return;
-                    createRoom(
-                      newGroup.name.trim(),
-                      newGroup.members
-                        .split(",")
-                        .map((m) => m.trim())
-                        .filter(Boolean),
-                    )
-                      .then(() => {
-                        setNewGroup({ name: "", members: "" });
-                        setShowNewGroup(false);
-                        load();
-                      })
-                      .catch((e) => setError(errMsg(e)));
-                  }}
-                  disabled={!newGroup.name.trim()}
+            {/* An empty A→U list has two possible causes, and they are not the
+                same claim: no agent has written to you, or the rows that did
+                never reported a recipient (the mailbox mapper stores a missing
+                `receiver_name` as ""). Say so when the list is empty, because
+                "no inbound mail" would be the wrong of the two. */}
+            {filter === "a2u" &&
+              convs.length === 0 &&
+              dms.length > 0 && (
+                <p
+                  className="text-[11px] text-muted-foreground"
+                  data-messages-a2u-note
                 >
-                  Create group
-                </Btn>
-              </div>
-            )}
+                  A→U counts only mail an agent addressed to you by name. None
+                  of the {dms.length} direct thread{dms.length === 1 ? "" : "s"}{" "}
+                  read here carries one — a message with no reported recipient is
+                  not counted.
+                </p>
+              )}
+            {/* Group creation controls render with the GROUPS section — see
+                renderGroupControls — not here in the fixed header. This header
+                keeps only the filters and the per-list read failures. */}
             <div className="flex gap-2">
-              <input
-                value={newDm}
-                onChange={(e) => setNewDm(e.target.value)}
-                onKeyDown={(e) =>
-                  e.key === "Enter" &&
-                  newDm.trim() &&
-                  props.threadId &&
-                  ensureRosterAgent(props.threadId, newDm.trim())
-                    .then(() => {
-                      setNewDm("");
-                      load();
-                    })
-                    .catch((er) => setError(errMsg(er)))
+              <div className="relative flex-1 min-w-0">
+                <AtSign
+                  className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                  aria-hidden="true"
+                />
+                <input
+                  value={newDm}
+                  onChange={(e) => setNewDm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") startDm();
+                  }}
+                  placeholder="Message an agent directly…"
+                  aria-label="Start direct chat"
+                  className={`${inputCls} pl-8`}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={startDm}
+                disabled={!newDm.trim() || !props.threadId}
+                className="size-9 shrink-0 rounded-xl bg-muted/60 border border-border/70 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors dur-fast"
+                title={
+                  props.threadId
+                    ? "Open a direct chat with this agent"
+                    : "Open a chat first — direct threads live inside one"
                 }
-                placeholder="Message an agent directly…"
-                aria-label="Start direct chat"
-                className={inputCls}
-              />
+                aria-label="Open direct chat"
+              >
+                <UserPlus className="size-4" aria-hidden="true" />
+              </button>
             </div>
             {!props.threadId && (
               <p className="text-[11px] text-muted-foreground">
-                Direct chats live inside a conversation — open or start a chat
+                A2A chats live inside a conversation — open or start a chat
                 to unlock them. Groups work anytime.
               </p>
             )}
@@ -1513,7 +2043,7 @@ export function MessagesSection(props: {
               )}
               {dmsError && (
                 <ErrorBox
-                  message={`Direct threads unavailable — failed to load, not empty. (${dmsError})`}
+                  message={`A2A threads unavailable — failed to load, not empty. (${dmsError})`}
                   onRetry={() => load()}
                 />
               )}
@@ -1572,20 +2102,30 @@ export function MessagesSection(props: {
                 />
               </div>
             ) : convs.length === 0 ? (
-              <div className="p-3">
+              /* No conversations at all — so no Groups section exists to hold
+                 the creation controls. This empty state is the one other
+                 place they render; the two sites are mutually exclusive. */
+              <div className="p-3 space-y-3">
                 <EmptyState
                   title="No chats yet"
-                  hint="Create a group above, or message an agent directly once a chat is open."
+                  hint="Create a group to get started, or message an agent directly once a chat is open."
                 />
+                {renderGroupControls()}
               </div>
             ) : (
               /* Two sections, not one flat run: group rooms and direct threads
                  answer different questions ("where is the work?" vs "who pinged
-                 me?") and a mixed list makes the reader re-derive the kind from
-                 an avatar every row. An empty half is omitted by
-                 `sectionConversations`, so a workspace with no DMs never shows
-                 a "Direct (0)" header over nothing. */
-              sectionConversations(convs).map((section) => (
+                 me?"). The Groups half renders the structured tree — the one
+                 place group rooms are listed — while the Direct half keeps its
+                 flat rows. An empty half is omitted by `sectionConversations`,
+                 so a workspace with no DMs never shows a "Direct (0)" header
+                 over nothing. */
+              sectionConversations(
+                convs,
+                // The header repeats the chip that produced these rows, so the
+                // A→U lens is never rendered under an "A2A" header.
+                filter === "a2u" ? FILTER_LABELS.a2u : FILTER_LABELS.direct,
+              ).map((section) => (
                 <div key={section.key}>
                   <div className="sticky top-0 z-10 flex items-baseline gap-2 px-3 py-1.5 bg-card/95 backdrop-blur border-b border-border/60">
                     <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -1600,83 +2140,68 @@ export function MessagesSection(props: {
                       </span>
                     )}
                   </div>
-                  {section.rows.map((c) => {
-                    const isActive =
-                      sel &&
-                      ((sel.kind === "group" && c.id === `group:${sel.name}`) ||
-                        (sel.kind === "dm" && c.id === `dm:${sel.peer}`));
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        data-conv-row
-                        onClick={() =>
-                          c.kind === "group"
-                            ? openRoom(c.title.slice(2))
-                            : openDm(
-                                c.title,
-                                dms.find((d) => d.id === c.id)?.messages || [],
-                              )
-                        }
-                        aria-current={isActive ? "true" : undefined}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-border/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60 ${isActive ? "bg-primary/10" : ""}`}
-                      >
-                        <span className="relative shrink-0">
-                          <span
-                            className="size-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                            style={{
-                              backgroundColor:
-                                c.kind === "group"
-                                  ? "#5566ff"
-                                  : senderColor(c.title),
-                            }}
+                  {/* The GROUPS section is a tabbed surface: the default tab
+                      lists every group with its live bots, the Tree tab shows
+                      the nested structure, and Working now narrows to the
+                      rooms whose measured roster has someone working. Exactly
+                      one lens renders, so every room is still listed once.
+                      Group creation renders here too — controls live with the
+                      listing they act on, not in the fixed header. */}
+                  {section.key === "groups" ? (
+                    <>
+                      {renderGroupControls()}
+                      {renderGroupTabs()}
+                      {groupsTab === "working" ? (
+                        renderWorkingTab(section.rows)
+                      ) : groupsTab === "tree" ? (
+                        treeError ? (
+                          <>
+                            <div className="p-3">
+                              <ErrorBox
+                                message={`Group structure unavailable — subgroups could not be read, not empty. (${treeError})`}
+                                onRetry={() => load()}
+                              />
+                            </div>
+                            {section.rows.map(renderConvRow)}
+                          </>
+                        ) : tree.length > 0 ? (
+                          <div
+                            className="px-1 py-1.5"
+                            aria-label="Group structure"
                           >
-                            {c.kind === "group" ? (
-                              <Users className="size-4" />
-                            ) : (
-                              c.title.slice(0, 2).toUpperCase()
-                            )}
-                          </span>
-                          {/* A group row shows how many of its members are actually
-                              working. Counted from the measured roster, and only
-                              once the roster was read — an unread roster shows no
-                              dot rather than a green one. */}
-                          {c.kind === "group" && groupBusyCount(c.id) > 0 && (
-                            <span
-                              className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background"
-                              title={`${groupBusyCount(c.id)} member${groupBusyCount(c.id) === 1 ? "" : "s"} working now`}
-                              aria-label={`${groupBusyCount(c.id)} members working now`}
+                            <GroupTreeSidebar
+                              embedded
+                              nodes={groupVisibleTree}
+                              busyByRoom={busyByRoom}
+                              errorsByRoom={membersError}
+                              activeRoom={
+                                sel?.kind === "group" ? sel.name : null
+                              }
+                              collapsed={collapsed}
+                              onToggle={(id) =>
+                                setCollapsed((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(id)) next.delete(id);
+                                  else next.add(id);
+                                  return next;
+                                })
+                              }
+                              onOpen={(name) => openRoom(name)}
+                              onNewSubgroup={(name) => setSubgroupFor(name)}
+                              onMerge={onMergeSubgroups}
+                              unreadByRoom={unreadByRoom}
                             />
-                          )}
-                        </span>
-                        <span className="flex-1 min-w-0">
-                          <span className="flex items-center gap-1.5">
-                            <span
-                              className={`text-xs truncate flex-1 ${c.unread > 0 ? "font-bold" : "font-semibold"}`}
-                            >
-                              {c.title}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
-                              {fmtTime(c.lastAt)}
-                            </span>
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-muted-foreground truncate flex-1">
-                              {c.subtitle} — {c.lastText || "…"}
-                            </span>
-                            {c.unread > 0 && (
-                              <span
-                                className="text-[10px] font-bold bg-emerald-500 text-white rounded-full min-w-5 h-5 inline-flex items-center justify-center px-1 shrink-0 tabular-nums"
-                                aria-label={`${c.unread} unread message${c.unread === 1 ? "" : "s"} in ${c.title}`}
-                              >
-                                {unreadLabel(c.unread)}
-                              </span>
-                            )}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
+                          </div>
+                        ) : (
+                          section.rows.map(renderConvRow)
+                        )
+                      ) : (
+                        section.rows.map(renderConvRow)
+                      )}
+                    </>
+                  ) : (
+                    section.rows.map(renderConvRow)
+                  )}
                 </div>
               ))
             )}
@@ -1697,7 +2222,7 @@ export function MessagesSection(props: {
             </div>
           ) : (
             <>
-              <header className="shrink-0 px-4 py-2.5 border-b border-border/60 bg-card/40 flex items-center gap-2.5">
+              <header className="shrink-0 px-4 py-2.5 border-b border-border/60 bg-card/60 backdrop-blur flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setSel(null)}
@@ -1706,21 +2231,11 @@ export function MessagesSection(props: {
                 >
                   <ArrowLeft className="size-4" aria-hidden="true" />
                 </button>
-                <span
-                  className="size-9 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
-                  style={{
-                    backgroundColor:
-                      sel.kind === "group"
-                        ? "#5566ff"
-                        : senderColor(activeTitle),
-                  }}
-                >
-                  {sel.kind === "group" ? (
-                    <Users className="size-4" />
-                  ) : (
-                    activeTitle.slice(0, 2).toUpperCase()
-                  )}
-                </span>
+                <Avatar
+                  name={activeTitle}
+                  group={sel.kind === "group"}
+                  size="lg"
+                />
                 <div className="flex-1 min-w-0">
                   {sel.kind === "group" && crumbs.length > 0 && (
                     <GroupBreadcrumbs
@@ -1729,7 +2244,7 @@ export function MessagesSection(props: {
                       onOpen={(name) => openRoom(name)}
                     />
                   )}
-                  <p className="text-sm font-semibold truncate">
+                  <p className="text-sm font-semibold truncate leading-tight">
                     {activeTitle}
                   </p>
                   <p className="text-[11px] text-muted-foreground truncate">
@@ -1744,7 +2259,7 @@ export function MessagesSection(props: {
                 <button
                   type="button"
                   onClick={() => setShowDetails(true)}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full bg-muted/60 hover:bg-muted text-muted-foreground shrink-0"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-secondary/60 border border-border/50 hover:bg-secondary text-muted-foreground shrink-0 transition-colors dur-fast"
                   title="Show who is in this group"
                   aria-label={`Show the ${activeMembers.length} members of this group`}
                 >
@@ -1754,7 +2269,7 @@ export function MessagesSection(props: {
                 <button
                   type="button"
                   onClick={() => setShowDetails((v) => !v)}
-                  className="p-2 rounded-lg hover:bg-muted text-muted-foreground"
+                  className="p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors dur-fast"
                   title="Details"
                   aria-label="Toggle details"
                   aria-expanded={showDetails}
@@ -1818,16 +2333,26 @@ export function MessagesSection(props: {
                           key={`run-${ri}-${run.items[0]?.id ?? ri}`}
                         >
                           {showDay && (
-                            <div className="flex justify-center py-2">
-                              <span className="text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-muted text-muted-foreground">
+                            <div className="flex justify-center py-2.5">
+                              <span className="text-[10px] font-semibold px-3 py-1 rounded-full bg-muted/70 border border-border/50 text-muted-foreground">
                                 {run.day}
                               </span>
                             </div>
                           )}
                           {/* Gap-0.5 inside a run against the scroller's
                             space-y-1.5 between them: the cluster is visibly one
-                            block without drawing a box around it. */}
-                          <div className="flex flex-col gap-0.5">
+                            block without drawing a box around it. The avatar in
+                            the gutter repeats the sender the bubble already
+                            names — a mark, never a second identity claim. */}
+                          <div className="flex items-start gap-2">
+                            {run.items[0] && run.items[0].sender !== OPERATOR ? (
+                              <Avatar
+                                name={run.items[0].sender}
+                                size="sm"
+                                className="mt-1"
+                              />
+                            ) : null}
+                            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                             {run.items.map((m, i) => {
                               const mine = m.sender === OPERATOR;
                               /* The sender is named on the run's first bubble
@@ -1861,16 +2386,16 @@ export function MessagesSection(props: {
                                         className={`flex ${mine ? "justify-end" : "justify-start"} group/bubble`}
                                       >
                                         <div
-                                          className={`max-w-[80%] sm:max-w-[70%] rounded-2xl px-3 py-2 elev-1 relative ${
+                                          className={`max-w-[80%] sm:max-w-[70%] rounded-2xl px-3.5 py-2 elev-1 relative ${
                                             mine
-                                              ? "bg-emerald-600/90 text-white rounded-br-md"
+                                              ? "bg-emerald-600 text-white rounded-br-md"
                                               : isA2A
-                                                ? "bg-card border border-blue-500/40 rounded-bl-md shadow-blue-500/5"
+                                                ? "bg-card border border-blue-500/40 rounded-bl-md"
                                                 : "bg-card border border-border/60 rounded-bl-md"
                                           }`}
                                         >
                                           {!mine && (showSender || isA2A) && (
-                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                            <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                                               {showSender && (
                                                 <p
                                                   className="text-[11px] font-bold"
@@ -1887,7 +2412,7 @@ export function MessagesSection(props: {
                                                 every row of the run even after the
                                                 name above stopped repeating. */}
                                               {isA2A && (
-                                                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-blue-500/15 text-blue-400">
+                                                <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-blue-500/15 text-blue-400">
                                                   ⚡ from @{a2aSender}
                                                 </span>
                                               )}
@@ -2028,10 +2553,10 @@ export function MessagesSection(props: {
                                                     disabled={busy}
                                                     title={who.join(", ")}
                                                     aria-label={`${emoji} reacted by ${who.join(", ")}`}
-                                                    className={`text-[10px] px-1.5 py-0.5 rounded-full border disabled:opacity-50 ${
+                                                    className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors dur-fast disabled:opacity-50 ${
                                                       who.includes(OPERATOR)
-                                                        ? "border-primary/60 bg-primary/10"
-                                                        : "border-border/60 bg-muted/40"
+                                                        ? "border-primary/60 bg-primary/15"
+                                                        : "border-border/60 bg-muted/40 hover:bg-muted"
                                                     }`}
                                                   >
                                                     {emoji} {who.length}
@@ -2064,6 +2589,22 @@ export function MessagesSection(props: {
                                           <p
                                             className={`text-[10px] mt-1 flex items-center gap-1 justify-end ${mine ? "text-white/70" : "text-muted-foreground"}`}
                                           >
+                                            {/* Pin state comes from the server's
+                                              `pinned` boolean — a pinned message
+                                              must say so here, or the room's pin
+                                              is invisible in the transcript. */}
+                                            {m.pinned && (
+                                              <span
+                                                className="inline-flex items-center gap-0.5 text-amber-500/90 font-medium"
+                                                title="Pinned to this room"
+                                              >
+                                                <Pin
+                                                  className="size-3"
+                                                  aria-hidden="true"
+                                                />
+                                                pinned
+                                              </span>
+                                            )}
                                             {m.editedAt && !m.deleted && (
                                               <span
                                                 title={`Edited ${absoluteStamp(m.editedAt) ?? ""}`}
@@ -2092,7 +2633,7 @@ export function MessagesSection(props: {
                                             pointer devices, always present for keyboard
                                             and touch so the control is reachable. */}
                                           {!m.deleted && (
-                                            <div className="flex items-center gap-0.5 absolute -top-2 right-2 opacity-0 focus-within:opacity-100 group-hover/bubble:opacity-100 transition-opacity">
+                                            <div className="flex items-center gap-0.5 absolute -top-3 right-2 rounded-full border border-border/70 bg-popover/95 backdrop-blur px-1 py-0.5 elev-3 opacity-0 focus-within:opacity-100 group-hover/bubble:opacity-100 transition-opacity">
                                               <BubbleAction
                                                 title="Reply"
                                                 onClick={() => setReplyTo(m)}
@@ -2200,7 +2741,8 @@ export function MessagesSection(props: {
                                   })()}
                                 </React.Fragment>
                               );
-                            })}
+                              })}
+                            </div>
                           </div>
                         </React.Fragment>
                       );
@@ -2290,38 +2832,217 @@ export function MessagesSection(props: {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={kind}
-                      onChange={(e) => setKind(e.target.value)}
-                      className="text-[11px] bg-muted/60 border border-border/70 rounded-xl px-2 py-2.5 font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40 shrink-0"
-                      title="Message type"
-                      aria-label="Message type"
-                    >
-                      {MESSAGE_KINDS.map((k) => (
-                        <option key={k} value={k}>
-                          {k.replace(/_/g, " ")}
-                        </option>
+                  {/* The tag strip. A tag that addresses nobody is silent by
+                      construction — the server resolves an unknown handle to
+                      nothing rather than a near match — so the resolution is
+                      previewed here, before the only moment it can still be
+                      fixed. Chips carry the exact reason, never a generic
+                      "invalid". */}
+                  {countMentionTokens(draft) > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border/60 bg-muted/30 px-2.5 py-1.5">
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mr-0.5"
+                        title={
+                          sel.kind === "group"
+                            ? "Resolved by this room's server preview"
+                            : "Resolved by the local roster mirror — the server decides at send"
+                        }
+                      >
+                        Tags address
+                      </span>
+                      {(tagStrip?.resolvedHandles ?? []).map((handle) => (
+                        <span
+                          key={handle}
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold rounded-full bg-primary/10 text-primary px-2 py-0.5"
+                        >
+                          <AtSign className="size-2.5" aria-hidden="true" />
+                          {handle}
+                        </span>
                       ))}
-                    </select>
-                    <input
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && send()}
-                      placeholder={`Message ${sel.kind === "group" ? "the group" : activeTitle}…`}
-                      aria-label="Write a message"
-                      className={`${inputCls} !rounded-full !py-2.5`}
-                    />
-                    <button
-                      type="button"
-                      onClick={send}
-                      disabled={!draft.trim() || sending}
-                      className="size-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 disabled:opacity-40 hover:opacity-90"
-                      title="Send"
-                      aria-label="Send message"
-                    >
-                      <Send className="size-4" />
-                    </button>
+                      {(tagStrip?.unresolved ?? []).map((u) => (
+                        <span
+                          key={u.raw}
+                          title={u.reason}
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold rounded-full bg-destructive/10 text-destructive px-2 py-0.5"
+                        >
+                          {u.raw} — addresses nobody: {u.reason}
+                        </span>
+                      ))}
+                      {sel.kind === "group" && !tagStrip && !serverPreviewError && (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                          checking with the room…
+                        </span>
+                      )}
+                      {sel.kind === "group" && serverPreviewError && (
+                        <span className="text-[10px] text-destructive">
+                          Room preview failed ({serverPreviewError})
+                        </span>
+                      )}
+                      {tagStripFromRoom && (
+                        <span className="ml-auto text-[10px] text-muted-foreground/80">
+                          room roster
+                        </span>
+                      )}
+                      {tagStripFromMirror && (
+                        <span
+                          className="ml-auto text-[10px] text-muted-foreground/80"
+                          title="The room's preview could not be read, so this is the client's mirror of the roster grammar."
+                        >
+                          local roster mirror
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* The composer reads as ONE raised field: the kind picker,
+                      the input and send inside a single focus-ring card, so
+                      the keyboard focus state is the whole control rather
+                      than three adjacent boxes. The @ palette opens above it,
+                      anchored to the card. */}
+                  <div className="relative rounded-2xl border border-border/70 bg-card elev-1 transition-colors dur-fast focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/20">
+                    {mentionRows.length > 0 && (
+                      <div
+                        id="messages-mention-palette"
+                        role="listbox"
+                        aria-label="Tag an agent or a role"
+                        className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border border-border/70 bg-popover elev-3 overflow-hidden z-20"
+                      >
+                        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/60 bg-muted/30">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                            Tag an agent or a role
+                          </p>
+                          {mentionFilter && mentionFilter.hidden > 0 && (
+                            <p className="text-[10px] text-muted-foreground">
+                              {mentionFilter.hidden} more — keep typing
+                            </p>
+                          )}
+                        </div>
+                        <div className="max-h-72 overflow-y-auto py-1">
+                          {mentionSections.map((section) => (
+                            <div key={section.id}>
+                              <p className="flex items-center gap-1.5 px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground/80">
+                                {section.icon}
+                                {section.label}
+                              </p>
+                              {section.rows.map(({ row, index }) => (
+                                <button
+                                  key={row.id}
+                                  id={`messages-mention-option-${index}`}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={index === activeMention}
+                                  disabled={!!row.refusal}
+                                  title={row.refusal ?? row.token}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    chooseMention(row);
+                                  }}
+                                  onMouseEnter={() => setMentionIndex(index)}
+                                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left transition-colors dur-fast ${
+                                    index === activeMention
+                                      ? "bg-primary/10"
+                                      : "hover:bg-muted/60"
+                                  } ${row.refusal ? "opacity-50 cursor-not-allowed" : ""}`}
+                                >
+                                  <span
+                                    className="size-7 rounded-full inline-flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                                    style={{
+                                      backgroundColor: senderColor(row.title),
+                                    }}
+                                    aria-hidden="true"
+                                  >
+                                    {row.mode === "everyone" ? (
+                                      <Users className="size-3.5" />
+                                    ) : row.mode === "role" ? (
+                                      <AtSign className="size-3.5" />
+                                    ) : (
+                                      initials(row.title)
+                                    )}
+                                  </span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="flex items-baseline gap-1.5 min-w-0">
+                                      <span className="text-[11px] font-semibold truncate">
+                                        {row.title}
+                                      </span>
+                                      {row.subtitle && (
+                                        <span className="text-[10px] text-muted-foreground truncate">
+                                          {row.subtitle}
+                                        </span>
+                                      )}
+                                    </span>
+                                    <span className="block text-[10px] font-mono text-muted-foreground/90 truncate">
+                                      {row.token}
+                                    </span>
+                                  </span>
+                                  <span className="shrink-0 text-[10px] text-muted-foreground rounded-full bg-muted/70 px-1.5 py-0.5">
+                                    {row.refusal ? "unavailable" : row.badge}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-end gap-1 p-1.5">
+                      <select
+                        value={kind}
+                        onChange={(e) => setKind(e.target.value)}
+                        className="text-[11px] bg-transparent border-0 rounded-xl px-2 py-2.5 font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 cursor-pointer focus:outline-none shrink-0 transition-colors dur-fast"
+                        title="Message type"
+                        aria-label="Message type"
+                      >
+                        {(sel?.kind === "dm" ? DM_MESSAGE_KINDS : MESSAGE_KINDS).map((k) => (
+                          <option key={k} value={k}>
+                            {k.replace(/_/g, " ")}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={draft}
+                        onChange={(e) => {
+                          setDraft(e.target.value);
+                          setCaret(e.target.selectionStart ?? 0);
+                          // Fresh input re-opens the palette; only Escape
+                          // keeps it closed for the current token.
+                          setMentionDismissed(false);
+                        }}
+                        onSelect={(e) =>
+                          setCaret(
+                            (e.target as HTMLInputElement).selectionStart ?? 0,
+                          )
+                        }
+                        onClick={(e) =>
+                          setCaret(
+                            (e.target as HTMLInputElement).selectionStart ?? 0,
+                          )
+                        }
+                        onKeyDown={onComposerKeyDown}
+                        placeholder={`Message ${sel.kind === "group" ? "the group" : activeTitle}…`}
+                        aria-label="Write a message"
+                        role="combobox"
+                        aria-autocomplete="list"
+                        aria-expanded={mentionRows.length > 0}
+                        aria-controls="messages-mention-palette"
+                        aria-activedescendant={
+                          mentionRows.length > 0 && activeMention >= 0
+                            ? `messages-mention-option-${activeMention}`
+                            : undefined
+                        }
+                        className="flex-1 min-w-0 bg-transparent border-0 text-[13px] px-2 py-2.5 focus:outline-none placeholder:text-muted-foreground/70"
+                      />
+                      <button
+                        type="button"
+                        onClick={send}
+                        disabled={!draft.trim() || sending}
+                        className="size-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 disabled:opacity-40 hover:bg-emerald-500 transition-colors dur-fast"
+                        title="Send"
+                        aria-label="Send message"
+                      >
+                        <Send className="size-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </footer>
@@ -2430,7 +3151,7 @@ export function MessagesSection(props: {
   );
 }
 
-/** One member row in the roster: dot, name, optional role, and its state. */
+/** One member row in the roster: avatar, dot, name, optional role, and its state. */
 function MemberRow(props: {
   name: string;
   displayName?: string | null;
@@ -2444,13 +3165,15 @@ function MemberRow(props: {
   const mine = props.name === OPERATOR;
   return (
     <div
-      className={`flex items-center gap-2 text-[11px] rounded-lg px-1.5 py-1 hover:bg-muted/40 ${props.muted ? "opacity-80" : ""}`}
+      className={`flex items-center gap-2.5 text-[11px] rounded-lg px-1.5 py-1.5 hover:bg-muted/40 transition-colors dur-fast ${props.muted ? "opacity-80" : ""}`}
       title={props.title}
     >
-      <span
-        className={`size-2 rounded-full shrink-0 ${props.dotClass}`}
-        aria-hidden="true"
-      />
+      <Avatar name={props.name} size="sm">
+        <span
+          className={`absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-background ${props.dotClass}`}
+          aria-hidden="true"
+        />
+      </Avatar>
       <span className="min-w-0 flex-1">
         <span
           className="font-semibold truncate block"
@@ -2598,6 +3321,20 @@ function DetailsPane(props: {
   const [runs, setRuns] = useState<Array<Record<string, unknown>>>([]);
   const [runsError, setRunsError] = useState<string | null>(null);
   /**
+   * The pane's action forms are view-only on arrival: starting a supervised
+   * run and opening the council each take one explicit control — the same rule
+   * the group profile follows. A details pane is read far more often than it is
+   * written, so nothing in it is live-editable until asked.
+   */
+  const [supervising, setSupervising] = useState(false);
+  const [openCouncil, setOpenCouncil] = useState(false);
+  // A new selection arrives with its forms closed — never the previous room's.
+  const paneSelKey = props.sel.kind === "group" ? props.sel.name : props.sel.peer;
+  useEffect(() => {
+    setSupervising(false);
+    setOpenCouncil(false);
+  }, [paneSelKey]);
+  /**
    * Run lifecycle locks.
    *
    * `POST /api/groups/{name}/runs` mints a NEW run id per request and fans the
@@ -2665,22 +3402,10 @@ function DetailsPane(props: {
   );
 
   /**
-   * The presence dot, from the server's resolved state.
-   *
-   * Matched whole against a fixed set — the earlier version chained regexes
-   * over the raw status word, where `idle` appeared in the *first* branch
-   * (drawing a green "working" dot for an idle agent) and `inactive` matched
-   * `active` (drawing a green dot for a suspended one). The server now resolves
-   * a closed vocabulary, so there is nothing left to pattern-match: an absent
-   * state is a neutral dot and never an online one.
+   * The presence dot — the shared vocabulary, so the list rows and this
+   * panel never disagree about a colour. Rationale on `presenceDotClass`.
    */
-  const dot = (state: PresenceState | null) => {
-    if (state === "online") return "bg-emerald-500";
-    if (state === "busy") return "bg-amber-500";
-    if (state === "idle") return "bg-muted-foreground";
-    if (state === "offline") return "bg-destructive";
-    return "bg-muted-foreground/40";
-  };
+  const dot = presenceDotClass;
 
   /** Human label for a member row; always says something the server supports. */
   const stateLabel = (entry: MemberPresence) => {
@@ -2693,14 +3418,26 @@ function DetailsPane(props: {
        header's ⓘ button toggled `showDetails` and NOTHING changed on screen —
        the control was inert at exactly the widths a phone or a split window
        uses, while the header still said "tap ⓘ for presence & decisions".
-       It is now an overlay drawer below `lg` (so the toggle always does
-       something) and a normal column at `lg` and up (so the layout is
-       unchanged where it worked). */
+       It is now an overlay below `lg` (so the toggle always does something)
+       and a normal column at `lg` and up (so the layout is unchanged where it
+       worked).
+
+       Below `lg` it covers the whole conversation area with an OPAQUE surface:
+       the earlier translucent `w-72` strip floated at `bg-card/40` on top of
+       the transcript, so the chat behind it bled through the panel's gaps and
+       the two rendered as one garbled overlapping page. Width below `lg` must
+       be `auto`: an over-constrained absolute drops `right`, so a fixed
+       `w-72`/`w-full` would ignore the left edge — `md:max-lg:left-80` plus
+       `w-auto` is what keeps the conversation list beside the pane at widths
+       where one fits while the pane still ends at the viewport's right edge
+       (a `w-full` pane would overflow it and push the close button
+       off-screen). */
     <aside
-      className="w-72 shrink-0 border-l border-border bg-card/40 flex-col min-h-0 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:elev-3"
+      className="w-72 shrink-0 border-l border-border bg-card/40 flex flex-col min-h-0 max-lg:absolute max-lg:inset-0 max-lg:w-auto max-lg:border-l-0 max-lg:bg-card max-lg:z-30 max-lg:elev-3 md:max-lg:left-80"
       aria-label="Conversation details"
     >
-      <div className="p-3 border-b border-border/60 flex items-center gap-2">
+      <div className="px-3 py-2.5 border-b border-border/60 flex items-center gap-2 bg-card/60">
+        <Info className="size-3.5 text-muted-foreground" aria-hidden="true" />
         <p className="text-xs font-bold flex-1">Details</p>
         <button
           type="button"
@@ -2731,8 +3468,8 @@ function DetailsPane(props: {
             rule-matched are kept visually distinct because each has a
             different owner and lifetime — flattening them is how a nested
             roster stops making sense. */}
-        <section>
-          <p className="text-[11px] font-bold mb-1.5 flex items-center gap-1.5">
+        <section className="rounded-xl border border-border/60 bg-card/50 p-3 space-y-2">
+          <p className="text-[11px] font-bold flex items-center gap-1.5">
             <Users className="size-3" aria-hidden="true" />
             Members in this group
             <span className="font-normal text-muted-foreground">
@@ -2912,8 +3649,9 @@ function DetailsPane(props: {
         </section>
 
         {decisions.length > 0 && (
-          <section>
-            <p className="text-[11px] font-bold mb-1.5">
+          <section className="rounded-xl border border-border/60 bg-card/50 p-3 space-y-2">
+            <p className="text-[11px] font-bold flex items-center gap-1.5">
+              <Check className="size-3.5 text-emerald-500" aria-hidden="true" />
               Decisions made ({decisions.length})
             </p>
             <div className="space-y-1.5">
@@ -2936,8 +3674,12 @@ function DetailsPane(props: {
         )}
 
         {blockers.length > 0 && (
-          <section>
-            <p className="text-[11px] font-bold mb-1.5">
+          <section className="rounded-xl border border-border/60 bg-card/50 p-3 space-y-2">
+            <p className="text-[11px] font-bold flex items-center gap-1.5">
+              <AlertTriangle
+                className="size-3.5 text-amber-500"
+                aria-hidden="true"
+              />
               Needs attention ({blockers.length})
             </p>
             <div className="space-y-1.5">
@@ -2959,7 +3701,7 @@ function DetailsPane(props: {
         {isGroup && (
           <>
             {/* Groups nested inside this one — the WhatsApp-community shape. */}
-            <section className="rounded-xl border border-border/60 p-2.5 space-y-2">
+            <section className="rounded-xl border border-border/60 bg-card/50 p-2.5 space-y-2">
               <p className="text-[11px] font-bold flex items-center gap-1.5">
                 <Layers className="size-3.5 text-primary" aria-hidden="true" />{" "}
                 Groups inside this one
@@ -2984,30 +3726,43 @@ function DetailsPane(props: {
               />
             </section>
 
-            <section className="rounded-xl border border-border/60 p-2.5 space-y-2">
+            <section className="rounded-xl border border-border/60 bg-card/50 p-2.5 space-y-2">
               <p className="text-[11px] font-bold">Supervise the team</p>
-              <div className="flex gap-2">
-                <input
-                  value={objective}
-                  onChange={(e) => setObjective(e.target.value)}
-                  placeholder="Goal for an autonomous run…"
-                  aria-label="Autonomous run goal"
-                  className={inputCls}
-                />
+              {!supervising ? (
                 <Btn
                   variant="ghost"
-                  onClick={() => startRun()}
-                  disabled={!objective.trim() || !!startingRun}
-                  title={
-                    startingRun
-                      ? "A run is still starting"
-                      : "Start one autonomous run for this room"
-                  }
-                  aria-label="Start an autonomous run for this room"
+                  onClick={() => setSupervising(true)}
+                  title="Stage an autonomous run goal for this room"
                 >
-                  <Play className="size-3.5" aria-hidden="true" />
+                  <Play className="size-3.5" aria-hidden="true" /> Start a run…
                 </Btn>
-              </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    value={objective}
+                    onChange={(e) => setObjective(e.target.value)}
+                    placeholder="Goal for an autonomous run…"
+                    aria-label="Autonomous run goal"
+                    className={inputCls}
+                  />
+                  <Btn
+                    variant="ghost"
+                    onClick={() => startRun()}
+                    disabled={!objective.trim() || !!startingRun}
+                    title={
+                      startingRun
+                        ? "A run is still starting"
+                        : "Start one autonomous run for this room"
+                    }
+                    aria-label="Start an autonomous run for this room"
+                  >
+                    <Play className="size-3.5" aria-hidden="true" />
+                  </Btn>
+                  <Btn variant="ghost" onClick={() => setSupervising(false)} disabled={!!startingRun}>
+                    Cancel
+                  </Btn>
+                </div>
+              )}
               {runsError ? (
                 <ErrorBox
                   message={`Room runs unavailable — failed to load, not empty. (${runsError})`}
@@ -3065,47 +3820,66 @@ function DetailsPane(props: {
               </Btn>
             </section>
 
-            <section className="rounded-xl border border-border/60 p-2.5 space-y-2">
+            <section className="rounded-xl border border-border/60 bg-card/50 p-2.5 space-y-2">
               <p className="text-[11px] font-bold inline-flex items-center gap-1.5">
                 <Scale className="size-3.5 text-primary" /> Settle a
                 disagreement
               </p>
-              <Field label="What's disputed?">
-                <input
-                  value={props.council.topic}
-                  onChange={(e) =>
-                    props.setCouncil((c) => ({ ...c, topic: e.target.value }))
-                  }
-                  placeholder="REST vs GraphQL for the API…"
-                  className={inputCls}
-                />
-              </Field>
-              <div className="flex gap-2">
-                <select
-                  value={props.council.strategy}
-                  onChange={(e) =>
-                    props.setCouncil((c) => ({
-                      ...c,
-                      strategy: e.target.value as CouncilStrategy,
-                    }))
-                  }
-                  className={`${inputCls} !w-auto`}
-                  aria-label="Council strategy"
-                >
-                  <option value="debate">Debate</option>
-                  <option value="council">Council vote</option>
-                  <option value="ensemble">Ensemble</option>
-                  <option value="single">Single judge</option>
-                </select>
+              {!openCouncil ? (
                 <Btn
-                  onClick={props.onCouncil}
-                  disabled={
-                    props.council.busy || props.council.topic.trim().length < 2
-                  }
+                  variant="ghost"
+                  onClick={() => setOpenCouncil(true)}
+                  title="Stage a disputed question for the team council"
                 >
-                  {props.council.busy ? "Deliberating…" : "Ask council"}
+                  <Scale className="size-3.5" aria-hidden="true" /> Ask the council…
                 </Btn>
-              </div>
+              ) : (
+                <>
+                  <Field label="What's disputed?">
+                    <input
+                      value={props.council.topic}
+                      onChange={(e) =>
+                        props.setCouncil((c) => ({ ...c, topic: e.target.value }))
+                      }
+                      placeholder="REST vs GraphQL for the API…"
+                      className={inputCls}
+                    />
+                  </Field>
+                  <div className="flex gap-2">
+                    <select
+                      value={props.council.strategy}
+                      onChange={(e) =>
+                        props.setCouncil((c) => ({
+                          ...c,
+                          strategy: e.target.value as CouncilStrategy,
+                        }))
+                      }
+                      className={`${inputCls} !w-auto`}
+                      aria-label="Council strategy"
+                    >
+                      <option value="debate">Debate</option>
+                      <option value="council">Council vote</option>
+                      <option value="ensemble">Ensemble</option>
+                      <option value="single">Single judge</option>
+                    </select>
+                    <Btn
+                      onClick={props.onCouncil}
+                      disabled={
+                        props.council.busy || props.council.topic.trim().length < 2
+                      }
+                    >
+                      {props.council.busy ? "Deliberating…" : "Ask council"}
+                    </Btn>
+                    <Btn
+                      variant="ghost"
+                      onClick={() => setOpenCouncil(false)}
+                      disabled={props.council.busy}
+                    >
+                      Cancel
+                    </Btn>
+                  </div>
+                </>
+              )}
               {props.council.result && (
                 <div className="space-y-1.5">
                   <pre className="text-[11px] whitespace-pre-wrap rounded-lg bg-muted/40 p-2 max-h-48 overflow-y-auto">
@@ -3126,8 +3900,8 @@ function DetailsPane(props: {
         )}
 
         {props.eventsError ? (
-          <section>
-            <p className="text-[11px] font-bold mb-1.5">Recent team events</p>
+          <section className="rounded-xl border border-border/60 bg-card/50 p-3 space-y-2">
+            <p className="text-[11px] font-bold">Recent team events</p>
             <p className="text-[10px] text-destructive">
               Team events unavailable — failed to load, not empty. (
               {props.eventsError})
@@ -3135,8 +3909,8 @@ function DetailsPane(props: {
           </section>
         ) : (
           props.events.length > 0 && (
-            <section>
-              <p className="text-[11px] font-bold mb-1.5">Recent team events</p>
+            <section className="rounded-xl border border-border/60 bg-card/50 p-3 space-y-2">
+              <p className="text-[11px] font-bold">Recent team events</p>
               <div className="space-y-1">
                 {props.events.slice(0, 6).map((e, i) => (
                   <p

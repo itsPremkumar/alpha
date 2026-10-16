@@ -33,7 +33,7 @@ new Function("require", "module", "exports", compiled)(
   moduleShim,
   moduleShim.exports,
 );
-const { sectionConversations, hiddenSummary, unreadLabel, groupMessageRuns } =
+const { sectionConversations, hiddenSummary, unreadLabel, groupMessageRuns, isInboundToUser } =
   moduleShim.exports;
 
 const row = (id, kind, extra = {}) => ({
@@ -69,16 +69,16 @@ test("sectionConversations: splits group rows from DM rows, groups first", () =>
   );
 });
 
-test("sectionConversations: labels read Groups / Direct, the words the column renders", () => {
+test("sectionConversations: labels read Groups / A2A, the words the column renders", () => {
   const sections = sectionConversations([row("g1", "group"), row("d1", "dm")]);
   assert.deepEqual(
     sections.map((s) => s.label),
-    ["Groups", "Direct"],
+    ["Groups", "A2A"],
   );
 });
 
 test("sectionConversations: an empty half is omitted, never a count of zero", () => {
-  // A "Direct (0)" header would say the server measured zero DMs when in fact
+  // An "A2A (0)" header would say the server measured zero DMs when in fact
   // there simply were none to place under it.
   const onlyGroups = sectionConversations([row("g1", "group")]);
   assert.deepEqual(
@@ -90,6 +90,61 @@ test("sectionConversations: an empty half is omitted, never a count of zero", ()
     ["direct"],
   );
   assert.deepEqual(sectionConversations([]), []);
+});
+
+test("sectionConversations: the direct header repeats the label the caller pressed", () => {
+  // The A→U chip narrows the direct column, so the header above those rows has
+  // to carry that word — an "A2A" header over an A→U result is a chip and its
+  // list disagreeing about what is on screen. The default stays A2A.
+  const rows = [row("g1", "group"), row("d1", "dm")];
+  assert.deepEqual(
+    sectionConversations(rows, "A→U").map((s) => s.label),
+    ["Groups", "A→U"],
+  );
+});
+
+test("isInboundToUser: only mail an agent addressed to the operator counts", () => {
+  const me = "operator";
+  // The honest trap the old sender-only reading fell into: a per-agent inbox
+  // holds agent-to-agent handoffs too, so `architect -> docs-writer` is in a
+  // mailbox and is not mail to the operator.
+  assert.equal(
+    isInboundToUser([{ sender: "architect", to: "docs-writer" }], me),
+    false,
+  );
+  // What the agent sent *you* is the A→U direction.
+  assert.equal(
+    isInboundToUser([{ sender: "architect", to: "operator" }], me),
+    true,
+  );
+  // What *you* sent is U→A, not A→U.
+  assert.equal(
+    isInboundToUser([{ sender: "operator", to: "architect" }], me),
+    false,
+  );
+  // One inbound row anywhere in the thread makes the thread an A→U thread.
+  assert.equal(
+    isInboundToUser(
+      [
+        { sender: "operator", to: "qa-runner" },
+        { sender: "qa-runner", to: "operator" },
+      ],
+      me,
+    ),
+    true,
+  );
+  assert.equal(isInboundToUser([], me), false);
+});
+
+test("isInboundToUser: an unreported recipient is never claimed as addressed to you", () => {
+  // `fetchInbox` stores a missing `receiver_name` as "", and a room row has no
+  // `to` at all. Both must read as "not addressed to you" rather than being
+  // guessed from the sender.
+  assert.equal(isInboundToUser([{ sender: "architect" }], "operator"), false);
+  assert.equal(isInboundToUser([{ sender: "architect", to: "" }], "operator"), false);
+  assert.equal(isInboundToUser([{ sender: "architect", to: null }], "operator"), false);
+  // An empty operator name must not match an empty recipient.
+  assert.equal(isInboundToUser([{ sender: "architect", to: "" }], ""), false);
 });
 
 test("sectionConversations: preserves caller order inside each section", () => {
@@ -324,7 +379,8 @@ test("a decisions/blockers filter names the rooms it could not search", () => {
 });
 
 test("the conversation column renders in sections, and an empty half is omitted", () => {
-  assert.match(section, /sectionConversations\(convs\)\.map\(\(section\)/);
+  assert.match(section, /sectionConversations\(/);
+  assert.match(section, /\)\.map\(\(section\) => \(/);
   assert.match(
     section,
     /\{section\.rows\.length\}/,
@@ -333,6 +389,56 @@ test("the conversation column renders in sections, and an empty half is omitted"
   // The zero case is not reachable from this component: the section list comes
   // from `sectionConversations`, which drops an empty half entirely, so there
   // is no branch here that could render a header over nothing.
+});
+
+test("the A→U chip narrows the direct mailbox by recipient, not by sender", () => {
+  // The chip sits beside A2A and answers a different question: which threads
+  // carry mail an agent addressed *to the operator*. Filtering on `sender`
+  // alone would sweep in agent-to-agent handoffs that share the mailbox.
+  assert.match(
+    section,
+    /if \(f === "a2u"\) \{[\s\S]{0,600}isInboundToUser\(msgs, OPERATOR\)/,
+  );
+  assert.match(
+    section,
+    /a2u: "A→U"/,
+    "the chip's word lives in the one label map",
+  );
+  // The chip must count with the same predicate the list renders with, which is
+  // why it is in `matchesFilter` and not a private `convs.filter` beside it.
+  const chipList =
+    section.match(/\[\s*"all",\s*"unread",\s*"groups",\s*"direct",\s*"a2u",[\s\S]{0,80}\] as Filter\[\]/);
+  assert.ok(chipList, "the chip row must offer a2u next to direct");
+});
+
+test("the direct header repeats the chip the operator pressed", () => {
+  // An "A2A" header over an A→U result is a chip and its list disagreeing.
+  assert.match(
+    section,
+    /sectionConversations\(\s*convs,[\s\S]{0,200}filter === "a2u" \? FILTER_LABELS\.a2u : FILTER_LABELS\.direct/,
+  );
+});
+
+test("an empty A→U list explains that an unreported recipient is not counted", () => {
+  assert.match(section, /data-messages-a2u-note/);
+  assert.match(section, /no\s+reported\s+recipient\s+is\s+not\s+counted/);
+});
+
+test("the chip row and the chip counter offer exactly the same filters", () => {
+  // Two lists, one rendering the chips and one measuring them. A chip present
+  // in the first and missing from the second renders label-only, with no
+  // number — and a count that was never taken reads exactly like a zero.
+  const lists = [
+    ...section.matchAll(/\[\s*"all",\s*"unread",[\s\S]{0,160}?\] as Filter\[\]/g),
+  ].map((m) => m[0]);
+  assert.equal(lists.length, 2, "one list renders the chips, one counts them");
+  const ids = (block) => [...block.matchAll(/"([a-z0-9]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(
+    ids(lists[1]),
+    ids(lists[0]),
+    "a chip with no entry in the counter renders without a number",
+  );
+  assert.ok(ids(lists[0]).includes("a2u"), "the A→U chip is offered and counted");
 });
 
 test("the unread pill is the shared label, not an inline copy of the cap", () => {

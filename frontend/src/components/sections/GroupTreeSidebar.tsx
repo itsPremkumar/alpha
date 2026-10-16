@@ -7,6 +7,7 @@ import {
   type Breadcrumb, type TreeEntry, type TreeNode,
 } from "@/lib/groups-tree";
 import { Btn, inputCls } from "@/components/ui";
+import { unreadLabel } from "@/lib/messages-view";
 
 /**
  * The nested-group sidebar: a forest of rooms with subgroups under each one.
@@ -37,6 +38,17 @@ export function GroupTreeSidebar(props: {
   onOpen: (roomName: string) => void;
   onNewSubgroup: (parentName: string) => void;
   onMerge: (roomName: string) => void;
+  /**
+   * room name -> measured unread count. A room absent here renders no badge —
+   * an unread room whose history was never read is *not measured*, and a "0"
+   * badge would dress that up as "nothing waiting".
+   */
+  unreadByRoom?: Record<string, number>;
+  /**
+   * Rendered as the conversation list's own Groups section, under a header
+   * that already names it — the second title is dropped there.
+   */
+  embedded?: boolean;
 }) {
   const entries = useMemo(
     () => buildTree(props.nodes, props.busyByRoom),
@@ -48,9 +60,11 @@ export function GroupTreeSidebar(props: {
 
   return (
     <div className="space-y-0.5">
-      <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground px-1 pb-1">
-        <Layers className="size-3" aria-hidden="true" /> Group structure
-      </p>
+      {!props.embedded && (
+        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground px-1 pb-1">
+          <Layers className="size-3" aria-hidden="true" /> Group structure
+        </p>
+      )}
       {flat.map((entry) => (
         <TreeRow
           key={entry.node.room_id}
@@ -58,6 +72,7 @@ export function GroupTreeSidebar(props: {
           active={props.activeRoom === entry.node.name}
           collapsed={props.collapsed.has(entry.node.room_id)}
           error={props.errorsByRoom[entry.node.name] ?? null}
+          unread={props.unreadByRoom?.[entry.node.name] ?? 0}
           onToggle={props.onToggle}
           onOpen={props.onOpen}
           onNewSubgroup={props.onNewSubgroup}
@@ -73,6 +88,8 @@ function TreeRow(props: {
   active: boolean;
   collapsed: boolean;
   error: string | null;
+  /** Measured unread count; 0 renders nothing at all. */
+  unread: number;
   onToggle: (roomId: string) => void;
   onOpen: (name: string) => void;
   onNewSubgroup: (name: string) => void;
@@ -87,7 +104,7 @@ function TreeRow(props: {
   return (
     <div>
       <div
-        className={`flex items-center gap-1.5 py-1.5 pr-2 rounded-lg text-[11px] ${props.active ? "bg-primary/10" : "hover:bg-muted/40"}`}
+        className={`group/node flex items-center gap-1.5 py-1.5 pr-2 rounded-lg text-[11px] transition-colors dur-fast ${props.active ? "bg-primary/10" : "hover:bg-muted/40"}`}
         style={indent}
       >
         {entry.hasChildren ? (
@@ -111,10 +128,12 @@ function TreeRow(props: {
         <button
           type="button"
           onClick={() => props.onOpen(node.name)}
-          className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
           title={node.summary || node.topic || node.name}
         >
-          <FolderTree className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="size-5 rounded-md bg-muted/70 border border-border/40 inline-flex items-center justify-center shrink-0">
+            <FolderTree className="size-3 text-muted-foreground" aria-hidden="true" />
+          </span>
           <span className={`truncate flex-1 ${props.active ? "font-bold" : "font-semibold"}`}>{node.name}</span>
           {node.scope?.state && node.scope.state !== "active" && (
             <span
@@ -136,12 +155,23 @@ function TreeRow(props: {
               aria-label={`${entry.busyCount} members working now`}
             />
           )}
+          {/* Measured unread only: a room whose history was never read carries
+              no badge, never a measured-looking zero. */}
+          {props.unread > 0 && (
+            <span
+              className="text-[9px] font-bold bg-primary text-primary-foreground rounded-full min-w-4 h-4 px-1 inline-flex items-center justify-center shrink-0 tabular-nums"
+              title={`${props.unread} unread message${props.unread === 1 ? "" : "s"} in ${node.name}`}
+              aria-label={`${props.unread} unread message${props.unread === 1 ? "" : "s"} in ${node.name}`}
+            >
+              {unreadLabel(props.unread)}
+            </span>
+          )}
         </button>
 
         {/* Both counts together, or neither. */}
         {node.direct_count !== null && node.effective_count !== null && (
           <span
-            className="text-[9px] text-muted-foreground shrink-0 tabular-nums"
+            className="text-[9px] text-muted-foreground shrink-0 tabular-nums rounded-full bg-muted/70 border border-border/40 px-1.5 py-0.5"
             title={
               node.direct_count === node.effective_count
                 ? `${node.effective_count} members`
@@ -157,7 +187,7 @@ function TreeRow(props: {
         <button
           type="button"
           onClick={() => props.onNewSubgroup(node.name)}
-          className="p-1 rounded hover:bg-muted text-muted-foreground shrink-0 opacity-0 focus:opacity-100 hover:opacity-100"
+          className="p-1 rounded hover:bg-muted text-muted-foreground shrink-0 opacity-0 focus:opacity-100 group-hover/node:opacity-100 hover:opacity-100"
           title={`Add a group inside ${node.name}`}
           aria-label={`Add a group inside ${node.name}`}
         >
@@ -168,7 +198,7 @@ function TreeRow(props: {
           <button
             type="button"
             onClick={() => props.onMerge(node.name)}
-            className="p-1 rounded hover:bg-muted text-muted-foreground shrink-0 opacity-0 focus:opacity-100 hover:opacity-100"
+            className="p-1 rounded hover:bg-muted text-muted-foreground shrink-0 opacity-0 focus:opacity-100 group-hover/node:opacity-100 hover:opacity-100"
             title={`Merge ${subtree} subgroup${subtree === 1 ? "" : "s"} into ${node.name}`}
             aria-label={`Merge ${subtree} subgroups into ${node.name}`}
           >
@@ -277,20 +307,20 @@ export function NewSubgroupForm(props: {
 /** The breadcrumb above a nested group's transcript. */
 export function GroupBreadcrumbs(props: { chain: Breadcrumb[]; current: string; onOpen: (name: string) => void }) {
   return (
-    <nav aria-label="Group location" className="flex items-center gap-1 flex-wrap text-[11px]">
+    <nav aria-label="Group location" className="flex items-center gap-0.5 flex-wrap text-[11px]">
       {props.chain.map((crumb) => (
         <React.Fragment key={crumb.room_id}>
           <button
             type="button"
             onClick={() => props.onOpen(crumb.name)}
-            className="text-muted-foreground hover:text-foreground hover:underline"
+            className="px-1.5 py-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors dur-fast"
           >
             {crumb.name}
           </button>
-          <ChevronRight className="size-3 text-muted-foreground" aria-hidden="true" />
+          <ChevronRight className="size-3 text-muted-foreground/60" aria-hidden="true" />
         </React.Fragment>
       ))}
-      <span className="font-semibold">{props.current}</span>
+      <span className="font-semibold px-1">{props.current}</span>
     </nav>
   );
 }

@@ -338,7 +338,11 @@ export async function previewMentions(
   content: string,
   sender?: string,
 ): Promise<MentionPreviewResponse> {
-  const raw = await send<MentionPreviewResponse>(`/groups/${enc(room)}/mentions/preview`, "POST", {
+  // The room travels in the body (`room_name`): the Gateway declares this as
+  // `POST /groups/mentions/preview`, not as a per-room path. Addressing a
+  // per-room path 404s, and the composer's strip then spins on
+  // "checking with the room…" while nothing can ever resolve.
+  const raw = await send<MentionPreviewResponse>("/groups/mentions/preview", "POST", {
     room_name: room,
     content,
     sender,
