@@ -84,6 +84,11 @@ Sessions and their event journal live under `runtime_home()/apex/`
 | `autonomous` | everything | unlimited spend; 6 agents, depth 3, 10 replans, 3 retries per failure class | those three become **allow**; `package_install` stays approval |
 | `apex_max` | everything | unlimited spend; 12 agents, depth 5, 20 replans, 4 retries per failure class | those three become allow |
 
+The APEX UI keeps the read-only **Contract preview** separate from the profile
+that will be enabled. If the selected profiles differ, it displays a warning
+and a one-click action to preview the selected profile's actual authority and
+limits before enabling it.
+
 Two things never move with the profile:
 
 - **The emergency stop.** `ApexControls(emergency_stop=False)` raises. There is

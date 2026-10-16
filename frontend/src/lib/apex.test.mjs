@@ -877,6 +877,15 @@ test("the read-only contract preview is distinct from the profile that enables A
   assert.match(source, /Changes the policy preview only/);
 });
 
+test("APEX warns when the contract preview differs from the profile being enabled", () => {
+  const source = read("../components/sections/ApexSection.tsx");
+
+  assert.match(source, /profile !== previewProfile/);
+  assert.match(source, /Review the selected/);
+  assert.match(source, /onPreviewProfile\(profile\)/);
+  assert.match(source, /Preview \{profile\}/);
+});
+
 test("a confirmed switch change re-reads the rest of the panel, not just the switch", () => {
   // Two reads render side by side: `/mode` draws the switch, `/status` draws
   // "Active profile". Mutating only the first put "off (no mission control)"

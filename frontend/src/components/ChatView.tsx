@@ -2324,7 +2324,14 @@ export default function ChatView({
     };
     const showRequestFailure = async (failure: ChatRequestFailure) => {
       let partialArchived = false;
-      if (responseStarted && assistantText.trim()) {
+      const hasPartialContent =
+        responseStarted &&
+        (assistantText.trim() !== "" ||
+          deliveredMessages.some(
+            (message) =>
+              Array.isArray(message.toolCalls) && message.toolCalls.length > 0,
+          ));
+      if (hasPartialContent) {
         // The partial transcript is archived even when the user has already
         // navigated away — the local copy must not depend on the UI state.
         partialArchived = await persistLocalHistory(
@@ -2333,7 +2340,7 @@ export default function ChatView({
         );
       }
       // After a navigation the visible thread is a different conversation, so
-      // the retry panel/draft would be painted into the wrong place.
+      // the transcript/composer side effects below must not be painted under it.
       if (!runIsCurrent()) return;
       setMessages((prev) => {
         const kept = prev.filter((message) => !streamedIds.has(message.id));
@@ -2546,9 +2553,18 @@ export default function ChatView({
       completed = true;
       if (runIsCurrent())
         updateLion("success", "Task complete. Nice work, team.", 4200);
+      // A run that finished only after its thread was re-opened is still the
+      // answer for that thread: paint it now instead of leaving an empty run.
+      if (!runIsCurrent() && activeThreadIdRef.current === tid) {
+        setMessages((prev) => [
+          ...prev.filter((message) => !streamedIds.has(message.id)),
+          ...deliveredMessages,
+        ]);
+        updateLion("success", "Task complete. Nice work, team.", 4200);
+      }
       try {
         const usage = await fetchTokenUsage(threadId);
-        if (runIsCurrent()) setUsage(usage);
+        if (runIsCurrent() || activeThreadIdRef.current === tid) setUsage(usage);
       } catch {}
 
       await persistLocalHistory(

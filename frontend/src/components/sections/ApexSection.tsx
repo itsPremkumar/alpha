@@ -277,10 +277,15 @@ function InvariantsCard({
 function ApexToggle({
   onError,
   onChanged,
+  previewProfile,
+  onPreviewProfile,
 }: {
   onError: (message: string | null) => void;
   /** Fired after a write the server confirmed, so the panel's *other* reads re-read too. */
   onChanged?: () => void;
+  /** The policy profile currently shown in the contract preview. */
+  previewProfile: ApexProfile;
+  onPreviewProfile: (profile: ApexProfile) => void;
 }) {
   const [mode, setMode] = useState<ApexMode | null>(null);
   const [pending, setPending] = useState<boolean | null>(null);
@@ -418,6 +423,26 @@ function ApexToggle({
           </Btn>
         </div>
       </div>
+
+      {profile !== previewProfile ? (
+        <div
+          role="note"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+        >
+          <span>
+            {on ? "APEX is using" : "Turning on will use"} {profile}, but the
+            contract preview shows {previewProfile}. Review the selected
+            profile's authority and limits before proceeding.
+          </span>
+          <Btn
+            variant="ghost"
+            onClick={() => onPreviewProfile(profile)}
+            disabled={busy}
+          >
+            Preview {profile}
+          </Btn>
+        </div>
+      ) : null}
 
       <p className="text-xs text-neutral-600">
         {on ? (
@@ -1622,7 +1647,12 @@ export function ApexSection() {
       <div className="space-y-3">
         {/* The switch owns the first row: it is the one control that decides
             whether anything below it is live at all. */}
-        <ApexToggle onError={setError} onChanged={refresh} />
+        <ApexToggle
+          onError={setError}
+          onChanged={refresh}
+          previewProfile={previewProfile}
+          onPreviewProfile={setPreviewProfile}
+        />
 
         <div className="space-y-3 rounded-xl border border-border/60 p-4">
           <div>

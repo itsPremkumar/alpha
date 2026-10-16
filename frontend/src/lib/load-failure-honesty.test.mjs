@@ -446,7 +446,7 @@ test("MemorySection flags failed loads instead of substituting empty data", () =
   const src = read("../components/sections/MemorySection.tsx");
   assert.doesNotMatch(src, /catch\(\(\) => \(\{ facts: \[\]/);
   assert.doesNotMatch(src, /\.catch\(\(\) => \{\}\)/);
-  for (const flag of ["factsError", "overviewError", "workingError", "beliefsError", "skillsError"]) {
+  for (const flag of ["factsError", "overviewError", "workingError", "beliefsError", "skillsError", "prospectiveError", "statusError"]) {
     assert.match(src, new RegExp(flag));
   }
 });

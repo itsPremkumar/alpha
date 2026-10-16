@@ -27,6 +27,11 @@ returns an existing verification state for a successful run. A `not_requested`
 state means the run declared no acceptance criteria; display the Gateway's
 reason and do not show an action the API must reject.
 
+For APEX, the contract preview and profile-to-enable are separate controls.
+When they differ, show the mismatch and provide a direct action to preview the
+profile that will actually be enabled; never let an operator mistake one
+profile's authority or limits for another's.
+
 ## Branding
 
 `src/assets/images/alpha.png` is the one real logo, and `src/lib/branding.ts` is
@@ -68,7 +73,9 @@ mane-vs-face crop rule, and the desktop/installer surfaces are in the
   list all keep the thread visible. `ChatView` archives every server thread
   into IndexedDB in bounded background batches (`archiveServerHistory`), and a
   partial page is archived with its truncation disclosed — never discarded and
-  never presented as a complete answer.
+  never presented as a complete answer. An interrupted stream is archived even
+  when it carried only tool calls (no assistant prose), so a run that did tools
+  but never spoke is not erased.
 - **IndexedDB write discipline.** Every read-modify-write goes through
   `updateRecord`/`updateRecords`, which issue the `put()` from inside the
   request's own `onsuccess` handler. Never `await` a `get()` and then write:
