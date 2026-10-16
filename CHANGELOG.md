@@ -12,6 +12,11 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **model-selection-status-honesty:** The workspace header now labels the
+  default model route as **Default (auto-routed)**, matching the composer, and
+  reports an unknown saved model id as **Unknown model** rather than implying
+  that no model selection exists.
+
 - **apex-ui-session-ceilings:** The APEX objective form now sends editable finite
   per-session defaults of 100,000 tokens, 200 tool calls, and 60 minutes when it
   creates and dispatches a mission. These limits narrow the selected profile;

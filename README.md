@@ -950,7 +950,9 @@ exactly-once execution.
   automatic failover. Async cancellation closes Alpha's local provider request
   and stops failover; remote providers may continue already-accepted work. A
   routing table that resolves to nothing returns an empty chain plus a reason
-  instead of an invented model.
+  instead of an invented model. The workspace header and composer both identify
+  the default selection as **Default (auto-routed)**; unknown saved model ids
+  are labeled as unknown.
 - **System One computer control** — opt-in Windows desktop control where the model
   returns only semantic element indexes — never coordinates, selectors, keys or
   typed text — which are re-observed and locally resolved before a sentinel-guarded

@@ -3231,7 +3231,9 @@ export default function ChatView({
     .reverse()
     .find((m) => m.role === "assistant")?.id;
   const selectedModelName =
-    models.find((m) => m.id === selectedModel)?.name || null;
+    selectedModel === "default"
+      ? "Default (auto-routed)"
+      : models.find((m) => m.id === selectedModel)?.name || "Unknown model";
   // Unread is a measured total only if the roster read asked for it: a row
   // without `unread_count` means "not projected", and mixing an unknown row
   // into a sum would invent a number. `null` (unknown) hides the badge instead
@@ -3412,9 +3414,7 @@ export default function ChatView({
                   */}
                     <span className="whitespace-nowrap">Settings</span>
                     <span className="sr-only">
-                      {selectedModelName
-                        ? ` — selected model: ${selectedModelName}`
-                        : " — no model selected"}
+                      {` — selected model: ${selectedModelName}`}
                     </span>
                     {selectedModelName ? (
                       <span className="hidden lg:inline text-muted-foreground/80 font-normal">

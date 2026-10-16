@@ -35,6 +35,9 @@ The APEX objective form narrows each new UI-created session with editable finite
 token, tool-call, and runtime ceilings; keep the in-flight token overshoot caveat
 visible because token use is measured after model calls. Expanded session history
 must show frozen per-session ceilings beside measured usage, not only profile policy.
+The workspace header must label the `default` model selection as **Default
+(auto-routed)**, matching the composer; an unknown persisted model id must be
+shown as unknown rather than as no selection.
 
 ## Branding
 

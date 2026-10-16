@@ -1533,7 +1533,9 @@ test("the settings control is not a bare gear below the lg breakpoint", () => {
   );
   // The model name is preserved, and announced, rather than doubling as the label.
   assert.match(markup, /sr-only/);
-  assert.match(markup, /no model selected/);
+  assert.match(chatViewSource, /selectedModel === "default"[\s\S]{0,100}"Default \(auto-routed\)"/);
+  assert.match(chatViewSource, /\?\.name \|\| "Unknown model"/);
+  assert.doesNotMatch(markup, /no model selected/);
   // No element in the control hides the word itself.
   for (const [, cls] of markup.matchAll(/<span className="([^"]*)">/g)) {
     if (/\bhidden\b/.test(cls)) {
