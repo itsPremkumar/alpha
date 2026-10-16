@@ -223,14 +223,17 @@ run or copy task details into the health view.
 
 When a RunManager run completes, the Gateway adapter evaluates registered
 `AcceptanceRegistry` probes off the event loop. If those do not produce a
-complete report, the adapter can also verify a deliberately narrow criterion:
-an explicit exact-quoted-text file readback, backed by correlated successful
-`write_file` and later `read_file` calls in the same run. It requires a complete,
-bounded scan of that run's durable tool events; missing, truncated, mismatched,
-or ambiguous evidence never passes. Only a fully evaluated report is submitted
-to the executive gate; a pass can complete the session and a measured failure
-can trigger bounded recovery. Unsupported criteria remain awaiting owner
-evidence. Probes must return a boolean or `None`; any other result stays
+complete report, the adapter uses the shared typed run verifier for supported
+criteria: exact-quoted-text file readback, an explicitly declared non-empty
+artifact, or `Auto-detected project test suite passes.` backed by a correlated
+successful `auto_test_and_repair` receipt. The test check requires Alpha to
+choose the command (no caller-supplied command), argv execution, exit code zero,
+and zero reported failures. It requires a complete, bounded scan of that run's
+durable tool events; missing, truncated, mismatched, stale, or ambiguous evidence
+never passes. Only a fully evaluated report is submitted to the executive gate;
+a pass can complete the session and a measured failure can trigger bounded
+recovery. Unsupported criteria remain awaiting owner evidence. Probes must return
+a boolean or `None`; any other result stays
 unverified. Alpha ships no default probe that can verify arbitrary
 natural-language criteria. The Gateway host adapter reads durable
 `llm.ai.response` and `subagent.end` events
@@ -792,7 +795,7 @@ or an unreadable journal.
 | `tests/test_apex_mode.py` | the ON/OFF switch: fail-closed, the fourteen `/apex` verbs, the mode routes |
 | `tests/test_apex_control.py` | the approval gate and its side-door refusals, the scope joins, the goal operating system, the control/approval/goal routes |
 | `tests/test_apex_acceptance_evidence.py` | trusted evidence: provenance refusals, the two bounded collectors, and the unverified-on-conflict rule |
-| `tests/test_apex_auto_acceptance.py` | explicit exact-text file readback: tool correlation, order, failure, mismatch, and unsupported criteria |
+| `tests/test_apex_auto_acceptance.py` | exact-text/artifact readback and auto-detected test receipts: correlation, order, pass/failure, ambiguity, and unsupported criteria |
 | `tests/test_apex_authz.py` | the admin predicate (`is_admin_user`, PAT refused), owner scoping on every member route, `401`/`403`/`404`/`503` disambiguation, the approvals bound, and the SSE `gap` disclosure |
 
 Gates that must also stay green: `test_feature_manifest_wiring.py`,

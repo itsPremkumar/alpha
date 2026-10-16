@@ -879,15 +879,16 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                                     run_id=session.run_id,
                                 )
                                 latest = stored
-                    # A deliberately small native verifier can measure an
-                    # explicit exact-text file readback from this same run's
-                    # correlated tool events. It never interprets arbitrary
-                    # prose or runs model-selected commands; unsupported
-                    # criteria remain parked for owner/operator verification.
+                    # The typed run verifier measures only correlated evidence
+                    # from this complete event stream: exact-text/artifact
+                    # readbacks and Alpha's auto-detected test receipt. It does
+                    # not interpret arbitrary prose or accept caller-supplied
+                    # test commands; unsupported criteria remain parked for
+                    # owner/operator verification.
                     latest = store.get(session.session_id)
                     if event_store is not None and latest is not None and latest.state is ApexSessionState.ACTIVE and latest.acceptance is None and latest.acceptance_criteria:
                         try:
-                            from alpha.apex.auto_acceptance import evaluate_tool_readback_criteria
+                            from alpha.apex.auto_acceptance import evaluate_run_acceptance_criteria
 
                             run_events = await _complete_apex_run_event_scan(
                                 event_store,
@@ -895,21 +896,21 @@ async def apex_execution_tick(app: Any, *, session_id: str | None = None) -> dic
                                 run_id=session.run_id,
                                 user_id=session.owner,
                             )
-                            report = evaluate_tool_readback_criteria(latest.acceptance_criteria, run_events or []) if run_events is not None else None
+                            report = evaluate_run_acceptance_criteria(latest.acceptance_criteria, run_events or []) if run_events is not None else None
                             if report is not None:
                                 stored = store.update(session.session_id, acceptance=report.to_dict())
                                 if stored is None:
                                     raise RuntimeError("APEX session disappeared before automatic acceptance could be stored")
                                 store.emit(
                                     session.session_id,
-                                    "acceptance.tool_readback_report_submitted",
+                                    "acceptance.auto_report_submitted",
                                     report=report.to_dict(),
                                     run_id=session.run_id,
                                 )
                                 latest = stored
                         except Exception as exc:  # noqa: BLE001 - verifier failures must stay unverified
-                            summary["errors"].append({"session_id": session.session_id, "run_id": session.run_id, "error": f"automatic_readback_verifier_unavailable: {type(exc).__name__}: {exc}"})
-                            logger.warning("APEX automatic readback verification unavailable for %s: %s", session.session_id, exc)
+                            summary["errors"].append({"session_id": session.session_id, "run_id": session.run_id, "error": f"automatic_acceptance_verifier_unavailable: {type(exc).__name__}: {exc}"})
+                            logger.warning("APEX automatic acceptance verification unavailable for %s: %s", session.session_id, exc)
                     # An operator may approve an exact tool call after the
                     # RunManager turn that requested it has already ended.
                     # Requeue only when that approval remains unused and no

@@ -1,5 +1,6 @@
 """APEX host dispatch reuses one RunManager admission and observes usage."""
 
+import json
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -495,7 +496,10 @@ async def test_completed_apex_run_auto_verifies_explicit_file_readback(tmp_path:
         contract_digest=contract.digest(),
         contract_snapshot=contract.to_dict(),
         thread_id=thread_id,
-        acceptance_criteria=[f'Read the file back and verify it contains exactly "{expected}".'],
+        acceptance_criteria=[
+            f'Read the file back and verify it contains exactly "{expected}".',
+            "Auto-detected project test suite passes.",
+        ],
     )
     store.update(session.session_id, state=ApexSessionState.ACTIVE, dispatch_state="running", run_id="run-apex-readback", run_status="running")
     monkeypatch.setattr(acceptance_module, "get_acceptance_registry", lambda: AcceptanceRegistry())
@@ -526,6 +530,25 @@ async def test_completed_apex_run_auto_verifies_explicit_file_readback(tmp_path:
                 {"seq": 2, "event_type": "llm.tool.result", "content": {"name": "write_file", "tool_call_id": "write-1", "status": "success"}},
                 {"seq": 3, "event_type": "llm.ai.response", "content": {"type": "ai", "tool_calls": [{"id": "read-1", "name": "read_file", "args": {"path": "/workspace/marker.txt"}}]}},
                 {"seq": 4, "event_type": "llm.tool.result", "content": {"name": "read_file", "tool_call_id": "read-1", "status": "success", "content": expected}},
+                {"seq": 5, "event_type": "llm.ai.response", "content": {"type": "ai", "tool_calls": [{"id": "tests-1", "name": "auto_test_and_repair", "args": {}}]}},
+                {
+                    "seq": 6,
+                    "event_type": "llm.tool.result",
+                    "content": {
+                        "name": "auto_test_and_repair",
+                        "tool_call_id": "tests-1",
+                        "status": "success",
+                        "content": json.dumps(
+                            {
+                                "status": "passed",
+                                "execution": "argv",
+                                "command": ["pytest", "-q"],
+                                "exit_code": 0,
+                                "failure_count": 0,
+                            }
+                        ),
+                    },
+                },
             ]
 
     app = SimpleNamespace(state=SimpleNamespace(run_manager=CompletedRunManager(), run_event_store=ReadbackEventStore()))
@@ -533,11 +556,11 @@ async def test_completed_apex_run_auto_verifies_explicit_file_readback(tmp_path:
 
     updated = store.get(session.session_id)
     assert updated is not None
-    assert updated.acceptance["evaluator"] == "run_tool_readback"
+    assert updated.acceptance["evaluator"] == "run_auto_test+run_tool_readback"
     assert updated.acceptance["passed"] is True
     assert updated.state is ApexSessionState.COMPLETED
     assert result["completed"] == 1
-    assert any(event.event_type == "acceptance.tool_readback_report_submitted" for event in store.read_events(session.session_id))
+    assert any(event.event_type == "acceptance.auto_report_submitted" for event in store.read_events(session.session_id))
 
 
 @pytest.mark.asyncio
