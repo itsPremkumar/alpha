@@ -30,6 +30,7 @@ REPO = Path(__file__).resolve().parents[2]
 TOOLCHAIN = REPO / "scripts" / "toolchain.ps1"
 INSTALLER = REPO / "install.ps1"
 SERVE = REPO / "scripts" / "serve.sh"
+NGINX_SH = REPO / "scripts" / "nginx.sh"
 PINS = REPO / "installer" / "pins.json"
 
 
@@ -125,6 +126,30 @@ def test_the_launcher_resolves_the_project_local_nginx_first() -> None:
 
     assert re.search(r"\$REPO_ROOT/\.tools/nginx", text), "serve.sh must look for the project-local nginx under .tools/"
     assert "command -v" in text, "serve.sh must still fall back to PATH when no project-local copy exists"
+
+
+def test_the_standalone_nginx_script_resolves_the_same_nginx() -> None:
+    """``make nginx`` must run the nginx serve.sh would have started.
+
+    scripts/nginx.sh mirrored serve.sh's prefix, config and pre-created
+    directories but called bare ``nginx``, so on a machine where the installer
+    had provisioned the pinned copy into ``.tools/`` without putting it on PATH
+    - the exact state the provisioning exists for - ``make nginx`` died with
+    "nginx: command not found" while ``make dev`` would have found it. The
+    documented single-service command could not start the documented entry
+    point.
+    """
+    text = read(NGINX_SH)
+
+    assert re.search(r"\$REPO_ROOT/\.tools/nginx", text), "nginx.sh must look for the project-local nginx under .tools/"
+    assert "command -v" in text, "nginx.sh must still fall back to PATH when no project-local copy exists"
+    # And the resolved binary is what gets exec'd - a bare `exec nginx` would
+    # silently keep the PATH-only bug behind a working resolver.
+    assert re.search(r'exec\s+"?\$NGINX_BIN"?\s', text), "nginx.sh must exec the resolved binary, not bare `nginx`"
+    assert not re.search(r"^exec\s+nginx\s", text, re.MULTILINE), "nginx.sh must not exec bare `nginx`"
+    # A missing nginx fails loudly with the remedy, not with a shell's own
+    # "command not found".
+    assert "install.ps1" in text or "install.bat" in text, "the missing-nginx message must name the installer, which provisions the pinned copy"
 
 
 def test_the_launcher_does_not_advertise_a_port_it_did_not_start() -> None:
