@@ -116,6 +116,23 @@ Only known-safe model/agent checkpoints resume; side effects, unknown state,
 ownership failures, and cancellation stop. `RunManager` owns lifecycle; resumes
 use normal trusted admission. Keep Gateway/recovery suites aligned.
 
+**Goal-continuation resume marker.** When safe recovery assesses a terminal
+head checkpoint holding an active durable goal, it classifies the resume as
+synthetic pending work `goal_continuation` and stamps
+`RECOVERY_RESUME_KIND_GOAL_CONTINUATION` (owned by
+`runtime/runs/manager.py`) into the launch's `auto_recovery.metadata` beside
+the `resumed_from_run_id` pairing. The worker re-verifies the contract against
+the *live* checkpoint before honoring the stamp — root namespace, head == the
+selected checkpoint when a selector is present, no pending nodes/tasks, active
+goal, and a durable end-of-turn receipt — and only then skips the bare
+entry-node replay an empty input would cause, entering the goal continuation
+loop instead. Every failed or unreadable verification falls through to the
+ordinary stream path; the stamp alone authorizes nothing, and manual `/resume`
+or client-asserted markers never carry it. A stale checkpoint (head moved) or a
+newer local turn invalidates the marker. Regressions: the
+resume/fallback quintuple in `tests/test_goal_worker.py` and the marker pins in
+`tests/test_safe_run_recovery.py`.
+
 ### Stream Bridge Heartbeats
 
 Memory and Redis bridges take their default idle heartbeat cadence from the startup-only `stream_bridge.heartbeat_interval_seconds` setting. Keep the default on the bridge instance so SSE, `/wait`, and internal subscribers stay aligned; an explicit `subscribe(..., heartbeat_interval=...)` remains a per-subscription override.

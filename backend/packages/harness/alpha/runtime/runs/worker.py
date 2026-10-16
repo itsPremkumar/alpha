@@ -87,7 +87,15 @@ from alpha.utils.messages import message_to_text
 from alpha.workspace_changes import capture_workspace_snapshot, get_changed_output_paths, record_workspace_changes
 from alpha.workspace_changes.types import WorkspaceSnapshot
 
-from .manager import GATEWAY_SHUTDOWN_RECOVERY_REASON, MODEL_FAILURE_RECOVERY_REASON, NETWORK_WAIT_RECOVERY_REASON, RunManager, RunRecord, RunStartOutcome
+from .manager import (
+    GATEWAY_SHUTDOWN_RECOVERY_REASON,
+    MODEL_FAILURE_RECOVERY_REASON,
+    NETWORK_WAIT_RECOVERY_REASON,
+    RECOVERY_RESUME_KIND_GOAL_CONTINUATION,
+    RunManager,
+    RunRecord,
+    RunStartOutcome,
+)
 from .naming import resolve_root_run_name
 from .schemas import RunStatus
 
@@ -1546,7 +1554,27 @@ async def run_agent(
         # turns complete cleanly afterward (#4176 review).
         if isinstance(runtime.context, dict):
             runtime.context.pop("stop_reason", None)
-        await _stream_once(graph_input, initial_runnable_config)
+        if await _goal_continuation_resume_verified(
+            record=record,
+            config=config,
+            accessor=accessor,
+            checkpointer=checkpointer,
+            thread_id=thread_id,
+        ):
+            # The recovery launch described a terminal head checkpoint holding an
+            # active durable goal. Streaming the empty input here would replay
+            # the graph's entry node as an unsolicited turn; the goal loop below
+            # owns the resumed turn instead. Every failed verification above
+            # falls through, so an ordinary (marker-less) run is untouched.
+            logger.info(
+                "Run %s: recovery resume verified as a goal continuation; entering the goal loop without an entry replay",
+                run_id,
+            )
+            resumed_goal_continuation = True
+        else:
+            resumed_goal_continuation = False
+        if not resumed_goal_continuation:
+            await _stream_once(graph_input, initial_runnable_config)
         while not record.abort_event.is_set() and not llm_error_fallback_message and (journal is None or not journal.had_llm_error_fallback):
             continuation_input = await _prepare_goal_continuation_input(
                 bridge=bridge,
@@ -2098,6 +2126,102 @@ def _has_durable_goal_turn_receipt(checkpoint_tuple: Any, messages: list[Any]) -
     if not visible_messages:
         return False
     return _message_type(visible_messages[-1]) == "ai"
+
+
+def _recovery_resume_goal_continuation(record: RunRecord) -> bool:
+    """Return true only for the exact recovery-authority goal-continuation marker.
+
+    ``SafeRunRecoveryService`` is the only continuation authority.  A run may
+    enter the resumed-goal path when the launch metadata carries the synthetic
+    ``goal_continuation`` resume kind *and* the paired lineage pointer the
+    launch stamps (`resumed_from_run_id` == ``source_run_id``); anything else —
+    a bare marker, a manual replay, a client-asserted subtype — is an ordinary
+    run and streams normally.
+    """
+    metadata = record.metadata if isinstance(record.metadata, dict) else {}
+    recovery = metadata.get("auto_recovery")
+    if not isinstance(recovery, dict):
+        return False
+    if recovery.get("resume_kind") != RECOVERY_RESUME_KIND_GOAL_CONTINUATION:
+        return False
+    source_run_id = recovery.get("source_run_id")
+    return isinstance(source_run_id, str) and bool(source_run_id) and metadata.get("resumed_from_run_id") == source_run_id
+
+
+async def _goal_continuation_resume_verified(
+    *,
+    record: RunRecord,
+    config: dict[str, Any],
+    accessor: CheckpointStateAccessor,
+    checkpointer: Any,
+    thread_id: str,
+) -> bool:
+    """Re-verify a recovery goal-continuation marker against the live checkpoint.
+
+    The recovery stamp describes a checkpoint with no pending graph work and an
+    active durable goal. An empty-input resume at such a terminal head
+    checkpoint would otherwise re-run the graph's entry node — an unsolicited
+    duplicate turn that bypasses the evidence-based goal evaluator. When every
+    condition still holds (root namespace, head-selected or selector-less
+    checkpoint, no pending nodes, active durable goal, a completed visible
+    assistant turn safely checkpointed), the goal continuation loop owns the
+    resumed turn instead of the entry replay. *Every* failed or unreadable
+    verification falls through to the ordinary stream path: the worker never
+    invents a second resume path, it only declines to replay the entry node of
+    a resume the recovery authority described as a goal continuation.
+    """
+    if checkpointer is None or not _recovery_resume_goal_continuation(record):
+        return False
+
+    try:
+        configurable = config.get("configurable")
+        if not isinstance(configurable, dict):
+            return False
+        namespace = configurable.get("checkpoint_ns")
+        if isinstance(namespace, str) and namespace:
+            # Subgraph namespaces have their own lineage; recovery only
+            # launches root-namespace resumes.
+            return False
+
+        head_config: dict[str, Any] = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
+        head_tuple = await _call_checkpointer_method(checkpointer, "aget_tuple", "get_tuple", head_config)
+        if head_tuple is None:
+            return False
+        selected_checkpoint_id = configurable.get("checkpoint_id")
+        if isinstance(selected_checkpoint_id, str) and selected_checkpoint_id:
+            # The recovery launch resumes exactly the checkpoint it assessed.
+            # A newer local turn (or a stale selector) invalidates the marker.
+            if _checkpoint_id(head_tuple) != selected_checkpoint_id:
+                return False
+
+        snapshot = await accessor.aget(head_config)
+        snapshot_config = getattr(snapshot, "config", None) or {}
+        snapshot_configurable = snapshot_config.get("configurable", {}) if isinstance(snapshot_config, dict) else {}
+        snapshot_checkpoint_id = snapshot_configurable.get("checkpoint_id") if isinstance(snapshot_configurable, dict) else None
+        head_checkpoint_id = _checkpoint_id(head_tuple)
+        if not isinstance(snapshot_checkpoint_id, str) or snapshot_checkpoint_id != head_checkpoint_id or not head_checkpoint_id:
+            # The accessor's head moved (or cannot be read) since the raw
+            # tuple; nothing the stamp described is provably still the head.
+            return False
+
+        pending_nodes = [name for name in (getattr(snapshot, "next", ()) or ())]
+        for task in getattr(snapshot, "tasks", ()) or ():
+            task_name = getattr(task, "name", None)
+            if task_name:
+                pending_nodes.append(task_name)
+        if pending_nodes:
+            return False
+
+        values = getattr(snapshot, "values", None)
+        goal = values.get("goal") if isinstance(values, dict) else None
+        if not isinstance(goal, dict) or goal.get("status") != "active":
+            return False
+
+        messages = await _materialized_checkpoint_messages(accessor, thread_id)
+        return _has_durable_goal_turn_receipt(head_tuple, messages)
+    except Exception:
+        logger.debug("Could not verify goal-continuation recovery state for thread %s", thread_id, exc_info=True)
+        return False
 
 
 def _stand_down_reason(goal: GoalState, evaluation: GoalEvaluation, no_progress_count: int) -> str | None:

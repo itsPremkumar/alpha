@@ -13,6 +13,7 @@ from alpha.runtime.network.states import NetworkState
 from alpha.runtime.runs.manager import (
     NETWORK_WAIT_RECOVERY_REASON,
     ORPHAN_RECOVERY_STOP_REASON,
+    RECOVERY_RESUME_KIND_GOAL_CONTINUATION,
     RunRecord,
 )
 from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
@@ -104,6 +105,9 @@ def test_checkpoint_assessment_allows_model_resume(next_nodes: tuple[str, ...]) 
     assert assessment.disposition is RecoveryDisposition.RESUME
     assert assessment.checkpoint_id == "cp-1"
     assert assessment.pending_nodes == next_nodes
+    # Only the goal-continuation resume carries a resume marker; side-effect-free
+    # model resumes stream into the existing graph nodes with no special route.
+    assert assessment.resume_kind is None
 
 
 @pytest.mark.parametrize(
@@ -150,6 +154,11 @@ def test_checkpoint_assessment_resumes_active_goal_continuation_without_graph_ta
 
     assert assessment.disposition is RecoveryDisposition.RESUME
     assert assessment.pending_nodes == ("goal_continuation",)
+    # The synthetic node name alone is not the routing marker: the worker needs
+    # an explicit, machine-readable resume kind that survives into the launch
+    # metadata, so it can skip the bare entry replay only after live
+    # re-verification of this very contract (see test_goal_worker).
+    assert assessment.resume_kind == RECOVERY_RESUME_KIND_GOAL_CONTINUATION
 
 
 def test_model_failure_recovery_rewinds_only_the_marked_fallback_message() -> None:
@@ -268,7 +277,7 @@ async def test_recovery_service_resumes_safe_checkpoint_with_next_attempt() -> N
     async def read_checkpoint(_record: RunRecord):
         return _checkpoint(next_nodes=("model",))
 
-    async def launch(*, source: RunRecord, checkpoint_id: str, attempt: int, reason: str, owner_user_id: str):
+    async def launch(*, source: RunRecord, checkpoint_id: str, attempt: int, reason: str, owner_user_id: str, resume_kind: str | None = None):
         launches.append(
             {
                 "source": source.run_id,
@@ -276,6 +285,7 @@ async def test_recovery_service_resumes_safe_checkpoint_with_next_attempt() -> N
                 "attempt": attempt,
                 "reason": reason,
                 "owner_user_id": owner_user_id,
+                "resume_kind": resume_kind,
             }
         )
         return SimpleNamespace(run_id="run-2")
@@ -298,6 +308,7 @@ async def test_recovery_service_resumes_safe_checkpoint_with_next_attempt() -> N
             "attempt": 1,
             "reason": ORPHAN_RECOVERY_STOP_REASON,
             "owner_user_id": "user-1",
+            "resume_kind": None,
         }
     ]
     assert manager.transitions == []
@@ -643,6 +654,53 @@ async def test_recovery_launch_uses_current_model_config_instead_of_pinning_fail
     assert body.metadata["auto_recovery"]["source_model_name"] == "old-model"
     assert captured["kwargs"]["idempotency_key"] == "auto-recovery:run-1"
     assert captured["kwargs"]["require_existing_thread"] is True
+    # An ordinary orphan resume launches without a resume kind marker.
+    assert "resume_kind" not in body.metadata["auto_recovery"]
+
+
+@pytest.mark.anyio
+async def test_recovery_launch_goal_continuation_stamps_resume_kind_and_source_pairing(monkeypatch) -> None:
+    record = _record()
+    manager = _FakeRecoveryManager([record])
+    captured: dict = {}
+
+    async def fake_start_run(body, thread_id, request, **kwargs):
+        captured.update(
+            {
+                "body": body,
+                "thread_id": thread_id,
+                "request": request,
+                "kwargs": kwargs,
+            }
+        )
+        return SimpleNamespace(run_id="run-2")
+
+    monkeypatch.setattr("app.gateway.services.start_run", fake_start_run)
+    service = SafeRunRecoveryService(
+        app=SimpleNamespace(),
+        run_manager=manager,
+        config=RunOwnershipConfig(auto_resume=True),
+    )
+
+    await service._launch_recovery(
+        source=record,
+        checkpoint_id="cp-1",
+        attempt=1,
+        reason=ORPHAN_RECOVERY_STOP_REASON,
+        owner_user_id="user-1",
+        resume_kind=RECOVERY_RESUME_KIND_GOAL_CONTINUATION,
+    )
+
+    auto_recovery = captured["body"].metadata["auto_recovery"]
+    assert auto_recovery["resume_kind"] == RECOVERY_RESUME_KIND_GOAL_CONTINUATION
+    # The worker's live re-verification pairs the marker with its own lineage
+    # pointer; the launch must stamp both sides of that pairing.
+    assert auto_recovery["source_run_id"] == "run-1"
+    assert captured["body"].metadata["resumed_from_run_id"] == "run-1"
+    # The rest of the recovery metadata stays unchanged.
+    assert auto_recovery["attempt"] == 1
+    assert auto_recovery["reason"] == ORPHAN_RECOVERY_STOP_REASON
+    assert auto_recovery["source_model_name"] == "old-model"
 
 
 @pytest.mark.anyio

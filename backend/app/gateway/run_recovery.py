@@ -28,6 +28,7 @@ from alpha.runtime.runs.manager import (
     MODEL_FAILURE_RECOVERY_REASON,
     NETWORK_WAIT_RECOVERY_REASON,
     RECOVERABLE_RUN_STOP_REASONS,
+    RECOVERY_RESUME_KIND_GOAL_CONTINUATION,
     RunRecord,
     RunStatus,
 )
@@ -72,6 +73,12 @@ class RecoveryAssessment:
     checkpoint_id: str | None
     pending_nodes: tuple[str, ...]
     reason: str
+    #: Synthetic resume identity only for the goal-continuation class: a
+    #: checkpoint with no pending graph work and an active durable goal. The
+    #: stamp lets the worker enter the goal continuation loop instead of
+    #: replaying the graph's entry node from an empty input. ``None`` for every
+    #: ordinary resume, replay, or stop.
+    resume_kind: str | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +200,7 @@ def assess_checkpoint_snapshot(snapshot: Any | None) -> RecoveryAssessment:
                 checkpoint_id,
                 ("goal_continuation",),
                 "checkpoint has an active durable goal and needs the goal continuation loop",
+                resume_kind=RECOVERY_RESUME_KIND_GOAL_CONTINUATION,
             )
         return RecoveryAssessment(
             RecoveryDisposition.STOP,
@@ -682,6 +690,7 @@ class SafeRunRecoveryService:
                 attempt=attempt + 1,
                 reason=record.stop_reason or "recoverable_failure",
                 owner_user_id=owner_user_id,
+                resume_kind=assessment.resume_kind,
             )
         except RecoveryBindingError as exc:
             logger.warning("Safe recovery refused stale APEX binding for run %s: %s", record.run_id, exc)
@@ -753,6 +762,7 @@ class SafeRunRecoveryService:
         attempt: int,
         reason: str,
         owner_user_id: str,
+        resume_kind: str | None = None,
     ) -> Any:
         from app.gateway.services import start_run
 
@@ -785,6 +795,14 @@ class SafeRunRecoveryService:
                 raise RecoveryBindingError("session id, owner, thread, state, generation, or source run changed")
         raw_criteria = source_metadata.get("acceptance_criteria")
         criteria = raw_criteria if isinstance(raw_criteria, list) else None
+        auto_recovery_metadata: dict[str, Any] = {
+            "source_run_id": source.run_id,
+            "attempt": attempt,
+            "reason": reason,
+            "source_model_name": source.model_name,
+        }
+        if resume_kind is not None:
+            auto_recovery_metadata["resume_kind"] = resume_kind
         recovery_context: dict[str, Any] = {"user_id": owner_user_id}
         if source_metadata.get("autonomous") is True:
             recovery_context["non_interactive"] = True
@@ -792,12 +810,7 @@ class SafeRunRecoveryService:
             assistant_id=source.assistant_id,
             input=None,
             metadata={
-                "auto_recovery": {
-                    "source_run_id": source.run_id,
-                    "attempt": attempt,
-                    "reason": reason,
-                    "source_model_name": source.model_name,
-                },
+                "auto_recovery": auto_recovery_metadata,
                 "resumed_from_run_id": source.run_id,
                 "recovery_attempt": attempt,
                 "recovery_reason": reason,

@@ -11,7 +11,7 @@ from alpha.extensions.registry import ExtensionRegistry
 from alpha.runtime.checkpoint_state import CheckpointStateAccessor, build_state_mutation_graph
 from alpha.runtime.goal import GoalEvaluation, attach_goal_evaluation, build_goal_state, read_thread_goal, visible_conversation_signature, write_thread_goal
 from alpha.runtime.runs import worker
-from alpha.runtime.runs.manager import RunRecord, RunStartOutcome
+from alpha.runtime.runs.manager import RECOVERY_RESUME_KIND_GOAL_CONTINUATION, RunRecord, RunStartOutcome
 from alpha.runtime.runs.schemas import DisconnectMode, RunStatus
 
 
@@ -113,12 +113,20 @@ async def _seed_goal_thread(
             AIMessage(content="I made a start, but I am not done."),
         ]
     }
-    checkpoint["channel_versions"] = {"messages": 1}
+    # Use the checkpointer's own version scheme: InMemorySaver versions are
+    # monotonic strings, and seeding a bare ``1`` (int) beside the goal write's
+    # string version made LangGraph's ``max(channel_versions.values())`` blow up
+    # with a mixed-type TypeError the first time a test streamed the graph.
+    # InMemorySaver.put() keys the value blobs by the ``new_versions`` argument
+    # and reads them back by ``checkpoint["channel_versions"]``, so both must
+    # name the same string version or ``messages`` silently reads back as None.
+    messages_version = checkpointer.get_next_version(None, None)
+    checkpoint["channel_versions"] = {"messages": messages_version}
     checkpointer.put(
         {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}},
         checkpoint,
         {"step": 1},
-        {"messages": 1},
+        {"messages": messages_version},
     )
     await write_thread_goal(checkpointer, thread_id, build_goal_state(goal_text, max_continuations=2))
 
@@ -994,3 +1002,294 @@ async def test_run_agent_strips_branch_checkpoint_for_goal_continuation(monkeypa
     assert "checkpoint_id" not in second_config
     assert "checkpoint_map" not in second_config
     assert second_config["thread_id"] == "thread-branch-continuation"
+
+
+# ---------------------------------------------------------------------------- #
+# Recovered goal-continuation resume: the goal loop owns the resumed turn.      #
+#                                                                               #
+# Safe recovery classifies a checkpoint with no pending graph nodes but an      #
+# active durable goal as a synthetic ``goal_continuation`` resume. An           #
+# empty-input resume at such a terminal head checkpoint would otherwise         #
+# re-run the graph's entry node — an unsolicited duplicate turn that bypasses   #
+# the evidence-based goal evaluator. The worker must verify the recovery        #
+# contract against the live checkpoint state and send the run straight into     #
+# the goal continuation loop instead of the bare entry replay.                  #
+# ---------------------------------------------------------------------------- #
+
+
+class _ResumeRunManager:
+    """Minimal RunManager double shared by the resumed-goal run_agent tests."""
+
+    record: RunRecord
+
+    async def try_start(self, _run_id):
+        self.record.status = RunStatus.running
+        return RunStartOutcome.started
+
+    async def set_status(self, _run_id, status, **_kwargs):
+        self.record.status = status
+
+    async def set_status_if_not_cancelled(self, _run_id, status, **kwargs):
+        await self.set_status(_run_id, status, **kwargs)
+        return None
+
+    async def update_model_name(self, *_args, **_kwargs):
+        return None
+
+    async def update_run_completion(self, *_args, **_kwargs):
+        return None
+
+    async def wait_for_prior_finalizing(self, *_args, **_kwargs):
+        return None
+
+    async def set_finalizing(self, _run_id, finalizing):
+        self.record.finalizing = finalizing
+
+    async def cleanup(self, *_args, **_kwargs):
+        return None
+
+
+class _ResumeBridge:
+    async def publish(self, *_args, **_kwargs):
+        return None
+
+    async def publish_end(self, *_args, **_kwargs):
+        return None
+
+    async def cleanup(self, *_args, **_kwargs):
+        return None
+
+
+def _recovered_goal_continue_record(thread_id: str, *, stale: bool = False) -> RunRecord:
+    metadata = {
+        "auto_recovery": {
+            "source_run_id": "source-run",
+            "attempt": 1,
+            "resume_kind": RECOVERY_RESUME_KIND_GOAL_CONTINUATION,
+        },
+        "resumed_from_run_id": "source-run",
+    }
+    if stale:
+        # A real recovery never resumes a checkpoint other than the head.
+        metadata["checkpoint_id"] = "older-checkpoint"
+    return RunRecord(
+        run_id="run-resumed-goal",
+        thread_id=thread_id,
+        assistant_id="lead_agent",
+        status=RunStatus.pending,
+        on_disconnect=DisconnectMode.cancel,
+        model_name="test-model",
+        metadata=metadata,
+    )
+
+
+async def _head_checkpoint_id(checkpointer: InMemorySaver, thread_id: str):
+    checkpoint_tuple = await checkpointer.aget_tuple({"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}})
+    from alpha.runtime.runs import worker as worker_module
+
+    return worker_module._checkpoint_id(checkpoint_tuple)
+
+
+@pytest.mark.asyncio
+async def test_run_agent_resumed_goal_continuation_skips_bare_entry_replay(monkeypatch):
+    graph = build_state_mutation_graph("goal_evaluator", "full")
+    checkpointer = InMemorySaver()
+    thread_id = "resume-goal-skip-thread"
+    await _seed_goal_thread(checkpointer, thread_id=thread_id, goal_text="Finish all tests")
+    head_id_before = await _head_checkpoint_id(checkpointer, thread_id)
+
+    prepare_calls = []
+
+    async def fake_prepare(**kwargs):
+        prepare_calls.append(kwargs)
+        return None
+
+    monkeypatch.setattr(worker, "_prepare_goal_continuation_input", fake_prepare)
+
+    record = _recovered_goal_continue_record(thread_id)
+    manager = _ResumeRunManager()
+    manager.record = record
+    record.abort_event = asyncio.Event()
+
+    await worker.run_agent(
+        _ResumeBridge(),
+        manager,
+        record,
+        ctx=worker.RunContext(checkpointer=checkpointer),
+        agent_factory=lambda config: graph,
+        graph_input={},
+        config={"configurable": {"thread_id": thread_id}},
+    )
+
+    assert prepare_calls, "the goal continuation loop must own the resumed turn"
+    assert prepare_calls[0]["thread_id"] == thread_id
+    head_id_after = await _head_checkpoint_id(checkpointer, thread_id)
+    assert head_id_after == head_id_before, "the bare entry replay must not run: the head checkpoint stays untouched"
+    assert record.status == RunStatus.success
+
+
+@pytest.mark.asyncio
+async def test_run_agent_resumed_goal_continuation_skips_replay_without_checkpoint_selector(monkeypatch):
+    """Delta mode linearizes the resumed head before the guard runs; the guard
+    must still verify the active goal and durable receipt without any selector."""
+    graph = build_state_mutation_graph("goal_evaluator", "delta")
+    checkpointer = InMemorySaver()
+    thread_id = "delta-goal-skip-thread"
+    head_config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
+    accessor = CheckpointStateAccessor.bind(graph, checkpointer, mode="delta")
+    await accessor.aupdate(
+        head_config,
+        {
+            "messages": [
+                HumanMessage(content="Please finish this task."),
+                AIMessage(content="I made a start, but I am not done."),
+            ]
+        },
+        as_node="goal_evaluator",
+    )
+    await write_thread_goal(checkpointer, thread_id, build_goal_state("Finish all tests", max_continuations=2))
+    head_id_before = await _head_checkpoint_id(checkpointer, thread_id)
+
+    prepare_calls = []
+
+    async def fake_prepare(**kwargs):
+        prepare_calls.append(kwargs)
+        return None
+
+    monkeypatch.setattr(worker, "_prepare_goal_continuation_input", fake_prepare)
+
+    record = _recovered_goal_continue_record(thread_id)
+    manager = _ResumeRunManager()
+    manager.record = record
+    record.abort_event = asyncio.Event()
+
+    await worker.run_agent(
+        _ResumeBridge(),
+        manager,
+        record,
+        ctx=worker.RunContext(checkpointer=checkpointer, checkpoint_channel_mode="delta"),
+        agent_factory=lambda config: graph,
+        graph_input={},
+        config={"configurable": {"thread_id": thread_id}},
+    )
+
+    assert prepare_calls, "the goal continuation loop must own the resumed turn in delta mode as well"
+    head_id_after = await _head_checkpoint_id(checkpointer, thread_id)
+    assert head_id_after == head_id_before
+
+
+@pytest.mark.asyncio
+async def test_run_agent_without_goal_recovery_marker_replays_entry_stream(monkeypatch):
+    graph = build_state_mutation_graph("goal_evaluator", "full")
+    checkpointer = InMemorySaver()
+    thread_id = "resume-no-marker-thread"
+    await _seed_goal_thread(checkpointer, thread_id=thread_id, goal_text="Finish all tests")
+    head_id_before = await _head_checkpoint_id(checkpointer, thread_id)
+
+    async def fake_prepare(**_kwargs):
+        return None
+
+    monkeypatch.setattr(worker, "_prepare_goal_continuation_input", fake_prepare)
+
+    record = RunRecord(
+        run_id="run-no-marker",
+        thread_id=thread_id,
+        assistant_id="lead_agent",
+        status=RunStatus.pending,
+        on_disconnect=DisconnectMode.cancel,
+        model_name="test-model",
+        # Only the lineage pointer: without the recovery marker the run is an
+        # ordinary conversation replay and must stream normally.
+        metadata={"resumed_from_run_id": "source-run"},
+    )
+    manager = _ResumeRunManager()
+    manager.record = record
+    record.abort_event = asyncio.Event()
+
+    await worker.run_agent(
+        _ResumeBridge(),
+        manager,
+        record,
+        ctx=worker.RunContext(checkpointer=checkpointer),
+        agent_factory=lambda config: graph,
+        graph_input={},
+        config={"configurable": {"thread_id": thread_id}},
+    )
+
+    head_id_after = await _head_checkpoint_id(checkpointer, thread_id)
+    assert head_id_after != head_id_before, "without the marker the empty-input replay must behave exactly as before"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_goal_recovery_marker_without_durable_receipt_replays_entry_stream(monkeypatch):
+    graph = build_state_mutation_graph("goal_evaluator", "full")
+    checkpointer = InMemorySaver()
+    thread_id = "resume-no-receipt-thread"
+    # Human-only transcript: no durable end-of-turn receipt to continue from.
+    await _seed_goal_thread(
+        checkpointer,
+        thread_id=thread_id,
+        goal_text="Finish all tests",
+        messages=[HumanMessage(content="Please finish this task.")],
+    )
+    head_id_before = await _head_checkpoint_id(checkpointer, thread_id)
+
+    async def fake_prepare(**_kwargs):
+        return None
+
+    monkeypatch.setattr(worker, "_prepare_goal_continuation_input", fake_prepare)
+
+    record = _recovered_goal_continue_record(thread_id)
+    manager = _ResumeRunManager()
+    manager.record = record
+    record.abort_event = asyncio.Event()
+
+    await worker.run_agent(
+        _ResumeBridge(),
+        manager,
+        record,
+        ctx=worker.RunContext(checkpointer=checkpointer),
+        agent_factory=lambda config: graph,
+        graph_input={},
+        config={"configurable": {"thread_id": thread_id}},
+    )
+
+    head_id_after = await _head_checkpoint_id(checkpointer, thread_id)
+    assert head_id_after != head_id_before, "without a durable goal turn receipt the replay path is required"
+    assert record.status == RunStatus.success
+
+
+@pytest.mark.asyncio
+async def test_run_agent_goal_recovery_marker_with_non_head_checkpoint_replays_entry_stream(monkeypatch):
+    graph = build_state_mutation_graph("goal_evaluator", "full")
+    checkpointer = InMemorySaver()
+    thread_id = "resume-stale-selector-thread"
+    await _seed_goal_thread(checkpointer, thread_id=thread_id, goal_text="Finish all tests")
+    selected_checkpoint_id = await _head_checkpoint_id(checkpointer, thread_id)
+    # Advance the head: the recovery resume would no longer select it.
+    await write_thread_goal(checkpointer, thread_id, await read_thread_goal(checkpointer, thread_id), as_node="test")
+    head_id_before = await _head_checkpoint_id(checkpointer, thread_id)
+    assert selected_checkpoint_id is not None and selected_checkpoint_id != head_id_before
+
+    async def fake_prepare(**_kwargs):
+        return None
+
+    monkeypatch.setattr(worker, "_prepare_goal_continuation_input", fake_prepare)
+
+    record = _recovered_goal_continue_record(thread_id)
+    manager = _ResumeRunManager()
+    manager.record = record
+    record.abort_event = asyncio.Event()
+
+    await worker.run_agent(
+        _ResumeBridge(),
+        manager,
+        record,
+        ctx=worker.RunContext(checkpointer=checkpointer),
+        agent_factory=lambda config: graph,
+        graph_input={},
+        config={"configurable": {"thread_id": thread_id, "checkpoint_id": selected_checkpoint_id}},
+    )
+
+    head_id_after = await _head_checkpoint_id(checkpointer, thread_id)
+    assert head_id_after != head_id_before, "a non-head selected checkpoint must not be treated as the goal continuation base"

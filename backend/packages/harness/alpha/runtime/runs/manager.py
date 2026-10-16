@@ -44,6 +44,13 @@ MODEL_FAILURE_RECOVERY_REASON = "model_failure"
 #: state is recoverable: without it a network-caused failure would be reported as
 #: a permanent one, which is exactly what the durable-runtime contract forbids.
 NETWORK_WAIT_RECOVERY_REASON = "network_waiting"
+#: A recovery continuation whose checkpoint has no pending graph work but an
+#: active durable goal. The worker re-verifies the marker against live
+#: checkpoint state (head-selected checkpoint, active goal, durable
+#: end-of-turn receipt) and enters the evidence-based goal continuation loop
+#: instead of replaying the graph's entry node, which an empty-input resume at
+#: a terminal head checkpoint would otherwise run as an unsolicited turn.
+RECOVERY_RESUME_KIND_GOAL_CONTINUATION = "goal_continuation"
 RECOVERABLE_RUN_STOP_REASONS = frozenset(
     {
         ORPHAN_RECOVERY_STOP_REASON,

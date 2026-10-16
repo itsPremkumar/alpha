@@ -506,6 +506,11 @@ ALLOWED_DANGLING_REFERENCES: dict[tuple[str, str], str] = {
     ("MODEL_RESILIENCE_PROMPT.md", "test_single_model_config_file.py"): (
         "Stale name: the prompt predates the rename to backend/tests/test_single_file_model_config.py, which is the file the sentence means (the single-file model-config guard)."
     ),
+    ("docs/PRODUCTION_READINESS_TRANSFER_GUIDE.md", "test_zz_debug_tmp.py"): (
+        "Historical: the transfer guide names the untracked scratch files as they existed at "
+        "that handoff (commit ad5d0b8); scratch files are never committed, so the citation "
+        "cannot resolve, and the sentence's own instruction is to inspect git status and not stage/remove them."
+    ),
     ("docs/alpha-arena-advanced-implementation-plan.md", "test_bracket.py"): (
         "Prospective: a plan table row naming a test the implementation should add, plus a design reference to the external Jakeschincariol/arena-skill repository that contains such a file."
     ),

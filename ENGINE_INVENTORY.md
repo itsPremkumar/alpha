@@ -7,7 +7,7 @@
 
 - **Packages:** 127
 - **Python files:** 2086
-- **Total lines:** 560486
+- **Total lines:** 560897
 - **Packages with preview/simulated markers:** 30
 
 Tier `preview/partial` means the package's source mentions a preview-only,
@@ -16,10 +16,10 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | Package | Files | Lines | Tier |
 |---|---:|---:|---|
 | `alpha/memory` | 153 | 45978 | preview/partial |
-| `alpha/agents` | 140 | 44570 | preview/partial |
-| `alpha/runtime` | 119 | 34270 | preview/partial |
+| `alpha/agents` | 140 | 44632 | preview/partial |
+| `alpha/runtime` | 119 | 34434 | preview/partial |
 | `alpha/tools` | 168 | 31285 | preview/partial |
-| `alpha/community` | 89 | 27861 | preview/partial |
+| `alpha/community` | 89 | 27868 | preview/partial |
 | `alpha/workflow` | 53 | 18527 | preview/partial |
 | `alpha/persistence` | 105 | 18526 | preview/partial |
 | `alpha/bots` | 35 | 14866 | preview/partial |
@@ -27,18 +27,18 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/rsi` | 40 | 12821 | preview/partial |
 | `alpha/models` | 36 | 11772 | preview/partial |
 | `alpha/capability_mesh` | 26 | 11608 | preview/partial |
-| `alpha/observability` | 23 | 11364 | core |
-| `alpha/groups` | 22 | 11351 | core |
+| `alpha/groups` | 22 | 11371 | core |
+| `alpha/observability` | 23 | 11366 | core |
 | `alpha/skills` | 57 | 11333 | core |
 | `alpha/subagents` | 36 | 10997 | core |
-| `alpha/sandbox` | 33 | 10764 | core |
+| `alpha/sandbox` | 33 | 10807 | core |
 | `alpha/intelligence` | 25 | 10397 | preview/partial |
 | `alpha/swarm` | 25 | 9070 | core |
 | `alpha/safety` | 26 | 8694 | core |
 | `alpha/evolution` | 23 | 8433 | preview/partial |
 | `alpha/avo` | 26 | 7298 | core |
 | `alpha/mods` | 24 | 7126 | core |
-| `alpha/apex` | 13 | 6985 | core |
+| `alpha/apex` | 13 | 7089 | core |
 | `alpha/mission` | 19 | 6728 | core |
 | `alpha/graph` | 11 | 6461 | core |
 | `alpha/completion` | 20 | 6159 | core |
@@ -46,18 +46,18 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/arena` | 19 | 5550 | preview/partial |
 | `alpha/peer_network` | 12 | 5415 | core |
 | `alpha/mcp` | 19 | 4903 | preview/partial |
-| `alpha/reasoning` | 16 | 4757 | core |
+| `alpha/reasoning` | 16 | 4760 | core |
 | `alpha/company_os` | 9 | 4474 | core |
 | `alpha/extensions` | 13 | 4125 | preview/partial |
 | `alpha/browser` | 13 | 4080 | preview/partial |
 | `alpha/planning` | 15 | 4005 | core |
 | `alpha/security` | 28 | 3923 | core |
 | `alpha/orchestrator` | 19 | 3829 | core |
-| `alpha/grounding` | 10 | 3757 | core |
+| `alpha/grounding` | 10 | 3760 | core |
 | `alpha/company` | 17 | 3710 | core |
 | `alpha/coding` | 10 | 3682 | core |
 | `alpha/integrations` | 4 | 3466 | core |
-| `alpha/commands` | 7 | 3298 | preview/partial |
+| `alpha/commands` | 7 | 3297 | preview/partial |
 | `alpha/multimodal` | 12 | 2703 | core |
 | `alpha/gro` | 10 | 2638 | core |
 | `alpha/learning` | 18 | 2545 | core |
@@ -89,7 +89,7 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/tasks` | 3 | 815 | core |
 | `alpha/context` | 11 | 810 | core |
 | `alpha/testing` | 2 | 720 | core |
-| `alpha/notifications` | 2 | 707 | core |
+| `alpha/notifications` | 2 | 711 | core |
 | `alpha/selfrepair` | 5 | 676 | preview/partial |
 | `alpha/perpetual` | 6 | 635 | preview/partial |
 | `alpha/events` | 6 | 626 | core |
