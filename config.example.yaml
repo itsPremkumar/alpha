@@ -1473,16 +1473,6 @@ free_gateways:
   - poolside/laguna-s-2.1:free
   - cohere/north-mini-code:free
   - liquid/lfm-2.5-2.6b:free
-- id: opencode-zen
-  base_url: https://opencode.ai/zen/v1
-  chat_path: /chat/completions
-  models_path: /models
-  auth_header:
-  - - User-Agent
-    - Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36
-  openai_compat: true
-  documented_models:
-  - space-bunny-free
 - id: vireonix
   base_url: https://vireonix.ai
   chat_path: /v1/chat/completions
@@ -1531,15 +1521,6 @@ free_gateways:
   - gemma4:31b
   - minimax-m2.7
   - gpt-oss
-  openai_compat: true
-- id: persorai
-  base_url: https://persorai.com/v1
-  chat_path: /chat/completions
-  models_path: /models
-  auth_header:
-  - - Authorization
-    - Bearer alpha-public-anonymous
-  documented_models: []
   openai_compat: true
 - id: cehpoint
   base_url: https://ai-api.cehpoint.co.in/v1

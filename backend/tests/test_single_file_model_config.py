@@ -72,6 +72,16 @@ class TestConfigExampleCarriesTheWholeCatalog:
         ids = [g["id"] for g in (_load_config_example().get("free_gateways") or [])]
         assert len(ids) == len(set(ids)), f"duplicate free gateway ids in config.example.yaml: {ids}"
 
+    def test_default_free_gateways_exclude_live_ineligible_services(self) -> None:
+        """Do not route fresh installs to providers that reject Alpha or 404.
+
+        Live probes on 2026-10-17 returned an explicit OpenCode-only free-tier
+        restriction from OpenCode Zen and HTTP 404 from PersorAI.
+        """
+        ids = {g["id"] for g in (_load_config_example().get("free_gateways") or [])}
+        assert "opencode-zen" not in ids
+        assert "persorai" not in ids
+
 
 class TestOneFileIsSufficient:
     """With no second model file anywhere, everything resolves from config.yaml."""
