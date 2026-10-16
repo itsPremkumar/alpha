@@ -102,11 +102,16 @@ curl -X POST localhost:8001/api/apex/sessions \
        "acceptance_criteria":["backend suite passes"]}'
 ```
 
-Profiles are `off` / `assist` / `autonomous` / `apex_max`. Every enabled profile
-has unlimited per-session tool-call, token, and elapsed-runtime budgets, so a
-usage quota does not stop goal work. Agent concurrency, delegation depth,
-acceptance-failure replans, and retries remain operationally bounded. Narrowing can add a finite
-mission-specific quota. Profiles never change the emergency stop, protected
+Profiles are `off` / `assist` / `autonomous` / `apex_max`. The APEX UI's
+create-and-dispatch form narrows each new UI-created session to editable finite
+defaults of 100,000 tokens, 200 tool calls, and 60 minutes. The API may still
+inherit the profile's unlimited usage limits when `budget` is omitted. Token
+usage is measured after model calls; a single in-flight call can cross the
+token ceiling before subsequent tool work is refused. The Gateway adapter also
+interrupts runs at its polling boundary, so runtime cancellation can lag the
+configured deadline by up to one loop interval. Agent concurrency, delegation
+depth, acceptance-failure replans, and retries remain operationally bounded.
+Profiles never change the emergency stop, protected
 actions, or the authority ceiling, which belongs to
 `alpha.bots.authority_ceiling`.
 
@@ -114,8 +119,10 @@ The Gateway adapter is available as `POST /api/apex/sessions/{id}/dispatch`
 and through the configured `apex` supervisor loop. It uses
 `services.launch_apex_session_run()` and `start_run()`, stores an idempotent
 dispatch generation and run id on the session, and projects RunManager status
-and measured token totals. All enabled profiles set token, tool-call, and
-runtime spending ceilings to `null` (unlimited). The ordinary `task` tool enforces APEX parallel-task and
+and measured token totals. Profile-level token, tool-call, and runtime spending
+ceilings remain `null` (unlimited), but the APEX UI submits finite per-session
+limits by default. Other API clients should pass their own finite `budget` when
+they need the same bound. The ordinary `task` tool enforces APEX parallel-task and
 active-agent ceilings. Acceptance-failure replan counts are durable and bounded.
 Both background passes scan the durable session set in stable pages of 200;
 new sessions cannot shift the cursor and starve older work, and an explicit
@@ -129,7 +136,9 @@ effect. The Gateway task path relies on the lifecycle manager's depth limit inst
 the contract depth field; engine admission limits still apply independently;
 the host adapter interrupts explicitly narrowed over-budget runs at its polling
 boundary, while the tool gate refuses additional actions only when a finite
-mission quota was configured. A terminal run is never treated as verified: success
+mission quota was configured. Token totals are observed after a provider response;
+the current in-flight model call cannot be preempted by the session token limit.
+A terminal run is never treated as verified: success
 waits in `awaiting_verification`, while error/interruption is disclosed as
 `failed` for operator-directed recovery. The owner can submit a complete
 measured report at `POST /api/apex/sessions/{id}/acceptance`; a failed criterion

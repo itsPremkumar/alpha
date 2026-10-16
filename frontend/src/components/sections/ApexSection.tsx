@@ -1444,6 +1444,9 @@ export function ApexSection() {
   const [reloadKey, setReloadKey] = useState(0);
   const [objective, setObjective] = useState("");
   const [criteriaText, setCriteriaText] = useState("");
+  const [missionTokenLimit, setMissionTokenLimit] = useState("100000");
+  const [missionToolLimit, setMissionToolLimit] = useState("200");
+  const [missionRuntimeLimit, setMissionRuntimeLimit] = useState("60");
   const [dispatchNotice, setDispatchNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1531,6 +1534,11 @@ export function ApexSection() {
       setError("Add at least one acceptance criterion so APEX can verify completion.");
       return;
     }
+    const budgetValues = [missionTokenLimit, missionToolLimit, missionRuntimeLimit].map(Number);
+    if (budgetValues.some((value) => !Number.isSafeInteger(value) || value < 1)) {
+      setError("Set positive whole-number limits for tokens, tool calls, and runtime.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setDispatchNotice(null);
@@ -1567,6 +1575,11 @@ export function ApexSection() {
         objective: objective.trim(),
         profile: mode.profile as ApexProfile,
         thread_id: mode.scope_key,
+        budget: {
+          max_total_tokens: budgetValues[0],
+          max_tool_calls: budgetValues[1],
+          max_runtime_minutes: budgetValues[2],
+        },
         ...(acceptance_criteria.length ? { acceptance_criteria } : {}),
       });
       const result = await dispatchApexSession(created.session_id);
@@ -1689,6 +1702,26 @@ export function ApexSection() {
               placeholder="Evidence that would show the objective is satisfied"
             />
           </label>
+          <fieldset className="space-y-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+            <legend className="px-1 text-sm font-medium">Session ceilings</legend>
+            <p className="text-xs text-neutral-500">
+              These finite limits narrow the selected profile for this mission. Token usage is measured after model calls, so one in-flight call may cross the token ceiling before further tool work is refused.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label className="space-y-1 text-xs">
+                <span>Maximum total tokens</span>
+                <input aria-label="Mission token ceiling" className={inputCls} type="number" min={1} step={1000} value={missionTokenLimit} onChange={(event) => setMissionTokenLimit(event.target.value)} />
+              </label>
+              <label className="space-y-1 text-xs">
+                <span>Maximum tool calls</span>
+                <input aria-label="Mission tool-call ceiling" className={inputCls} type="number" min={1} step={10} value={missionToolLimit} onChange={(event) => setMissionToolLimit(event.target.value)} />
+              </label>
+              <label className="space-y-1 text-xs">
+                <span>Maximum runtime (minutes)</span>
+                <input aria-label="Mission runtime ceiling" className={inputCls} type="number" min={1} step={5} value={missionRuntimeLimit} onChange={(event) => setMissionRuntimeLimit(event.target.value)} />
+              </label>
+            </div>
+          </fieldset>
           <Btn
             onClick={createAndDispatch}
             disabled={busy || !objective.trim() || !criteriaText.trim()}

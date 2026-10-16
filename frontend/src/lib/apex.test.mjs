@@ -236,11 +236,17 @@ test("create posts to /apex/sessions with the objective and profile", async () =
     objective: "fix the failing workflow",
     profile: "autonomous",
     acceptance_criteria: ["suite passes"],
+    budget: { max_total_tokens: 100000, max_tool_calls: 200, max_runtime_minutes: 60 },
   });
   assert.equal(created.session_id, "apx-77");
   assert.equal(lastCall().method, "POST");
   assert.equal(lastCall().body.objective, "fix the failing workflow");
   assert.deepEqual(lastCall().body.acceptance_criteria, ["suite passes"]);
+  assert.deepEqual(lastCall().body.budget, {
+    max_total_tokens: 100000,
+    max_tool_calls: 200,
+    max_runtime_minutes: 60,
+  });
 });
 
 test("dispatch starts the named session and preserves measured counters", async () => {
@@ -348,6 +354,13 @@ test("the APEX panel creates against the confirmed mode and dispatches through t
   assert.match(source, /await dispatchApexSession\(created\.session_id\)/);
   assert.match(source, /acceptance_criteria\.length === 0/);
   assert.match(source, /Acceptance criteria \(one per line, required\)/);
+  assert.match(source, /Session ceilings/);
+  assert.match(source, /Mission token ceiling/);
+  assert.match(source, /Mission tool-call ceiling/);
+  assert.match(source, /Mission runtime ceiling/);
+  assert.match(source, /max_total_tokens:\s*budgetValues\[0\]/);
+  assert.match(source, /max_tool_calls:\s*budgetValues\[1\]/);
+  assert.match(source, /max_runtime_minutes:\s*budgetValues\[2\]/);
   assert.match(source, /!criteriaText\.trim\(\)/);
   assert.match(source, /requestApexReplan\(/);
   assert.match(source, /acknowledgePossibleSideEffects/);
@@ -1811,13 +1824,13 @@ test("the composer menu is derived from the profile list, not listed again", () 
   }
 });
 
-test("every enabled composer profile discloses its unlimited usage budget", () => {
+test("profile hints describe the profile's inherited usage policy", () => {
   for (const profile of apex.ENABLE_PROFILES) {
     const rung = apex.APEX_RUNGS.find((entry) => entry.value === profile);
     assert.match(
       rung.hint,
-      /unlimited usage budget/i,
-      `${profile} must not imply a spend cutoff`,
+      /unlimited profile defaults/i,
+      `${profile} must describe its inherited usage policy`,
     );
   }
 });

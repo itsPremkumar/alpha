@@ -237,8 +237,12 @@ timeout, spawn error, empty command, missing exit code or exit 126/127 stay
 `UNVERIFIED` because the shell never ran) or hashes an artifact — but a caller
 must choose the command or artifact collector for its criterion, and there is no
 HTTP-check collector.
-Every enabled APEX profile has unlimited token, tool-call, and runtime spending ceilings
-while engine capacity, approvals, and the emergency stop remain. The ordinary
+APEX profiles inherit unlimited token, tool-call, and runtime spending ceilings.
+The APEX UI's create-and-dispatch form narrows new sessions to editable defaults
+of 100,000 tokens, 200 tool calls, and 60 minutes. Token use is observed after a
+provider response, so one in-flight model call can exceed the token ceiling.
+These token limits are not currency hard limits. Engine capacity, approvals, and
+the emergency stop remain. The ordinary
 `task` tool enforces persisted active-agent and parallel-task ceilings. An
 administrator can request a bounded new generation after reviewing a terminal
 failure; the route requires an explicit acknowledgement that an external action

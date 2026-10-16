@@ -233,6 +233,9 @@ Use the guide that owns each contract; this root file is only the repository map
 - APEX control-plane policies and refusal rules:
   [`docs/APEX_AUTOPILOT.md`](docs/APEX_AUTOPILOT.md) and
   [`backend/packages/harness/alpha/apex/README.md`](backend/packages/harness/alpha/apex/README.md).
+  The UI objective form narrows new sessions to finite token, tool-call, and
+  runtime ceilings; token totals are measured after a model call, not reserved
+  before it.
 - Cognitive-memory ownership, storage and failure handling:
   [`backend/packages/harness/alpha/memory/cognitive/AGENTS.md`](backend/packages/harness/alpha/memory/cognitive/AGENTS.md)
   and [`docs/MEMORY.md`](docs/MEMORY.md).

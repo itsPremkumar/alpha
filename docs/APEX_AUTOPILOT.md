@@ -80,9 +80,9 @@ Sessions and their event journal live under `runtime_home()/apex/`
 | Profile | Authority | Budget shape | Protected actions |
 |---|---|---|---|
 | `off` | nothing granted | all zeros | every class needs approval |
-| `assist` | everything except host/network-reaching authority | unlimited spend; 1 agent, depth 1, 2 replans, 1 retry per failure class | adds `git_commit`, `shell_execution`, `package_install` as **approval** |
-| `autonomous` | everything | unlimited spend; 6 agents, depth 3, 10 replans, 3 retries per failure class | those three become **allow**; `package_install` stays approval |
-| `apex_max` | everything | unlimited spend; 12 agents, depth 5, 20 replans, 4 retries per failure class | those three become allow |
+| `assist` | everything except host/network-reaching authority | unlimited profile spend; 1 agent, depth 1, 2 replans, 1 retry per failure class | adds `git_commit`, `shell_execution`, `package_install` as **approval** |
+| `autonomous` | everything | unlimited profile spend; 6 agents, depth 3, 10 replans, 3 retries per failure class | those three become **allow**; `package_install` stays approval |
+| `apex_max` | everything | unlimited profile spend; 12 agents, depth 5, 20 replans, 4 retries per failure class | those three become allow |
 
 The APEX UI keeps the read-only **Contract preview** separate from the profile
 that will be enabled. If the selected profiles differ, it displays a warning
@@ -100,10 +100,18 @@ Two things never move with the profile:
   with a 422 naming it.
 
 Ascending a profile raises operational capacity only — never authority beyond
-the profile's own ceiling, never the stop, never a protected action. Every
-enabled profile has unlimited per-session tool-call, token, and elapsed-runtime
-quotas; usage budgets never stop goal work. Agent concurrency, delegation depth,
-retries, and replans remain bounded operational controls.
+the profile's own ceiling, never the stop, never a protected action. Profile
+defaults leave per-session tool-call, token, and elapsed-runtime quotas unlimited.
+The APEX UI's create-and-dispatch form narrows each new UI-created session by
+default to 100,000 tokens, 200 tool calls, and 60 minutes; operators can edit
+those values before dispatch. API clients that omit `budget` still inherit the
+profile's unlimited values. Token usage is measured after provider calls, so a
+single in-flight call can cross the token ceiling before further tool calls are
+refused. The host adapter enforces token and runtime ceilings at its polling
+boundary; the tool gate checks token/runtime ceilings before tool execution and
+reserves tool calls atomically. Runtime cancellation may lag the configured
+deadline by one APEX loop interval. A ceiling ends the current run attempt; it
+does not prove completion or safely replay the run.
 
 ### Narrowing
 
@@ -301,12 +309,12 @@ cost and per-session CPU/RAM measurements; those remain in separate runtime
 surfaces or unmeasured.
 
 When a finite token ceiling is configured, the Gateway supervisor tick and tool
-gate check it using the latest measured usage. A running model request cannot
-be preempted mid-response, and tick scheduling means the final measured total
-can exceed the ceiling by one in-flight call. A zero token ceiling prevents
-dispatch; `null` means no APEX per-session ceiling. These are token limits, not
-currency limits: provider pricing may be unknown, and APEX still does not enforce
-per-session CPU/RAM ceilings. Inspect
+gate check it using the latest measured usage. The APEX UI applies finite defaults
+when creating a session. A running model request cannot be preempted mid-response,
+and tick scheduling means the final measured total can exceed the ceiling by one
+in-flight call. A zero token ceiling prevents dispatch; `null` means no APEX
+per-session ceiling. These are token limits, not currency limits: provider pricing
+may be unknown, and APEX still does not enforce per-session CPU/RAM ceilings. Inspect
 the run usage and host process telemetry for those dimensions.
 
 ---

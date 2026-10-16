@@ -130,8 +130,8 @@ const APEX_RUNG_LABELS: Record<ApexProfile, string> = {
  * - `off` — every authority false, every budget zero.
  * - `assist` — everything except the seven capability-changing keys
  *   (`terminal`, `git`, `mcp`, `a2a`, `subagents`, `swarm`, `browser`).
- * - Every enabled profile has unlimited spend quotas; they differ in authority,
- *   operational concurrency/retry limits, and protected-action policy.
+ * - Profiles inherit unlimited spend quotas. The APEX mission form submits
+ *   finite per-session ceilings by default; API callers choose explicitly.
  *
  * `Record<ApexProfile, string>` is the drift guard: a profile added to
  * `ApexProfile` without a hint here is a type error, not an empty menu row.
@@ -139,11 +139,11 @@ const APEX_RUNG_LABELS: Record<ApexProfile, string> = {
 const APEX_RUNG_HINTS: Record<ApexProfile, string> = {
   off: "APEX is not in force; Alpha executes requests normally.",
   assist:
-    "Unlimited usage budget. Restricted capabilities; smaller agent and retry limits.",
+    "Unlimited profile defaults; UI missions start at 100k tokens, 200 tool calls, 60 minutes. Restricted capabilities.",
   autonomous:
-    "Unlimited usage budget. Every authority with moderate agent and retry limits.",
+    "Unlimited profile defaults; UI missions start at 100k tokens, 200 tool calls, 60 minutes. Every authority with moderate limits.",
   apex_max:
-    "Unlimited usage budget. Highest agent and retry limits; protected actions still need a human.",
+    "Unlimited profile defaults; UI missions start at 100k tokens, 200 tool calls, 60 minutes. Highest limits; protected actions still need a human.",
 };
 
 /**
@@ -523,6 +523,8 @@ export interface CreateApexSession {
   objective: string;
   profile?: ApexProfile;
   acceptance_criteria?: string[];
+  /** Optional per-session narrowing; omitted fields inherit the profile. */
+  budget?: Partial<ApexBudget>;
   mission_id?: string;
   thread_id?: string;
 }

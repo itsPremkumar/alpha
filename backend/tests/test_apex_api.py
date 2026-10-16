@@ -276,6 +276,18 @@ class TestSessionLifecycleOverHttp:
         assert body["session"]["contract_snapshot"]["digest"] == body["session"]["contract_digest"]
         assert body["note"]
 
+    def test_creation_persists_finite_mission_ceilings_in_the_frozen_contract(self, client: TestClient, store: ApexStore) -> None:
+        body = _create(
+            client,
+            budget={"max_total_tokens": 100_000, "max_tool_calls": 200, "max_runtime_minutes": 60},
+        )
+
+        assert body["contract"]["budget"]["max_total_tokens"] == 100_000
+        assert body["contract"]["budget"]["max_tool_calls"] == 200
+        assert body["contract"]["budget"]["max_runtime_minutes"] == 60
+        assert body["session"]["contract_snapshot"]["budget"] == body["contract"]["budget"]
+        assert body["session"]["contract_digest"] == body["contract"]["digest"]
+
     def test_narrowing_a_contract_at_creation_is_allowed(self, client: TestClient, store: ApexStore) -> None:
         body = _create(client, profile="apex_max", authority={"terminal": False})
         assert body["contract"]["authority"]["terminal"] is False
