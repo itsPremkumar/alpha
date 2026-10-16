@@ -37,7 +37,7 @@ For machine-readable context, see [`/llms.txt`](llms.txt) (this directory),
 ## Core architecture and strategy
 
 - **[Architecture](ARCHITECTURE.md)** — the runtime planes, the middleware chain,
-  sandbox tiers, and the 123 harness engine packages under
+  sandbox tiers, and the 127 harness engine packages under
   `backend/packages/harness/alpha/`.
 - **[Deep research](DEEP_RESEARCH.md)** — the five-pass search pipeline, bounded
   knowledge-gap filling, adversarial source juxtaposition, and the explicit citation

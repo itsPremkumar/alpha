@@ -9,6 +9,9 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
 > under `packages/harness/alpha/` is [`ENGINE_INVENTORY.md`](../ENGINE_INVENTORY.md)
 > (run `make engine-inventory`). Point here rather than hand-maintaining a package
 > list that drifts; each row also carries a `core` / `preview/partial` tier.
+> Before committing inventory-adjacent source changes, run
+> `python scripts/generate_engine_inventory.py --check`; the generated-drift CI
+> workflow runs the same read-only check.
 
 ## Python diagnostics contract
 

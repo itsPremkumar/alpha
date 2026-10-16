@@ -40,7 +40,7 @@ contract.
 ## 1. The one-paragraph verdict
 
 Alpha has ~121 engine packages, 2,030 Python files, 537,752 lines, 138 tools,
-70 routers, 46 middlewares and 13 supervisor loops under
+74 routers, 48 middlewares and 13 supervisor loops under
 `backend/packages/harness/alpha/`. Multi-agent orchestration is not the missing
 piece — **it is the over-supplied piece.** Seven schedulers exist; the graph
 plane (`alpha.graph`) can plan and validate a task DAG but its execution adapter

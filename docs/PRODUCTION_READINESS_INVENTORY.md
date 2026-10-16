@@ -61,11 +61,11 @@ requires a deliberate audit before it can be claimed in a production release.
 5. Wire specialist configuration into swarm execution without widening tool
    authority, then pass a UI-backed repository task with measured acceptance
    evidence.
-6. Pick one count authority (`contracts/feature_manifest.json`) and reconcile
-   every restated number against it: regenerate `ENGINE_INVENTORY.md`, fix the
-   126/123 engine figures and the "enforced by a CI drift gate" sentence in the
-   prose and llms surfaces, and annotate `llms.txt` with which slash commands
-   actually have a handler.
+6. Keep generated capability counts honest: `contracts/feature_manifest.json` owns
+   tool/router/middleware/loop/engine-package counts and package ids. The generated
+   `ENGINE_INVENTORY.md` adds per-package size/tier detail and the generated-drift
+   workflow checks both artifacts. Continue auditing prose counts against the
+   manifest and keep `llms.txt` explicit about which slash commands have handlers.
 
 The inventory is intentionally conservative: a marketing claim or an existing
 module is not proof of production readiness. Update status only with a concrete

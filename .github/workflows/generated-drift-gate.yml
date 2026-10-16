@@ -16,6 +16,19 @@ on:
       - 'docs/INDEX.md'
       - 'scripts/check_generated_drift.py'
       - 'backend/tests/test_generated_drift_gate.py'
+      - 'backend/tests/test_engine_inventory_generator.py'
+      - 'backend/packages/harness/alpha/**'
+      - 'scripts/generate_engine_inventory.py'
+      - 'ENGINE_INVENTORY.md'
+      - 'README.md'
+      - 'docs/README.md'
+      - 'docs/FAQ.md'
+      - 'docs/COMPARISON.md'
+      - 'docs/DISCOVERABILITY.md'
+      - 'docs/DEVELOPMENT.md'
+      - 'docs/PRODUCTION_READINESS_INVENTORY.md'
+      - 'docs/ADVANCED_MULTI_AGENT_BUILD_PLAN.md'
+      - 'llms-full.txt'
       - '.github/workflows/generated-drift-gate.yml'
   pull_request:
     paths:
@@ -32,6 +45,19 @@ on:
       - 'docs/INDEX.md'
       - 'scripts/check_generated_drift.py'
       - 'backend/tests/test_generated_drift_gate.py'
+      - 'backend/tests/test_engine_inventory_generator.py'
+      - 'backend/packages/harness/alpha/**'
+      - 'scripts/generate_engine_inventory.py'
+      - 'ENGINE_INVENTORY.md'
+      - 'README.md'
+      - 'docs/README.md'
+      - 'docs/FAQ.md'
+      - 'docs/COMPARISON.md'
+      - 'docs/DISCOVERABILITY.md'
+      - 'docs/DEVELOPMENT.md'
+      - 'docs/PRODUCTION_READINESS_INVENTORY.md'
+      - 'docs/ADVANCED_MULTI_AGENT_BUILD_PLAN.md'
+      - 'llms-full.txt'
       - '.github/workflows/generated-drift-gate.yml'
 
 permissions:
@@ -62,6 +88,9 @@ jobs:
           --repo-root .
           --line-endings exact
           --generator-timeout 480
+
+      - name: Check generated engine inventory
+        run: python scripts/generate_engine_inventory.py --check
 
       # The cross-platform default, which discloses every line-ending-only
       # difference it tolerates and writes the diff for the CI artifact.

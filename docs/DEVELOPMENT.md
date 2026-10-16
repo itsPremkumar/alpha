@@ -471,6 +471,11 @@ manifest, missing generator output, malformed JSON, or a future committed
 `docs/INDEX/` file that the official generator does not reproduce fails the
 build. On CI failure, the workflow uploads the per-file unified diff.
 
+The same workflow checks the engine package inventory against the current
+`backend/packages/harness/alpha/` tree. Run
+`python scripts/generate_engine_inventory.py` to refresh it, or append `--check`
+to verify freshness without modifying files.
+
 ## Documentation Site (`docs-site/`)
 
 The public documentation site (Docusaurus, `docs.alpha.itsPremkumar.com`) is a

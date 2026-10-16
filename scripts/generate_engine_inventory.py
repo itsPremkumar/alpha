@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -95,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate the Alpha engine inventory.")
     parser.add_argument("--alpha-root", default=_DEFAULT_ALPHA_ROOT)
     parser.add_argument("--out", default="ENGINE_INVENTORY.md")
+    parser.add_argument("--check", action="store_true", help="fail if the committed inventory is stale; do not write")
     args = parser.parse_args(argv)
 
     root = Path(args.alpha_root)
@@ -102,8 +104,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"alpha root not found: {root}")
         return 2
     pkgs = scan_packages(root)
-    Path(args.out).write_text(render(pkgs), encoding="utf-8")
-    print(f"wrote {args.out}: {len(pkgs)} packages, {sum(p.files for p in pkgs)} files")
+    output = Path(args.out)
+    generated = render(pkgs)
+    if args.check:
+        try:
+            current = output.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"cannot read generated inventory {output}: {exc}", file=sys.stderr)
+            return 2
+        if current != generated:
+            print(f"{output} is stale; run python scripts/generate_engine_inventory.py", file=sys.stderr)
+            return 1
+        print(f"{output} is current: {len(pkgs)} packages, {sum(p.files for p in pkgs)} files")
+        return 0
+    output.write_text(generated, encoding="utf-8")
+    print(f"wrote {output}: {len(pkgs)} packages, {sum(p.files for p in pkgs)} files")
     return 0
 
 

@@ -6,8 +6,8 @@
 > hand-maintaining a list that drifts.
 
 - **Packages:** 127
-- **Python files:** 2087
-- **Total lines:** 560372
+- **Python files:** 2086
+- **Total lines:** 560486
 - **Packages with preview/simulated markers:** 30
 
 Tier `preview/partial` means the package's source mentions a preview-only,
@@ -16,9 +16,9 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | Package | Files | Lines | Tier |
 |---|---:|---:|---|
 | `alpha/memory` | 153 | 45978 | preview/partial |
-| `alpha/agents` | 140 | 44462 | preview/partial |
+| `alpha/agents` | 140 | 44570 | preview/partial |
 | `alpha/runtime` | 119 | 34270 | preview/partial |
-| `alpha/tools` | 168 | 31266 | preview/partial |
+| `alpha/tools` | 168 | 31285 | preview/partial |
 | `alpha/community` | 89 | 27861 | preview/partial |
 | `alpha/workflow` | 53 | 18527 | preview/partial |
 | `alpha/persistence` | 105 | 18526 | preview/partial |
@@ -30,16 +30,16 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/observability` | 23 | 11364 | core |
 | `alpha/groups` | 22 | 11351 | core |
 | `alpha/skills` | 57 | 11333 | core |
-| `alpha/subagents` | 37 | 11232 | core |
+| `alpha/subagents` | 36 | 10997 | core |
 | `alpha/sandbox` | 33 | 10764 | core |
-| `alpha/intelligence` | 25 | 10394 | preview/partial |
-| `alpha/swarm` | 25 | 9060 | core |
-| `alpha/safety` | 26 | 8678 | core |
+| `alpha/intelligence` | 25 | 10397 | preview/partial |
+| `alpha/swarm` | 25 | 9070 | core |
+| `alpha/safety` | 26 | 8694 | core |
 | `alpha/evolution` | 23 | 8433 | preview/partial |
 | `alpha/avo` | 26 | 7298 | core |
 | `alpha/mods` | 24 | 7126 | core |
-| `alpha/apex` | 13 | 6849 | core |
-| `alpha/mission` | 19 | 6671 | core |
+| `alpha/apex` | 13 | 6985 | core |
+| `alpha/mission` | 19 | 6728 | core |
 | `alpha/graph` | 11 | 6461 | core |
 | `alpha/completion` | 20 | 6159 | core |
 | `alpha/projects` | 32 | 6001 | preview/partial |

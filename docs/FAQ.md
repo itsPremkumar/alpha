@@ -138,11 +138,12 @@ Discord, Buzz, and Signal.
 
 ### How many tools, skills, routers, and middlewares ship?
 
-139 native tools, Gateway 74 routers, 46 middleware layers, and 13 background
-supervisor loops, plus 24 public skills and 127 harness engine packages. These
-numbers are generated into
-[`contracts/feature_manifest.json`](../contracts/feature_manifest.json) and enforced
-by a CI drift gate, so they cannot silently rot.
+139 native tools, Gateway 74 routers, 48 middleware layers, and 13 background
+supervisor loops, plus 24 public skills and 127 harness engine packages. Tools,
+routers, middleware, loop, and engine package counts are generated into
+[`contracts/feature_manifest.json`](../contracts/feature_manifest.json) and checked
+by CI. [`ENGINE_INVENTORY.md`](../ENGINE_INVENTORY.md) adds package size and tier
+detail, which the same workflow checks against the source tree.
 
 ### What is deep research, concretely?
 
