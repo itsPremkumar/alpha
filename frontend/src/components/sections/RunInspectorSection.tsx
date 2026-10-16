@@ -1551,7 +1551,7 @@ export function RunInspectorView(props: {
               error={state.errors.verification ?? null}
               canRecheck={
                 isTerminalSuccess(state.record.status) &&
-                state.verification !== null &&
+                state.verification != null &&
                 state.verification.status !== "not_requested"
               }
               onRecheck={props.onRecheckVerification}
