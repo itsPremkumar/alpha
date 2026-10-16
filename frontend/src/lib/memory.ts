@@ -171,8 +171,15 @@ export interface L1CaptureStatus {
   };
 }
 
+export interface MemoryConfigInfo {
+  enabled: boolean | null;
+  mode: string | null;
+  injection_enabled: boolean | null;
+  manager_class: string | null;
+}
+
 export interface MemoryExtractionHealth {
-  status: "ok" | "degraded" | "disabled" | "unknown" | string;
+  status: string;
   reason?: string | null;
   extraction_enabled?: boolean | null;
   model?: string | null;
@@ -181,13 +188,15 @@ export interface MemoryExtractionHealth {
   last_success_at?: string | null;
   last_failure_at?: string | null;
   last_error_type?: string | null;
-  consecutive_failures?: number;
-  total_successes?: number;
-  total_failures?: number;
+  last_error?: string | null;
+  last_error_scope?: string | null;
+  consecutive_failures?: number | null;
+  total_successes?: number | null;
+  total_failures?: number | null;
 }
 
 export interface MemoryStatus {
-  config?: { enabled?: boolean };
+  config?: MemoryConfigInfo;
   health?: MemoryExtractionHealth | null;
   l1_capture?: L1CaptureStatus;
   prospective?: {
@@ -199,6 +208,11 @@ export interface MemoryStatus {
     expired: number;
     reason?: string;
   };
+}
+
+export interface MemoryStatusEnvelope extends MemoryStatus {
+  config: MemoryConfigInfo;
+  health: MemoryExtractionHealth | null;
 }
 
 export interface ProspectiveMemoryItem {
@@ -226,6 +240,69 @@ export async function transitionProspectiveMemory(itemId: string, action: "compl
   await send(`/memory/prospective/${encodeURIComponent(itemId)}/${action}`, "POST", { reason: `marked ${action} from Memory UI` });
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asBool(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asTrimmedText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function toMemoryConfig(raw: unknown): MemoryConfigInfo {
+  const value = asRecord(raw) ?? {};
+  return {
+    enabled: asBool(value.enabled),
+    mode: asTrimmedText(value.mode),
+    injection_enabled: asBool(value.injection_enabled),
+    manager_class: asTrimmedText(value.manager_class),
+  };
+}
+
+function toMemoryHealth(raw: unknown): MemoryExtractionHealth | null {
+  const value = asRecord(raw);
+  if (!value) return null;
+  return {
+    status: asTrimmedText(value.status) ?? "none reported",
+    reason: asTrimmedText(value.reason),
+    extraction_enabled: asBool(value.extraction_enabled),
+    model: asTrimmedText(value.model),
+    model_source: asTrimmedText(value.model_source),
+    last_attempt_at: asTrimmedText(value.last_attempt_at),
+    last_success_at: asTrimmedText(value.last_success_at),
+    last_failure_at: asTrimmedText(value.last_failure_at),
+    last_error_type: asTrimmedText(value.last_error_type),
+    last_error: asTrimmedText(value.last_error),
+    last_error_scope: asTrimmedText(value.last_error_scope),
+    consecutive_failures: asFiniteNumber(value.consecutive_failures),
+    total_successes: asFiniteNumber(value.total_successes),
+    total_failures: asFiniteNumber(value.total_failures),
+  };
+}
+
+/** Read the Gateway's measured memory configuration and extraction health. */
+export async function fetchMemoryStatus(): Promise<MemoryStatusEnvelope> {
+  const raw = await get<Record<string, unknown>>("/memory/status");
+  const value = asRecord(raw);
+  if (!value) throw new Error("Gateway returned a malformed memory status response.");
+  return {
+    config: toMemoryConfig(value.config),
+    health: toMemoryHealth(value.health),
+    l1_capture: asRecord(value.l1_capture) ? (value.l1_capture as L1CaptureStatus) : undefined,
+    prospective: asRecord(value.prospective) ? (value.prospective as MemoryStatus["prospective"]) : undefined,
+  };
+}
+
+/** Backwards-compatible raw status reader; new UI code should use the typed mapper. */
 export async function memoryStatus(): Promise<MemoryStatus> {
   return await get<MemoryStatus>("/memory/status");
 }

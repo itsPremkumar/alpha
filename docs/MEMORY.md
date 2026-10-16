@@ -604,28 +604,63 @@ POST   /api/memory/episodes/{episode_id}/replay  # Replay episode
 
 ## Frontend Integration
 
-### MemorySection Component
-- **Search tab**: Semantic search across all memory
-- **Graph tab**: Knowledge graph visualization
-- **Episodes tab**: Skill experience replay
-- **Cognitive tab**: Concept browser (per-owner)
-- **Settings tab**: Retention, providers, privacy
+### Memory workspace view (`MemorySection`)
 
-### Memory Hooks
-```typescript
-// lib/memory.ts
-export function useMemorySearch(query: string) {
-  // Reactive search with debouncing
-}
+The workspace **Memory** view (`frontend/src/components/sections/MemorySection.tsx`)
+is the operator surface for memory state. It has six tabs:
+**Overview & Tiers** (tiered status plus the health card below),
+**Recall**, **Beliefs** (semantic),
+**Skills** (procedural), **Working** (scratchpad/episodic) and **Facts**.
+Every data block carries its own loading / empty / error state; one failed read
+never blanks the other tabs.
 
-export function useMemoryStats() {
-  // Periodic stats refresh
-}
+The header reads `GET /api/memory/status` through `lib/memory.ts`:
 
-export function useCognitiveMemory(owner: string) {
-  // Owner-scoped cognitive state
-}
-```
+- **on/off badge** — shows `gateway memory on`, `off`, or `state not reported`
+  for `config.enabled` verbatim (`true` / `false` / absent are different claims).
+- **extraction-health badge** — while the status read is in flight it says
+  `extraction health: checking…`; after a successful read it becomes
+  `extraction ok` (green) when the backend reports
+  `health.status === "ok"`, `extraction degraded` (red) for `"degraded"`,
+  `extraction disabled` (gray) for `"disabled"`, `extraction health not reported`
+  when the payload has no `health` object (the backend hook is absent there), and
+  any other status word — including `"unknown"`, which a fresh Gateway or an
+  extraction backend with no determined model legitimately reports — rendered
+  verbatim in amber as `extraction: unknown`.
+- **status failure** — a separate line renders the Gateway's own reason
+  (`Memory status is unavailable: …`) with `role="status"`; extraction health,
+  counters and the on/off state are treated as unknown until a status read
+  succeeds. The failure never degrades into a "healthy" or "empty" rendering.
+
+### Extraction health card (`MemoryHealthCard`)
+
+When the status read succeeds, the Overview tab renders an extraction-health card
+from `status.health`:
+
+- `consecutive_failures` / `total_failures` (failures) and `total_successes`
+  (successes) — a count the server did not send renders as `not reported`, never `0`.
+- `last_attempt_at` / `last_success_at` / `last_failure_at` timestamps via
+  `relTime` with `not reported` when absent.
+- `model` / `model_source` when reported, `Model: not reported` otherwise, and
+  `Extraction: on / off / unknown` tri-state for `extraction_enabled`.
+- `last_error` — shown only through the text the **server** already
+  truncated and credential-masked in
+  `backend/packages/harness/alpha/agents/memory/backends/deermem/deermem/core/extraction_health.py`.
+  The client adds no redaction and no mirror of health state other than this copy.
+- the basis line at the bottom states that counters cover **this Gateway
+  process since its last restart** (the record is process-local by design) and
+  that the displayed error is server-masked.
+
+### Client rules (`lib/memory.ts`)
+
+`lib/memory.ts` exports plain async clients (`fetchMemoryStatus`,
+`fetchCognitiveOverview`, `recallCognitiveMemory`, …) built on the shared
+`get`/`send` transport. There are no React hooks in this client and no automatic
+polling. `fetchMemoryStatus` maps the
+`MemoryStatusEnvelope { config, health }` contract literally: absent optional
+fields become `null`, a non-object `health` map degrades to `null`, unknown
+status words pass through verbatim, and non-2xx responses reject with the
+Gateway's reason rather than resolving to a placeholder.
 
 ## Configuration
 

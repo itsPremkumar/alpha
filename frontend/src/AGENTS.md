@@ -99,7 +99,8 @@ source for exact route mappings and honest display states.
 | Alpha peer network | peer client and network panel | `lib/peer-network*.test.mjs`, `lib/qr-decode.test.mjs` |
 | Message projections and tags | `lib/messages-view.ts`, tag palette | `lib/messages-view.test.mjs`; tag editing is covered by the composer/UI suite. |
 | Autonomous command receipts | `components/MessageItem.tsx` renders the Gateway's command status/output; `types/chat.ts` owns the response contract | `lib/autonomous-command-display.test.mjs` |
-| Conversation goal strip and details | `components/ConversationGoalPanel.tsx` renders the saved objective and Gateway-reported status; `ChatView` owns goal reads and writes | `lib/conversation-goal.test.mjs`, `lib/threads-ext.test.mjs` |
+| Conversation goal strip and details | `components/ConversationGoalPanel.tsx` renders the saved objective and Gateway-reported status, including the `loading` strip and `budgetPairLabel` projection; `ChatView` owns goal reads and writes | `lib/conversation-goal.test.mjs`, `lib/goal-view.test.mjs`, `lib/threads-ext.test.mjs` |
+| Memory status and extraction health | `lib/memory.ts` → `fetchMemoryStatus`; `components/sections/MemorySection.tsx` renders the on/off badge, the extraction-health badge and `MemoryHealthCard` | `lib/memory-status.test.mjs` |
 
 Where a focused test filename changes, update this index in the same edit; do
 not replace an absent suite name with a broad `pnpm test` claim.

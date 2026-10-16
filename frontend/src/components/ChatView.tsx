@@ -914,6 +914,10 @@ export default function ChatView({
   const [goalDetails, setGoalDetails] = useState<ThreadGoal | null>(null);
   const [goalReadError, setGoalReadError] = useState<string | null>(null);
   const [goalSaveError, setGoalSaveError] = useState<string | null>(null);
+  // True while the thread-switch goal read is in flight: an absent strip line
+  // must not momentarily claim "this conversation has no goal" before the
+  // Gateway has answered.
+  const [goalLoading, setGoalLoading] = useState(false);
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalDetailsOpen, setGoalDetailsOpen] = useState(false);
   const [goalDraft, setGoalDraft] = useState("");
@@ -1652,6 +1656,7 @@ export default function ChatView({
       setGoalDetails(null);
       setGoalReadError(null);
       setGoalSaveError(null);
+      setGoalLoading(false);
       setGoalEditing(false);
       setGoalDetailsOpen(false);
       setUsage(null);
@@ -1670,6 +1675,7 @@ export default function ChatView({
       setGoalSaveError(null);
       setGoalEditing(false);
       setGoalDetailsOpen(false);
+      setGoalLoading(true);
 
       // Goal state is small and independent from the potentially paginated
       // history/archive reads. Start it immediately so a slow history request
@@ -1678,6 +1684,7 @@ export default function ChatView({
         try {
           const threadGoal = await fetchGoal(threadId);
           if (historyLoadGenerationRef.current !== generation) return;
+          setGoalLoading(false);
           setGoalReadError(null);
           setGoalDetails(threadGoal.goal ? threadGoal : null);
           if (threadGoal.goal) {
@@ -1708,6 +1715,7 @@ export default function ChatView({
           }
         } catch (error) {
           if (historyLoadGenerationRef.current === generation) {
+            setGoalLoading(false);
             setGoalDetails(null);
             setGoalReadError(errMsg(error));
             setGoalText(localThreadMetaRef.current[threadId]?.goal || null);
@@ -3925,6 +3933,7 @@ export default function ChatView({
                       details={goalDetails}
                       readError={goalReadError}
                       saveError={goalSaveError}
+                      loading={goalLoading}
                       editing={goalEditing}
                       detailsOpen={goalDetailsOpen}
                       draft={goalDraft}

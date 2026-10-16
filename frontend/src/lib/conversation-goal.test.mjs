@@ -111,6 +111,48 @@ test("thread goal hydration starts before potentially slow history and archive r
   assert.ok(goalStart < historyStart, "a slow history read must not delay goal receipt hydration");
 });
 
+test("a thread switch renders a checking strip, never a premature no-goal claim", () => {
+  // The strip must appear only while the read is in flight AND no error is
+  // recorded: an error plus "Checking…" together would let the panel claim the
+  // Gateway is being asked while it has already answered negatively.
+  assert.match(panelSource, /loading && !readError/);
+  assert.match(panelSource, /role="status"/);
+  assert.match(panelSource, /Checking this conversation&rsquo;s goal on the Gateway&hellip;/);
+
+  // ChatView owns the flag: true on switch, cleared on every exit path.
+  assert.match(source, /loading=\{goalLoading\}/);
+  assert.match(source, /setGoalLoading\(true\)/);
+  const clearingTriggers = source.match(/setGoalLoading\(false\)/g) ?? [];
+  assert.ok(
+    clearingTriggers.length >= 3,
+    `goalLoading must clear on the no-thread, success and error paths (found ${clearingTriggers.length} clears)`,
+  );
+
+  // The run-end refresh keeps prior measured data visible and reports through
+  // goalReadError; it must not pretend the initial read is in flight again.
+  const runEndEffect = source
+    .split("goalRunWasLoadingRef = useRef(false);")[1]
+    ?.split("// Restore this conversation's specialist bot")[0] ?? "";
+  assert.ok(runEndEffect, "the run-end goal refresh effect must be locatable");
+  assert.doesNotMatch(runEndEffect, /setGoalLoading/, "run-end refresh must not flip the panel into Checking…");
+});
+
+test("budget pairs go through the measured-half projection, never a fabricated pair", () => {
+  // The panel must import the shared projection instead of hand-rolling the
+  // "N of M" interpolation: a half-reported pair keeps its measured half.
+  assert.match(panelSource, /import \{ budgetPairLabel \} from "@\/lib\/goal-view";/);
+  assert.match(
+    panelSource,
+    /budgetPairLabel\(details\.continuation_count, details\.max_continuations, "used"\)/,
+  );
+  assert.match(
+    panelSource,
+    /budgetPairLabel\(details\.no_progress_count, details\.max_no_progress_continuations, "recorded"\)/,
+  );
+  assert.doesNotMatch(panelSource, /\$\{details\?\.continuation_count\} of/);
+  assert.doesNotMatch(panelSource, /details\?\.continuation_count\}\s*\/\s*max/);
+});
+
 test("the persistent goal strip opens full details and labels evaluator output honestly", () => {
   assert.match(source, /<ConversationGoalPanel/);
   assert.match(source, /detailsOpen=\{goalDetailsOpen\}/);

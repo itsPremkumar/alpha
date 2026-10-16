@@ -8,7 +8,7 @@ import {
   updateFact,
   reloadMemory,
   clearMemory,
-  memoryStatus,
+  fetchMemoryStatus,
   fetchProspectiveMemory,
   transitionProspectiveMemory,
   fetchCognitiveOverview,
@@ -26,6 +26,7 @@ import {
   triggerBeliefReconciliation,
   MemoryFact,
   MemoryStatus,
+  MemoryStatusEnvelope,
   MemoryExtractionHealth,
   ProspectiveMemoryItem,
   L1CaptureStatus,
@@ -48,6 +49,7 @@ import {
   Badge,
 } from "@/components/ui";
 import { errMsg } from "@/lib/http";
+import { absoluteStamp, relTime } from "@/lib/time";
 import {
   Plus,
   Pencil,
@@ -177,67 +179,13 @@ function ProspectiveMemoryCard({ memory, error }: { memory?: MemoryStatus["prosp
   );
 }
 
-function MemoryExtractionHealthCard({ health, error }: { health?: MemoryExtractionHealth | null; error: string | null }) {
-  const reportedState = health?.status ?? "unknown";
-  const state = error
-    ? "unavailable"
-    : health?.extraction_enabled === false && reportedState !== "degraded"
-      ? "disabled"
-      : reportedState;
-  const tone = state === "ok" ? "green" : state === "degraded" ? "red" : state === "unavailable" ? "amber" : "gray";
-  const description = error
-    ? `Extraction health could not be loaded (${error}).`
-    : state === "degraded"
-      ? "Automatic memory extraction is enabled but recent updates failed. Existing facts remain available; new conversations may not be learned until this recovers."
-        : state === "disabled"
-        ? health?.reason || "Automatic memory extraction is disabled by configuration."
-        : state === "ok"
-          ? "The latest memory extraction completed successfully."
-          : state === "unknown"
-            ? "No extraction result has been reported since startup."
-            : state === "unavailable"
-              ? "The Gateway did not report extraction health."
-              : `Extraction health reported an unrecognized state: ${state}.`;
-  const lastAttempt = health?.last_attempt_at ? Date.parse(health.last_attempt_at) : NaN;
-  const lastFailure = health?.last_failure_at ? Date.parse(health.last_failure_at) : NaN;
-  const formatTime = (value: number, fallback: string) =>
-    Number.isNaN(value) ? fallback : new Date(value).toLocaleString();
-
-  return (
-    <div className="rounded-2xl border border-border/70 bg-card p-4 space-y-3" aria-label="Memory extraction health">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className={`size-4 ${state === "ok" ? "text-emerald-400" : state === "degraded" ? "text-destructive" : "text-muted-foreground"}`} />
-          <span className="text-xs font-semibold">Automatic Memory Extraction</span>
-        </div>
-        <Badge tone={tone}>{state}</Badge>
-      </div>
-      <p className="text-xs text-muted-foreground">{description}</p>
-      {health && (
-        <div className="flex flex-wrap gap-2" aria-label="Memory extraction diagnostics">
-          {health.model && <Badge tone="gray">Model: {health.model}</Badge>}
-          {health.model_source && <Badge tone="gray">Source: {health.model_source}</Badge>}
-          {health.last_error_type && <Badge tone={state === "degraded" ? "red" : "gray"}>Last failure: {health.last_error_type}</Badge>}
-          {typeof health.consecutive_failures === "number" && health.consecutive_failures > 0 && (
-            <Badge tone="red">{health.consecutive_failures} consecutive failures</Badge>
-          )}
-          {typeof health.total_successes === "number" && <Badge tone="green">{health.total_successes} successes</Badge>}
-          {typeof health.total_failures === "number" && <Badge tone={health.total_failures > 0 ? "amber" : "gray"}>{health.total_failures} failures</Badge>}
-          {health.last_attempt_at && <span className="w-full text-[11px] text-muted-foreground">Last attempt: {formatTime(lastAttempt, "time not reported")}</span>}
-          {health.last_failure_at && <span className="w-full text-[11px] text-muted-foreground">Last failure: {formatTime(lastFailure, "time not reported")}</span>}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function MemorySection() {
   const [tab, setTab] = useState<ActiveTab>("overview");
 
   // Legacy facts state
   const [facts, setFacts] = useState<MemoryFact[]>([]);
   const [summary, setSummary] = useState("");
-  const [status, setStatus] = useState<MemoryStatus | null>(null);
+  const [status, setStatus] = useState<MemoryStatusEnvelope | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
   // Cognitive states
@@ -341,6 +289,8 @@ export function MemorySection() {
     setError(null);
     setFactsError(null);
     setOverviewError(null);
+    setStatus(null);
+    setStatusError(null);
     try {
       const [mem, st, cog] = await Promise.all([
         // Failures become explicit per-surface errors — never {}fakes like
@@ -348,7 +298,7 @@ export function MemorySection() {
         fetchMemory()
           .then((value) => ({ ok: true as const, value }))
           .catch((e) => ({ ok: false as const, error: errMsg(e) })),
-        memoryStatus()
+        fetchMemoryStatus()
           .then((value) => ({ ok: true as const, value }))
           .catch((e) => ({ ok: false as const, error: errMsg(e) })),
         fetchCognitiveOverview()
@@ -419,7 +369,7 @@ export function MemorySection() {
       flash(action === "complete" ? "Reminder marked complete." : "Reminder cancelled.");
       await Promise.all([
         loadProspective(),
-        memoryStatus()
+        fetchMemoryStatus()
           .then((nextStatus) => {
             setStatus(nextStatus);
             setStatusError(null);
@@ -602,6 +552,10 @@ export function MemorySection() {
     }
   };
 
+  // Distinguish a successful status read without a health hook from a pending
+  // or failed read; only the Gateway can establish extraction health.
+  const extractionBadge = status && !statusError ? extractionHealthBadge(status.health) : null;
+
   return (
     <Section
       title="Cognitive Memory Command Center"
@@ -622,6 +576,11 @@ export function MemorySection() {
     >
       {error && <ErrorBox message={error} onRetry={loadAll} />}
       {notice && <Notice message={notice} />}
+      {statusError && (
+        <p role="status" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-[11px] text-destructive">
+          Memory status is unavailable: {statusError}. Extraction health and the on/off state stay unknown until the status read succeeds.
+        </p>
+      )}
 
       {/* Cognitive Status Badges */}
       <div className="flex gap-2 flex-wrap text-[11px] items-center">
@@ -636,9 +595,22 @@ export function MemorySection() {
             <Badge tone="gray">Density: {cognitive.tiers.semantic_graph.density}</Badge>
           </>
         )}
-        {status?.config && typeof status.config.enabled === "boolean" && (
-          <Badge tone={status.config.enabled ? "green" : "gray"}>gateway memory {status.config.enabled ? "on" : "off"}</Badge>
+        {status && (
+          <Badge
+            tone={status.config.enabled === true ? "green" : "gray"}
+            title={
+              status.config.enabled === true
+                ? "The Gateway reports the memory mechanism enabled (GET /api/memory/status → config.enabled)."
+                : status.config.enabled === false
+                  ? "The Gateway reports the memory mechanism disabled (GET /api/memory/status → config.enabled)."
+                  : "The Gateway did not report whether memory is enabled."
+            }
+          >
+            gateway memory {status.config.enabled === true ? "on" : status.config.enabled === false ? "off" : "state not reported"}
+          </Badge>
         )}
+        {!status && !statusError && <Badge tone="gray">extraction health: checking&hellip;</Badge>}
+        {extractionBadge && <Badge tone={extractionBadge.tone} title={extractionBadge.title}>{extractionBadge.label}</Badge>}
       </div>
 
       {/* Command Center Tabs */}
@@ -725,7 +697,7 @@ export function MemorySection() {
           {tab === "overview" && (
             <div className="grid gap-3 xl:grid-cols-2">
               <L1CaptureCard capture={status?.l1_capture} error={statusError} />
-              <MemoryExtractionHealthCard health={status?.health} error={statusError} />
+              {status && !statusError ? <MemoryHealthCard health={status.health} config={status.config} /> : null}
               <ProspectiveMemoryCard memory={status?.prospective} error={statusError} />
             </div>
           )}
@@ -1318,4 +1290,138 @@ export function MemorySection() {
       )}
     </Section>
   );
+}
+
+/* ── Extraction health (GET /api/memory/status → health) ──────────────── */
+
+/**
+ * The badge this surface shows for the extraction pipeline — never invented.
+ *
+ * `health === null` (backend without the hook, or a read the Gateway could not
+ * render) is "no health statement available": a grey, disclosed row, never a
+ * green one. An *unknown* status word from a newer server is rendered verbatim
+ * in amber rather than treated as one of the known words.
+ */
+export function extractionHealthBadge(health: MemoryExtractionHealth | null): {
+  label: string;
+  tone: "green" | "red" | "gray" | "amber";
+  title: string;
+} {
+  if (!health) {
+    return {
+      label: "extraction health not reported",
+      tone: "gray",
+      title:
+        "The Gateway returned no extraction health statement for this backend — its health hook is absent or unreadable. This is not a claim that extraction is healthy.",
+    };
+  }
+  const prefix = health.reason ? `Gateway reports "extraction ${health.status}": ${health.reason}` : `Gateway reports "extraction ${health.status}"`;
+  if (health.status === "ok") {
+    return { label: "extraction ok", tone: "green", title: prefix };
+  }
+  if (health.status === "degraded") {
+    return { label: "extraction degraded", tone: "red", title: prefix };
+  }
+  if (health.status === "disabled") {
+    return { label: "extraction disabled", tone: "gray", title: prefix };
+  }
+  return {
+    label: `extraction: ${health.status}`,
+    tone: "amber",
+    title: `${prefix} — status word from the server, shown verbatim.`,
+  };
+}
+
+/** A server-absent count is "not reported", never 0. */
+export function extractionCountText(value: number | null | undefined): string {
+  return typeof value === "number" ? String(value) : "not reported";
+}
+
+/** Relative primary stamp through the shared clock vocabulary. */
+export function extractionTimeText(value: string | null | undefined): string {
+  if (!value) return "not reported";
+  return relTime(value) ?? "not reported";
+}
+
+/**
+ * The extraction-health card.
+ *
+ * Everything here is what `GET /api/memory/status` sent — counters since the
+ * last Gateway restart (the record is process-local by design), the masked,
+ * bounded error the server already trimmed, and *nothing* about whether a run
+ * succeeded that the server did not report.
+ */
+export function MemoryHealthCard(props: {
+  health: MemoryExtractionHealth | null;
+  config: MemoryStatusEnvelope["config"];
+}) {
+  const { health, config } = props;
+  if (!health) {
+    return (
+      <p className="rounded-xl border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
+        This backend did not report extraction health, so the UI cannot say whether memory extraction is working — the answer is unknown, not healthy.
+      </p>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-border/60 bg-card px-3 py-2.5">
+      <p className="text-[11px] font-semibold">Memory extraction health</p>
+      <div className="mt-1.5 grid gap-x-4 gap-y-1 text-[11px] text-muted-foreground sm:grid-cols-2">
+        <span title="Failures the extraction pipeline recorded since the last Gateway restart (GET /api/memory/status → health)">
+          Consecutive failures:{" "}
+          <span className={health.consecutive_failures ? "text-destructive font-medium" : "text-foreground"}>{extractionCountText(health.consecutive_failures)}</span>
+          {" "}· total {extractionCountText(health.total_failures)}
+        </span>
+        <span title="Successful extractions recorded since the last Gateway restart">
+          Total successes: <span className="text-foreground">{extractionCountText(health.total_successes)}</span>
+        </span>
+        <span title={absoluteStamp(health.last_attempt_at) ?? undefined}>
+          Last attempt: {extractionTimeText(health.last_attempt_at)}
+        </span>
+        <span title={absoluteStamp(health.last_success_at) ?? undefined}>
+          Last success: {extractionTimeText(health.last_success_at)}
+        </span>
+        {health.last_failure_at ? (
+          <span title={absoluteStamp(health.last_failure_at) ?? undefined}>
+            Last failure: {extractionTimeText(health.last_failure_at)}
+          </span>
+        ) : null}
+        <span>
+          Extraction:{" "}
+          {health.extraction_enabled === true ? "on" : health.extraction_enabled === false ? "off" : "unknown"}
+        </span>
+        {health.model ? (
+          <span className="break-all">
+            Model: <span className="text-foreground">{health.model}</span>
+            {health.model_source ? ` (from ${health.model_source})` : ""}
+          </span>
+        ) : (
+          <span>Model: not reported</span>
+        )}
+        {health.extraction_enabled === false && ManagerUnavailable(config) ? (
+          <span className="sm:col-span-2 text-amber-700 dark:text-amber-300">
+            {ManagerUnavailable(config)}
+          </span>
+        ) : null}
+      </div>
+      {health.reason ? (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">Gateway reason: {health.reason}</p>
+      ) : null}
+      {health.last_error ? (
+        <p className="mt-1.5 break-all rounded-lg border border-destructive/25 bg-destructive/5 px-2 py-1 text-[11px] text-destructive" title={health.last_error}>
+          Last error{health.last_error_type ? ` (${health.last_error_type})` : ""}
+          {health.last_error_scope ? ` on ${health.last_error_scope}` : ""}: {health.last_error}
+        </p>
+      ) : null}
+      <p className="mt-1.5 border-t border-border/50 pt-1.5 text-[10px] text-muted-foreground">
+        Counters cover this Gateway process since its last restart. The shown error text is already truncated and credential-masked by the server before it is sent.
+      </p>
+    </div>
+  );
+}
+
+/** A disabled extraction with no resolvable model — the reason, not a guess. */
+function ManagerUnavailable(config: MemoryStatusEnvelope["config"]): string | null {
+  if (config.manager_class) return `This memory backend (${config.manager_class}) reports extraction disabled — automatic fact extraction is not running.`;
+  return "The Gateway reports extraction disabled — automatic fact extraction is not running.";
 }

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Clock3, Edit3, PauseCircle, Target, X } from "lucide-react";
 import type { ThreadGoal } from "@/lib/threads-ext";
+import { budgetPairLabel } from "@/lib/goal-view";
 
 interface ConversationGoalPanelProps {
   threadId: string | null;
@@ -11,6 +12,7 @@ interface ConversationGoalPanelProps {
   detailsOpen: boolean;
   readError: string | null;
   saveError: string | null;
+  loading: boolean;
   editing: boolean;
   draft: string;
   onDraftChange: (value: string) => void;
@@ -58,6 +60,7 @@ export function ConversationGoalPanel({
   detailsOpen,
   readError,
   saveError,
+  loading,
   editing,
   draft,
   onDraftChange,
@@ -158,6 +161,10 @@ export function ConversationGoalPanel({
               <Edit3 className="size-3" aria-hidden="true" /> Edit
             </button>
           </div>
+        ) : loading && !readError ? (
+          <p role="status" className="inline-flex items-center gap-1.5 rounded-lg px-1 py-1 text-[11px] text-muted-foreground">
+            <Target className="size-3.5 animate-pulse" aria-hidden="true" /> Checking this conversation&rsquo;s goal on the Gateway&hellip;
+          </p>
         ) : (
           <button
             ref={triggerRef}
@@ -180,7 +187,7 @@ export function ConversationGoalPanel({
             className="fixed inset-0 z-[90] flex items-end justify-center bg-black/45 p-3 sm:items-center sm:p-6"
             onMouseDown={(event) => { if (event.target === event.currentTarget) { onEditingChange(false); onDetailsOpenChange(false); } }}
           >
-            <section
+            <figure
               ref={dialogRef}
               role="dialog"
               aria-modal="true"
@@ -239,8 +246,8 @@ export function ConversationGoalPanel({
 
                     {details ? (
                       <div className="grid gap-2 sm:grid-cols-2">
-                        <Detail label="Automatic continuation turns" value={details.continuation_count !== null && details.max_continuations !== null ? `${details.continuation_count} of ${details.max_continuations}` : "Not reported"} />
-                        {details.no_progress_count !== null || details.max_no_progress_continuations !== null ? <Detail label="No-progress turns" value={details.no_progress_count !== null && details.max_no_progress_continuations !== null ? `${details.no_progress_count} of ${details.max_no_progress_continuations}` : "Not fully reported"} /> : null}
+                        <Detail label="Automatic continuation turns" value={budgetPairLabel(details.continuation_count, details.max_continuations, "used")} />
+                        <Detail label="No-progress turns" value={budgetPairLabel(details.no_progress_count, details.max_no_progress_continuations, "recorded")} />
                         <Detail label="Goal started" value={formattedTimestamp(details.created_at)} />
                       </div>
                     ) : (
@@ -250,10 +257,10 @@ export function ConversationGoalPanel({
                     {details?.last_evaluation ? (
                       <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
                         <h3 className="text-xs font-semibold">Latest evaluator report</h3>
-                        <p className="mt-1 text-sm">{details.last_evaluation.satisfied === true ? "Reports satisfied" : details.last_evaluation.satisfied === false ? "Reports not satisfied" : "Outcome not reported"}{details.last_evaluation.blocker ? ` · ${details.last_evaluation.blocker}` : ""}</p>
+                        <p className="mt-1 text-sm">{details.last_evaluation.satisfied === true ? "Reports satisfied" : details.last_evaluation.satisfied === false ? "Reports not satisfied" : "Outcome not reported"}{details.last_evaluation.blocker && details.last_evaluation.blocker !== "none" ? ` · ${details.last_evaluation.blocker}` : ""}</p>
                         {details.last_evaluation.reason ? <p className="mt-1 text-xs text-muted-foreground">{details.last_evaluation.reason}</p> : null}
                         {details.last_evaluation.evidence_summary ? <p className="mt-2 text-xs text-muted-foreground">Reported evidence: {details.last_evaluation.evidence_summary}</p> : null}
-                        {details.last_evaluation.evaluated_at ? <p className="mt-2 text-[11px] text-muted-foreground">Checked {details.last_evaluation.evaluated_at}{details.last_evaluation.run_id ? ` · Run ${details.last_evaluation.run_id}` : ""}</p> : null}
+                        {details.last_evaluation.evaluated_at ? <p className="mt-2 text-[11px] text-muted-foreground">Checked {formattedTimestamp(details.last_evaluation.evaluated_at)}{details.last_evaluation.run_id ? ` · Run ${details.last_evaluation.run_id}` : ""}</p> : null}
                         {details.last_evaluation.stand_down_reason ? <p className="mt-1 text-[11px] text-muted-foreground">Stopped: {details.last_evaluation.stand_down_reason}</p> : null}
                         <p className="mt-3 border-t border-border/50 pt-2 text-[11px] text-amber-700 dark:text-amber-300">This evaluator report is not measured acceptance verification.</p>
                       </div>
@@ -271,7 +278,7 @@ export function ConversationGoalPanel({
                   </>
                 )}
               </div>
-            </section>
+            </figure>
           </div>
         ) : null}
       </div>
