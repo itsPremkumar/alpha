@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import unittest
+from pathlib import Path
 
 from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
 from alpha.subagents.capacity import (
@@ -185,6 +186,102 @@ class TestBoundednessPreserved(unittest.TestCase):
     # and `::test_capacity_cancelled_waiter_does_not_leak_queue_or_slot`, and a
     # hand-rolled version of a race is the kind of test that passes without proving
     # anything. Those two cases still pass against the priority implementation.
+
+
+class TestExecutorForwardsPriority(unittest.TestCase):
+    """The bands only matter if a call site actually supplies one.
+
+    These are **source pins**, and deliberately so. Driving `SubagentExecutor` to
+    the admission line means running the real agent graph, which in this
+    environment is mocked; a test built on that proves the graph ran, not that
+    the right keyword was passed. The claim under test is an argument shape at one
+    call site, which is exactly what `tests/test_workflow_wave_peak_in_flight.py`
+    already pins this way.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        backend = Path(__file__).resolve().parents[1]
+        cls.executor = (backend / "packages" / "harness" / "alpha" / "subagents" / "executor.py").read_text(encoding="utf-8")
+
+    def test_a_non_default_priority_is_passed_as_a_keyword(self):
+        self.assertIn(
+            '{"priority": self.admission_priority}',
+            self.executor,
+            "a priority must reach slot() by keyword, so a caller-supplied controller's positional signature is not disturbed",
+        )
+
+    def test_the_zero_priority_path_passes_no_keyword(self):
+        # This is the compatibility guarantee: `execution_capacity` is a
+        # documented extension point, and every zero-argument `slot()` in the
+        # tree (including the doubles in test_subagent_executor.py) must keep
+        # working. Passing unconditionally broke them with
+        # "_ImmediateCapacity.slot() takes 1 positional argument but 2 were given".
+        self.assertRegex(
+            self.executor,
+            r'\{\} if not self\.admission_priority else \{"priority": self\.admission_priority\}',
+            "the default admission call must keep the original zero-argument arity",
+        )
+
+    def test_the_bands_are_ordered(self):
+        from alpha.subagents.capacity import (
+            PRIORITY_BACKGROUND,
+            PRIORITY_FOREGROUND,
+            PRIORITY_OPERATOR,
+        )
+
+        # Only the relative order is meaningful, but the spacing is wide so an
+        # intermediate band can be added without renumbering.
+        self.assertLess(PRIORITY_BACKGROUND, PRIORITY_FOREGROUND)
+        self.assertLess(PRIORITY_FOREGROUND, PRIORITY_OPERATOR)
+
+    def test_the_adopted_call_sites_opted_in(self):
+        """Foreground and operator work must actually declare its band.
+
+        An unnamed band at a call site is the defect these constants exist to
+        prevent, so both spellings that reach the constructor are accepted:
+        ``admission_priority=PRIORITY_X`` (direct call) and
+        ``"admission_priority": PRIORITY_X`` (a kwargs dict handed to the
+        constructor). What is rejected is the file mentioning the band at all
+        without binding it to the parameter.
+        """
+
+        backend = Path(__file__).resolve().parents[1]
+        harness = backend / "packages" / "harness" / "alpha"
+        for relative, expected in (
+            # The parent turn blocks on an ordinary `task` and on a hierarchical
+            # child, and on nothing else in these two files.
+            ("tools/builtins/task_tool.py", "PRIORITY_FOREGROUND"),
+            ("subagents/deep_runner.py", "PRIORITY_FOREGROUND"),
+            # An operator explicitly asked for a tournament and for a
+            # candidate lane.
+            ("tools/builtins/arena_tool.py", "PRIORITY_OPERATOR"),
+            ("gro/adapters.py", "PRIORITY_OPERATOR"),
+        ):
+            with self.subTest(file=relative):
+                source = (harness / relative).read_text(encoding="utf-8")
+                self.assertTrue(
+                    f"admission_priority={expected}" in source or f'"admission_priority": {expected}' in source,
+                    f"{relative} must bind the executor's admission_priority to {expected}",
+                )
+
+    def test_the_background_band_is_never_passed_explicitly(self):
+        """Background is the default, so writing it out would be noise.
+
+        A call site naming `PRIORITY_BACKGROUND` is saying "I checked and this is
+        background" - which is fine as documentation but must not become a
+        reason to add the keyword. Keeping it implicit is what guarantees the
+        default path stays the zero-argument `slot()` call.
+        """
+
+        backend = Path(__file__).resolve().parents[1]
+        harness = backend / "packages" / "harness" / "alpha"
+        offenders = []
+        for path in harness.rglob("*.py"):
+            source = path.read_text(encoding="utf-8", errors="replace")
+            if "PRIORITY_BACKGROUND" in source and "admission_priority" in source and "capacity.py" not in path.name and "test" not in path.parts:
+                offenders.append(path.relative_to(harness).as_posix())
+        self.assertEqual(offenders, [], "PRIORITY_BACKGROUND must stay implicit (the executor default)")
 
 
 class TestSnapshotContract(unittest.TestCase):

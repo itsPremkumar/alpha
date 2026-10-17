@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from alpha.gro.models import CandidateOutcome, CandidateSpec, CandidateStatus
+from alpha.subagents.capacity import PRIORITY_OPERATOR
 
 
 class ExecutionAdapter(Protocol):
@@ -108,6 +109,9 @@ class SubagentExecutionAdapter:
             run_id=self.run_id,
             user_id=self.user_id,
             acceptance_criteria=list(spec.acceptance_criteria),
+            # `compete` is operator-initiated, so a candidate lane outranks
+            # background work queued ahead of it.
+            admission_priority=PRIORITY_OPERATOR,
         )
         prompt = spec.to_prompt()
         if self.context_suffix:

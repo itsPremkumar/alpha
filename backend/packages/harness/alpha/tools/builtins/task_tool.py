@@ -27,7 +27,7 @@ from alpha.runtime.user_context import resolve_runtime_user_id
 from alpha.sandbox.security import LOCAL_BASH_SUBAGENT_DISABLED_MESSAGE, is_host_bash_allowed
 from alpha.subagents import SubagentExecutor, get_available_subagent_names, get_subagent_config
 from alpha.subagents.acceptance_checks import check_acceptance_criteria, render_acceptance_section
-from alpha.subagents.capacity import SubagentExecutionCapacity
+from alpha.subagents.capacity import PRIORITY_FOREGROUND, SubagentExecutionCapacity
 from alpha.subagents.config import resolve_subagent_model_name
 from alpha.subagents.context_snapshot import ParentContextSnapshot
 from alpha.subagents.executor import (
@@ -1103,6 +1103,10 @@ async def task_tool(
     executor_kwargs = {
         "config": config,
         "tools": tools,
+        # The parent turn blocks on this child's terminal state, so a run the
+        # operator is waiting on must not sit behind background work that was
+        # queued first. This is the foreground band; see `capacity.PRIORITY_*`.
+        "admission_priority": PRIORITY_FOREGROUND,
         "parent_model": parent_model,
         "sandbox_state": sandbox_state,
         "thread_data": thread_data,

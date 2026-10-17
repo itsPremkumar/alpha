@@ -12,6 +12,25 @@ from dataclasses import dataclass
 
 from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
 
+#: Admission priority bands.
+#:
+#: These are **named on purpose**. A bare float at a call site hides the actual
+#: policy; a named band makes the intent reviewable and makes a wrong value
+#: obvious in a diff. They are ordering bands, not weights: only their relative
+#: order matters, and the gap between them is deliberately wide so an
+#: intermediate band can be added later without renumbering.
+#:
+#: The executor never guesses. It takes an `admission_priority` from the caller
+#: that actually knows what kind of work it is admitting, and defaults to
+#: ``PRIORITY_BACKGROUND`` so an unadopted call site behaves exactly as before.
+PRIORITY_BACKGROUND = 0.0
+#: A parent turn is blocked on this work: the operator is waiting for it, so it
+#: must not sit behind background work that was queued first.
+PRIORITY_FOREGROUND = 10.0
+#: The operator explicitly asked for this run (an Arena tournament, a GRO
+#: comparison). Nothing else in the queue outranks a thing a person started.
+PRIORITY_OPERATOR = 20.0
+
 
 class SubagentCapacityError(RuntimeError):
     """Base class for explicit admission failures."""

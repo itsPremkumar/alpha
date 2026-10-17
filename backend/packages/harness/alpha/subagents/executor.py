@@ -967,6 +967,7 @@ class SubagentExecutor:
         alpha_trace_id: str | None = None,
         extensions: Any | None = None,
         execution_capacity: SubagentExecutionCapacity | None = None,
+        admission_priority: float = 0.0,
         acceptance_criteria: list[str] | None = None,
         loop_detection_recorder: Any | None = None,
         tool_promotion_recorder: Any | None = None,
@@ -1072,6 +1073,14 @@ class SubagentExecutor:
         # generation underneath the delegated work.
         self.extensions = extensions
         self.execution_capacity = execution_capacity
+        # Admission ordering for this child's execution.
+        #
+        # The executor does NOT guess its own importance: the caller that knows
+        # what kind of work it is admitting supplies the band (see
+        # `capacity.PRIORITY_*`). Defaulting to background keeps every
+        # un-adopted call site byte-identical to the previous FIFO behaviour, so
+        # adding the parameter cannot itself change admission.
+        self.admission_priority = admission_priority
         # Raw lead-supplied criteria; stripping/capping happens at render time
         # in report_contract.render_acceptance_criteria_block.
         self.acceptance_criteria = acceptance_criteria
@@ -1497,7 +1506,17 @@ class SubagentExecutor:
         with ensure_trace_context(self.alpha_trace_id):
             try:
                 capacity = self.execution_capacity or get_subagent_execution_capacity()
-                async with capacity.slot():
+                # The priority argument is passed ONLY when there is one.
+                #
+                # `execution_capacity` is a documented extension point - a direct
+                # `create_alpha_agent` caller may hand in its own controller, and
+                # test doubles implement the interface they need. Passing
+                # `priority=` unconditionally broke every zero-argument `slot()`
+                # already in the tree. Keeping the default call arity unchanged
+                # means an un-adopted run takes a path byte-identical to before,
+                # which is the same inert-by-default property the ordering has.
+                admission: dict[str, Any] = {} if not self.admission_priority else {"priority": self.admission_priority}
+                async with capacity.slot(**admission):
                     with result._state_lock:
                         if not result.status.is_terminal:
                             result.status = SubagentStatus.RUNNING

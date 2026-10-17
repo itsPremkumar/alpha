@@ -23,6 +23,7 @@ from alpha.arena.service import ArenaConfirmationRequired, ArenaRunError, ArenaS
 from alpha.arena.store import ArenaStoreError
 from alpha.config import get_app_config
 from alpha.runtime.user_context import get_effective_user_id
+from alpha.subagents.capacity import PRIORITY_OPERATOR
 from alpha.utils.assembly_io import run_assembly
 
 #: The arena tool name. Declared here so tests and the
@@ -253,6 +254,9 @@ def _build_service(runtime, config: ArenaConfig, app_config, tools: list) -> Are
             thread_id=configurable.get("thread_id"),
             trace_id=configurable.get("trace_id"),
             user_id=str(get_effective_user_id(runtime) or ""),
+            # An operator explicitly started this tournament, so it outranks work
+            # no person is waiting on.
+            admission_priority=PRIORITY_OPERATOR,
         )
 
     return ArenaService(config=config, runner_factory=factory)

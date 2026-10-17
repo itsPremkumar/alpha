@@ -56,6 +56,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from alpha.subagents.capacity import PRIORITY_FOREGROUND
 from alpha.subagents.deep_handoff_contract import (
     DeepExecutionStatus,
     DeepHandoffContract,
@@ -250,6 +251,9 @@ class DeepAgentSubagentRunner:
         executor = SubagentExecutor(
             config=config,
             tools=list(pool),
+            # A hierarchical child's result is returned synchronously to a parent
+            # that is waiting on it, so it is foreground work by construction.
+            admission_priority=PRIORITY_FOREGROUND,
             app_config=self.app_config,
             parent_model=self.model,
             thread_id=self.thread_id or None,

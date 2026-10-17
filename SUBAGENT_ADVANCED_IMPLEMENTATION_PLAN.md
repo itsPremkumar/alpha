@@ -153,6 +153,93 @@ until a call site adopts it — deliberately, so enabling it changes nothing on 
 own. Adopting it (foreground `task` over background batches, Arena over a
 low-confidence plan) is the next slice.
 
+### 2.0.2 DONE — priority adoption at real call sites
+
+The executor does **not** guess its own importance. It takes `admission_priority`
+from the caller that actually knows what kind of work it is admitting, which is the
+only source of a real signal — an executor-side heuristic would have to guess
+"foreground" from data that does not carry it.
+
+Three named bands in `capacity.py` replace bare floats so a wrong value is visible
+in a diff:
+
+| Band | Value | Meaning |
+| --- | --- | --- |
+| `PRIORITY_BACKGROUND` | `0.0` | The implicit default. Nobody waits on it. |
+| `PRIORITY_FOREGROUND` | `10.0` | A parent turn is blocked on the result. |
+| `PRIORITY_OPERATOR` | `20.0` | An operator explicitly started this run. |
+
+Adopted at the four call sites where the caller's nature is unambiguous:
+
+| Call site | Band | Why it is a fact, not a guess |
+| --- | --- | --- |
+| `tools/builtins/task_tool.py` | foreground | The parent turn blocks in `_await_subagent_terminal`'s poll loop until this child is terminal. |
+| `subagents/deep_runner.py` | foreground | A hierarchical child's result is returned synchronously to a waiting parent. |
+| `tools/builtins/arena_tool.py` | operator | An operator explicitly started the tournament. |
+| `gro/adapters.py` | operator | `compete` is operator-initiated. |
+
+The other eight construction sites (group runner ×2, war room, swarm worker,
+lifecycle spawn, batch service, self-improvement, orchestrator domain executors)
+deliberately inherit the background default. `swarm/worker.py` is the judgement
+call: a swarm is operator-*authored* but long-running background work, so
+background is the honest reading and it stays untouched.
+
+**Compatibility rule worth keeping:** the keyword is passed **only when a priority
+is set**. Passing `priority=` unconditionally broke every zero-argument `slot()`
+in the tree with `TypeError: _ImmediateCapacity.slot() takes 1 positional argument
+but 2 were given` — including `tests/test_subagent_executor.py`'s doubles. Because
+`execution_capacity` is a caller-supplied extension point, the original call arity
+*is* a compatibility surface, and the default path staying arity-identical is the
+same inert-by-default property the ordering itself has.
+
+Pinned by `tests/test_subagent_capacity_priority.py` — behavioural tests for
+ordering and preemption, plus source pins for the argument shape and the adopted
+call sites (a runtime assertion here would have to drive the whole mocked agent
+graph, which proves the graph ran, not that the right keyword was passed). The
+`PRIORITY_BACKGROUND`-is-never-explicit rule is itself a test.
+
+### 2.0.3 Automatic vs manual — the full audit (measured 2026-10-17, `main`)
+
+Before building anything else, this is what the system actually does **without a
+human choosing**. Anything not on this list is operator-selected at the composer
+and is a UI/ergonomics problem, not an automation gap.
+
+**Already automatic (no operator action):**
+
+| Behaviour | Where |
+| --- | --- |
+| Delegation tier routing (`general-purpose` vs `bash` policy) | `task_tool` |
+| Capacity admission, queueing, rejection, queue timeout | `SubagentExecutionCapacity` |
+| `max_total_per_run` ledger | `SubagentLimitMiddleware` |
+| Resilience: escalation, promotion of repeated tool patterns | executor recorders |
+| Arena cost projection before spend | `arena/service.py` |
+| Arena verdicts (compare / synthesize) | `arena` |
+| Delegation defaults **on** or off | — **see the correction below** |
+
+**Manual today (operator picks at the composer, then it is automatic):**
+
+| Choice | Default | Note |
+| --- | --- | --- |
+| Delegation mode itself | **`off`** | `ChatView.tsx:1016` `useState("off")`; `autonomous: true` is sent only when the mode ≠ off (`:2461`). So the flagship capability is **opt-in per thread** and silently off for a new thread. |
+| Worker / subagent type | model-selected | Re-validated against `allowed_subagents`; a stale composer selection fails explicitly rather than running another worker. |
+| Intent category (`research` / `quick`) | `general` | |
+| Arena participation | none | Operator starts the tournament; N competitors then run automatically. |
+| Council strategy | none | Config-only; no write route (§4). |
+| Arena / dynamic-workflow / council / deliberation / orchestration | none | Config-only families with **no write route** (§4). |
+
+**Built but not adopted — the honest "inert" list:**
+
+| Thing | State |
+| --- | --- |
+| Priority admission | now adopted (§2.0.2) |
+| `gro.enabled` | `false` in live `config.yaml` |
+| Deep-agent runner | registered in the gateway lifespan but has no `deepagent:` config block |
+
+The delegation-defaults-off finding is the one with real product weight: a user
+who opens Alpha and asks a multi-step question gets no delegation at all unless
+they first find the mode selector. That is a Phase 5 (ergonomics) decision — see
+§5 — not something to change silently.
+
 **The one genuine architectural gap.** Today `task`, durable batches, Arena and
 workflow swarms each hold a private ceiling and all draw from the same
 `subagent_runtime.max_running: 3`. They **contend**; they do not multiply.
