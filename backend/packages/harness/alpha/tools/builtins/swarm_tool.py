@@ -100,7 +100,7 @@ def swarm_tool(
         message: Bounded message content; message payloads are untrusted data.
             For a `trace` deposit it is the trace payload.
         limit: Maximum rows/messages/events to return.
-        max_concurrency: Maximum concurrent workers, hard-capped at 64.
+        max_concurrency: Maximum concurrent workers. Use 0 for auto (the system picks based on task complexity). Hard-capped at 1000.
         max_tokens: Optional measured token ceiling for a new swarm.
         max_tool_calls: Optional measured tool-call ceiling for a new swarm.
         max_wall_seconds: Optional wall-clock ceiling for a new swarm.
@@ -153,7 +153,7 @@ def swarm_tool(
                 goal=goal.strip(),
                 mode=swarm_mode,
                 items=items,
-                max_concurrency=min(max(1, max_concurrency), 1000),
+                max_concurrency=min(max(0, max_concurrency), 1000),
                 owner_id=owner_id,
                 budget=budget,
                 auto_replan=auto_replan,

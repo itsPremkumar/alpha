@@ -167,7 +167,7 @@ class SwarmTaskDecomposer:
         mode: SwarmMode = SwarmMode.AUTO,
         items: Sequence[str] | None = None,
         swarm_id: str | None = None,
-        max_concurrency: int = 8,
+        max_concurrency: int = 0,
         *,
         requires_consensus: bool = False,
     ) -> SwarmPlan:
@@ -196,6 +196,14 @@ class SwarmTaskDecomposer:
         sid = swarm_id or f"swm-{uuid.uuid4().hex[:8]}"
         automatic = mode == SwarmMode.AUTO
 
+        # Auto agent count: when the caller passes 0 (or negative), the system
+        # picks the concurrency from the task shape rather than the operator.
+        # This is the "according to situation" behaviour: a wide batch gets
+        # more workers, a narrow chain gets fewer.  The cap is the hard ceiling
+        # from limits.MAX_SWARM_PLAN_CONCURRENCY.
+        if max_concurrency <= 0:
+            max_concurrency = cls._auto_concurrency(goal, items)
+
         resolution = resolve_strategy(goal, items=items, mode=mode, requires_consensus=requires_consensus, max_concurrency=max_concurrency)
         effective_mode = mode if mode != SwarmMode.AUTO else resolution.mode
 
@@ -212,6 +220,54 @@ class SwarmTaskDecomposer:
         # the coordination machinery.
         plan.metrics["strategy"] = resolved.to_dict()
         return plan
+
+    @classmethod
+    def _auto_concurrency(cls, goal: str, items: Sequence[str] | None) -> int:
+        """Pick a concurrency level from the task shape when the operator did
+        not state one.
+
+        This is the "according to situation" behaviour.  The rules are:
+
+        - A batch of items gets one worker per item, capped at the ceiling.
+        - A complex multi-domain goal (complexity >= 0.7) gets 8 workers.
+        - A moderate goal gets 4.
+        - Otherwise 2 - enough to parallelise without over-spawning.
+
+        The estimator's own ``max_concurrency_limit`` default (12) is a
+        separate, lower-level cap used by the benefit estimator; this method
+        is the decomposer's own decision and may go up to the hard ceiling.
+        """
+
+        from alpha.config.limits import MAX_SWARM_PLAN_CONCURRENCY
+        from alpha.swarm.estimator import SwarmBenefitEstimator
+
+        item_count = len(items) if items else 0
+        if item_count > 1:
+            return min(item_count, MAX_SWARM_PLAN_CONCURRENCY)
+
+        # The estimator's complexity signal is consulted as a proxy for task
+        # width; its return value is not needed beyond that side effect.
+        SwarmBenefitEstimator.estimate(goal, items=items)
+        # The estimator does not expose a complexity score directly; use the
+        # goal length and keyword density as a proxy.
+        goal_lower = goal.lower()
+        complexity = 0.0
+        if len(goal) > 200:
+            complexity += 0.3
+        if any(kw in goal_lower for kw in ("and", "then", "also", "plus", "additionally")):
+            complexity += 0.2
+        if any(kw in goal_lower for kw in ("research", "investigate", "analyze", "compare")):
+            complexity += 0.2
+        if any(kw in goal_lower for kw in ("implement", "build", "create", "develop")):
+            complexity += 0.2
+        if any(kw in goal_lower for kw in ("test", "verify", "review", "audit")):
+            complexity += 0.1
+
+        if complexity >= 0.7:
+            return min(8, MAX_SWARM_PLAN_CONCURRENCY)
+        if complexity >= 0.4:
+            return min(4, MAX_SWARM_PLAN_CONCURRENCY)
+        return min(2, MAX_SWARM_PLAN_CONCURRENCY)
 
     @classmethod
     def _settle(

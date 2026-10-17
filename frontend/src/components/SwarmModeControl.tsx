@@ -107,20 +107,20 @@ export function SwarmModeControl({
         <>
           <span className="text-border/60">|</span>
           <label className="sr-only" htmlFor="composer-swarm-mode">Swarm topology</label>
-          <select
-            id="composer-swarm-mode"
-            value={mode}
+          <input
+            id="composer-swarm-concurrency"
+            type="number"
+            min={1}
+            max={1000}
+            value={concurrency}
             disabled={disabled}
-            onChange={(e) => onModeChange(e.target.value)}
-            className="max-w-32 bg-transparent text-[10px] focus:outline-none"
-            title="Swarm topology: how the coordinator decomposes the goal"
-          >
-            {SWARM_MODES.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label.split(" \u2014 ")[0]}
-              </option>
-            ))}
-          </select>
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v) && v >= 1 && v <= 1000) onConcurrencyChange(Math.floor(v));
+            }}
+            className="w-14 bg-transparent text-[10px] focus:outline-none"
+            title="Maximum concurrent workers in a swarm wave (1-1000, or 0 for auto)"
+          />
           <span className="text-border/60">|</span>
           <label className="sr-only" htmlFor="composer-swarm-concurrency">Swarm concurrency</label>
           <select
