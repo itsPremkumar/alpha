@@ -107,6 +107,27 @@ export function freeCatalogSummary(
   };
 }
 
+/** Header sentence for the provider-level health and eligibility counts. */
+export function freeCatalogHeadline(
+  providers: Array<Pick<FreeProviderHealth, "healthy" | "eligible">>,
+  updatedAt?: string | null,
+): string {
+  if (providers.length === 0) {
+    return "Free catalog empty — the keyless router has no providers right now.";
+  }
+  const summary = freeCatalogSummary(providers);
+  const healthDetails: string[] = [];
+  if (summary.failing > 0) {
+    healthDetails.push(`${summary.failing} failing`);
+  }
+  if (summary.notProbed > 0) {
+    healthDetails.push(`${summary.notProbed} not probed`);
+  }
+  const eligibleNoun = summary.eligible === 1 ? "provider" : "providers";
+  const healthDetailText = healthDetails.length > 0 ? `, ${healthDetails.join(", ")}` : "";
+  return `Free models: ${summary.healthy}/${summary.total} providers healthy${healthDetailText}, ${summary.eligible} eligible ${eligibleNoun}${updatedAt ? ` (updated ${updatedAt})` : ""}.`;
+}
+
 /**
  * The sentence shown when the healthy-only filter hides everything.
  *

@@ -218,7 +218,7 @@ export function FreeCatalogMenu(props: FreeCatalogMenuProps) {
                       </>
                     ) : null}
                     {" · "}
-                    {summary.eligible} eligible for chat
+                    {summary.eligible} eligible {summary.eligible === 1 ? "provider" : "providers"} for chat
                   </span>
                 )}
               </div>

@@ -182,7 +182,7 @@ test("the summary names failing and unprobed providers separately, and omits zer
   assert.match(text, /2 of 4 providers healthy/);
   assert.match(text, /1 failing/);
   assert.match(text, /1 not probed/);
-  assert.match(text, /1 eligible/);
+  assert.match(text, /1 eligible provider/);
   // A zero bucket adds no clause — "0 failing" is noise, and the number is
   // already implied by "2 of 4".
   assert.doesNotMatch(probeSummaryText([provider({ healthy: true }), provider({ healthy: true })], false), /failing|not probed/);

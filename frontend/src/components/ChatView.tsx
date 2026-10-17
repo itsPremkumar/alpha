@@ -62,6 +62,7 @@ import { chatSupportId } from "@/lib/chat-support-id";
 import { branding } from "@/lib/branding";
 import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { initialSelectedModel } from "@/lib/model-menu";
+import { freeCatalogHeadline } from "@/lib/freeCatalogView";
 import { currentOperatorIdentity, subscribeOperatorName } from "@/lib/operator";
 import { BrandLogo } from "@/components/BrandLogo";
 import { LionPet, useLionPetActivity } from "@/components/lion-pet";
@@ -1143,19 +1144,11 @@ export default function ChatView({
         if (disposed || generation !== freeCatalogReadGenerationRef.current)
           return;
         const { providers, updatedAt } = catalog;
-        const healthy = providers.filter(
-          (provider) => provider.healthy === true,
-        ).length;
-        const eligible = providers.filter((provider) => provider.eligible).length;
         setFreeProviders(providers);
         setFreeSelectionMethod(catalog.selectionMethod ?? null);
         setFreeDisclaimer(catalog.disclaimer ?? null);
         setFreeReadError(null);
-        setFreeNote(
-          providers.length === 0
-            ? "Free catalog empty — the keyless router has no providers right now."
-            : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`,
-        );
+        setFreeNote(freeCatalogHeadline(providers, updatedAt));
         setFreeTone(freeCatalogTone(providers));
       } catch (error) {
         if (disposed || generation !== freeCatalogReadGenerationRef.current)
@@ -1276,12 +1269,7 @@ export default function ChatView({
       setFreeDisclaimer(catalog.disclaimer ?? null);
       setFreeReadError(null);
       const healthy = providers.filter((p) => p.healthy === true).length;
-      const eligible = providers.filter((p) => p.eligible).length;
-      setFreeNote(
-        providers.length === 0
-          ? "Free catalog empty — the keyless router has no providers right now."
-          : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`,
-      );
+      setFreeNote(freeCatalogHeadline(providers, updatedAt));
       // Same rule as the mount read: the dot follows the server's count.
       setFreeTone(freeCatalogTone(providers));
       flash(
@@ -1505,19 +1493,13 @@ export default function ChatView({
         disclaimer?: string | null;
       }) => {
         const { providers, updatedAt } = catalog;
-        const healthy = providers.filter((p) => p.healthy === true).length;
-        const eligible = providers.filter((p) => p.eligible).length;
         // Retain the rows so the dropdown can show *which* providers produced
         // these counts, not just how many there were.
         setFreeProviders(providers as FreeProviderHealth[]);
         setFreeSelectionMethod(catalog.selectionMethod ?? null);
         setFreeDisclaimer(catalog.disclaimer ?? null);
         setFreeReadError(null);
-        setFreeNote(
-          providers.length === 0
-            ? "Free catalog empty — the keyless router has no providers right now."
-            : `Free models: ${healthy}/${providers.length} healthy, ${eligible} eligible${updatedAt ? ` (updated ${updatedAt})` : ""}.`,
-        );
+        setFreeNote(freeCatalogHeadline(providers, updatedAt));
         // No measured provider means the server has not answered for any of
         // them: that is unknown, so the dot stays neutral rather than green.
         setFreeTone(freeCatalogTone(providers));

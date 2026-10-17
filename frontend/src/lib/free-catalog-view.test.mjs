@@ -27,7 +27,7 @@ const code = ts.transpileModule(source, {
 // stays in place as a guard: if a value import is ever added here, this fails
 // loudly instead of resolving against a nonexistent path.
 const stubUrl = toDataUrl(`export const unusedStub = null;`);
-const { healthLabel, healthDot, latencyText, modelCountText, truncationText, freeCatalogSummary, emptyFilterText } =
+const { healthLabel, healthDot, latencyText, modelCountText, truncationText, freeCatalogSummary, freeCatalogHeadline, emptyFilterText } =
   await import(toDataUrl(code.replace(/from\s+"\.\/freeModels"/, `from "${stubUrl}"`)));
 
 /** The subset each helper reads, shaped as `fetchFreeCatalog` builds it. */
@@ -194,6 +194,23 @@ test("eligibility is counted from the server's flag, never inferred from health"
   ]);
   assert.equal(summary.eligible, 2);
   assert.equal(summary.healthy, 2);
+});
+
+test("the chat header labels its eligibility count as providers", () => {
+  const providers = [
+    provider({ healthy: true, eligible: true }),
+    provider({ healthy: false, eligible: true }),
+    provider({ healthy: null, eligible: false }),
+  ];
+  assert.equal(
+    freeCatalogHeadline(providers, "2026-10-17T05:16:57+05:30"),
+    "Free models: 1/3 providers healthy, 1 failing, 1 not probed, 2 eligible providers (updated 2026-10-17T05:16:57+05:30).",
+  );
+  assert.equal(
+    freeCatalogHeadline([provider({ healthy: null, eligible: true })]),
+    "Free models: 0/1 providers healthy, 1 not probed, 1 eligible provider.",
+  );
+  assert.match(freeCatalogHeadline([], null), /no providers right now/);
 });
 
 test("an emptied healthy-only filter names the hidden providers as failing", () => {

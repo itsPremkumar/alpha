@@ -269,7 +269,7 @@ export function probeSummaryText(providers: FreeProviderHealth[], readFailed: bo
   const bits: string[] = [`${c.healthy} of ${c.total} providers healthy`];
   if (c.failing > 0) bits.push(`${c.failing} failing`);
   if (c.notProbed > 0) bits.push(`${c.notProbed} not probed`);
-  bits.push(`${c.eligible} eligible`);
+  bits.push(`${c.eligible} eligible ${c.eligible === 1 ? "provider" : "providers"}`);
   return bits.join(" · ");
 }
 
