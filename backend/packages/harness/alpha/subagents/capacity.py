@@ -248,6 +248,8 @@ def configured_subagent_max_running() -> int:
     """Return the startup snapshot without requiring an event loop."""
     with _state_lock:
         return _config.max_running
+
+
 def configured_subagent_admission_schedule() -> SubagentRuntimeConfig:
     """Return the armed admission schedule without requiring an event loop.
 
