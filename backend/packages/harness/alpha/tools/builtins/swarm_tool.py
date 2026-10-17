@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from langchain.tools import tool
 
+from alpha.config.limits import MAX_SWARM_PLAN_CONCURRENCY
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.swarm.coordinator import get_swarm_coordinator
 from alpha.swarm.governor import get_swarm_resource_governor
@@ -100,7 +101,7 @@ def swarm_tool(
         message: Bounded message content; message payloads are untrusted data.
             For a `trace` deposit it is the trace payload.
         limit: Maximum rows/messages/events to return.
-        max_concurrency: Maximum concurrent workers. Use 0 for auto (the system picks based on task complexity). Hard-capped at 1000.
+        max_concurrency: Maximum concurrent workers. Use 0 for auto (the system picks based on task complexity). Hard-capped at the Gateway's swarm concurrency ceiling (limits.MAX_SWARM_PLAN_CONCURRENCY, currently 1000).
         max_tokens: Optional measured token ceiling for a new swarm.
         max_tool_calls: Optional measured tool-call ceiling for a new swarm.
         max_wall_seconds: Optional wall-clock ceiling for a new swarm.
@@ -153,7 +154,7 @@ def swarm_tool(
                 goal=goal.strip(),
                 mode=swarm_mode,
                 items=items,
-                max_concurrency=min(max(0, max_concurrency), 1000),
+                max_concurrency=min(max(0, max_concurrency), MAX_SWARM_PLAN_CONCURRENCY),
                 owner_id=owner_id,
                 budget=budget,
                 auto_replan=auto_replan,

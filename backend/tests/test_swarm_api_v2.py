@@ -63,6 +63,27 @@ async def test_swarm_api_idempotency_and_owner_isolation():
 
 
 @pytest.mark.asyncio
+async def test_swarm_api_accepts_one_thousand_item_workers_at_requested_concurrency():
+    from app.gateway.routers import swarms
+
+    items = [f"work item {index + 1}" for index in range(1000)]
+    payload = swarms.SwarmCreateRequest(
+        goal="Process every independent batch item",
+        mode=SwarmMode.MAP_REDUCE,
+        items=items,
+        max_concurrency=1000,
+        budget=swarms.SwarmBudgetRequest(max_tasks=1001),
+    )
+    result = await swarms.create_and_spawn_swarm(payload, _request("scale-test", admin=True))
+
+    assert result["max_concurrency"] == 1000
+    assert result["progress"]["total"] == 1001
+    assert result["progress"]["pending"] == 1001
+    assert len(result["tasks"]) == 1001
+    assert result["budget"]["max_tasks"] == 1001
+
+
+@pytest.mark.asyncio
 async def test_swarm_api_lease_completion_conflict_and_acceptance_projection():
     from app.gateway.routers import swarms
 

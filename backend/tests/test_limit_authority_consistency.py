@@ -27,6 +27,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from alpha.config import limits
 
 
@@ -213,6 +215,34 @@ def test_swarm_plan_ceiling_is_one_number_at_both_sites():
     source = Path(coordinator_module.__file__).read_text(encoding="utf-8")
     assert "limits.MAX_SWARM_PLAN_CONCURRENCY" in source, "the coordinator clamp must read the authority, not a literal"
     assert "min(max(1, int(max_concurrency)), 64)" not in source, "a re-typed 64 in the coordinator is exactly the drift this test exists to catch"
+
+
+def test_swarm_item_fanout_ceiling_accepts_one_thousand_work_items():
+    from app.gateway.routers.swarms import SwarmCreateRequest, SwarmEvaluateRequest
+
+    items = [f"item-{index}" for index in range(limits.MAX_SWARM_PLAN_ITEMS)]
+    assert SwarmCreateRequest(goal="Batch work", items=items, max_concurrency=1000).items == items
+    assert SwarmEvaluateRequest(goal="Batch work", items=items).items == items
+    with pytest.raises(ValueError):
+        SwarmCreateRequest(goal="Batch work", items=[*items, "item-over-limit"])
+
+
+def test_swarm_task_fanin_ceiling_is_authority_owned_not_retyped():
+    """The scheduler's dependency ceiling follows the item ceiling by name.
+
+    A map/reduce gather node depends on every map task, so with the item
+    ceiling at 1,000 a gather legitimately carries 1,000 dependencies. The
+    scheduler previously re-typed a local ``256`` there and refused every
+    legal maximum-size plan. The pin is that the scheduler reads the authority
+    constant rather than a re-typed literal.
+    """
+
+    import alpha.swarm.scheduler as scheduler_module
+
+    source = Path(scheduler_module.__file__).read_text(encoding="utf-8")
+    assert "MAX_SWARM_TASK_DEPENDENCIES" in source, "the scheduler fan-in cap must read the authority, not a literal"
+    assert "_MAX_DEPENDENCIES = 256" not in source, "a re-typed 256 in the scheduler is exactly the drift this test exists to catch"
+    assert limits.MAX_SWARM_TASK_DEPENDENCIES == limits.MAX_SWARM_PLAN_ITEMS, "the fan-in ceiling tracks the item ceiling so a legal plan size is never refused"
 
 
 # --------------------------------------------------------------------------- #

@@ -81,6 +81,19 @@ def test_swarm_decomposer_dag_and_critical_path():
     assert "task-frontend" in code_plan.tasks["task-test"].dependencies
 
 
+def test_swarm_auto_concurrency_sizes_item_batches_up_to_authority():
+    items = [f"item-{index}" for index in range(1000)]
+    plan = SwarmTaskDecomposer.decompose(
+        "Process every independent item",
+        mode=SwarmMode.MAP_REDUCE,
+        items=items,
+        max_concurrency=0,
+    )
+    assert plan.max_concurrency == 1000
+    assert len(plan.tasks) == 1001  # 1000 map workers + one gather task
+    assert sum(task.task_id.startswith("task-map-") for task in plan.tasks.values()) == 1000
+
+
 # 3. Topological Scheduler & Concurrency
 def test_swarm_scheduler_dependency_and_dispatch():
     items = ["item-1", "item-2"]

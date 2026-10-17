@@ -148,3 +148,13 @@ MAX_GROUP_PARALLEL_MEMBERS = 3
 #: ``SWARM`` node's member fan-out (``MAX_WAVE_CONCURRENCY_CEILING``), so the
 #: two numbers legitimately differ.
 MAX_SWARM_PLAN_CONCURRENCY = 1000
+
+#: Maximum explicit work items in one swarm request. A map/reduce plan adds a
+#: single gather node on top, so its task budget must allow items + 1.
+MAX_SWARM_PLAN_ITEMS = 1000
+
+#: Maximum inbound dependencies (fan-in) on a single swarm task node. The
+#: map/reduce gather node depends on every map task it combines, so this
+#: ceiling must follow the item ceiling rather than being an independent
+#: number that can silently refuse a legal plan size.
+MAX_SWARM_TASK_DEPENDENCIES = MAX_SWARM_PLAN_ITEMS

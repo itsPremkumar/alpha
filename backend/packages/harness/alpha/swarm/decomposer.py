@@ -203,6 +203,10 @@ class SwarmTaskDecomposer:
         # from limits.MAX_SWARM_PLAN_CONCURRENCY.
         if max_concurrency <= 0:
             max_concurrency = cls._auto_concurrency(goal, items)
+        # Ensure the resolved value is at least 1 and within bounds.
+        from alpha.config.limits import MAX_SWARM_PLAN_CONCURRENCY as _ceiling
+
+        max_concurrency = max(1, min(max_concurrency, _ceiling))
 
         resolution = resolve_strategy(goal, items=items, mode=mode, requires_consensus=requires_consensus, max_concurrency=max_concurrency)
         effective_mode = mode if mode != SwarmMode.AUTO else resolution.mode

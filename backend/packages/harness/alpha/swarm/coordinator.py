@@ -243,8 +243,8 @@ class SwarmCoordinator:
         if len(goal) > 32_000:
             raise ValueError("goal is limited to 32000 characters")
         normalized_items = [str(item).strip() for item in (items or ()) if str(item).strip()]
-        if len(normalized_items) > 512:
-            raise ValueError("items is limited to 512 entries")
+        if len(normalized_items) > limits.MAX_SWARM_PLAN_ITEMS:
+            raise ValueError(f"items is limited to {limits.MAX_SWARM_PLAN_ITEMS} entries")
         if any(len(item) > 8_000 for item in normalized_items):
             raise ValueError("each swarm item is limited to 8000 characters")
         normalized_owner = str(owner_id or "default").strip() or "default"
@@ -254,7 +254,14 @@ class SwarmCoordinator:
         if normalized_key and len(normalized_key) > 256:
             raise ValueError("idempotency_key is too long")
         effective_budget = budget if isinstance(budget, SwarmBudget) else SwarmBudget.from_dict(budget)
-        effective_concurrency = min(max(1, int(max_concurrency)), limits.MAX_SWARM_PLAN_CONCURRENCY)
+        # 0 means "auto": the decomposer picks the concurrency from the task shape.
+        # A positive value is clamped to the hard ceiling.  Negative values are
+        # treated as auto (defensive: the schema already rejects them, but a direct
+        # caller might pass -1 to mean "decide for me").
+        if max_concurrency <= 0:
+            effective_concurrency = 0  # sentinel: decomposer will compute
+        else:
+            effective_concurrency = min(max(1, int(max_concurrency)), limits.MAX_SWARM_PLAN_CONCURRENCY)
         fingerprint = _admission_fingerprint(
             goal=goal,
             mode=mode,

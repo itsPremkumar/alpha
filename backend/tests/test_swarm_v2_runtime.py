@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
+
 import pytest
 
 from alpha.swarm.aggregator import SwarmAggregator
@@ -280,6 +284,54 @@ async def test_runner_persists_citation_audit_only_after_accepting_worker_result
     assert result["status"] == "completed"
     assert plan.tasks["task-1"].citation_audit == audit
     assert coordinator.get_swarm(plan.swarm_id).to_dict()["tasks"]["task-1"]["citation_audit"] == audit
+
+
+@pytest.mark.asyncio
+async def test_runner_executes_a_thousand_item_swarm_with_bounded_parallel_workers(tmp_path, monkeypatch):
+    coordinator = SwarmCoordinator(storage_dir=tmp_path / "swarms")
+    items = [f"item-{index + 1}" for index in range(1000)]
+    plan = coordinator.create_swarm(
+        goal="Process every independent item",
+        mode=SwarmMode.MAP_REDUCE,
+        items=items,
+        max_concurrency=1000,
+        budget=SwarmBudget(max_tasks=1001),
+    )
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+
+    class Worker:
+        def execute_task(self, task, _plan):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            try:
+                time.sleep(0.002)
+                return {
+                    "summary": f"Processed {task.task_id}",
+                    "evidence": [],
+                    "artifacts": [],
+                    "tool_calls": 0,
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                }
+            finally:
+                with lock:
+                    active -= 1
+
+    runner = AsyncSwarmRunner(coordinator, poll_interval=0.01)
+    monkeypatch.setattr(runner, "_build_worker", lambda _task: Worker())
+    result = await asyncio.wait_for(runner.run_swarm_async(plan.swarm_id), timeout=120)
+
+    assert result["status"] == "completed"
+    assert plan.progress()["total"] == 1001
+    assert plan.progress()["completed"] == 1001
+    assert plan.metrics["effective_concurrency"] == 1000
+    # The runtime runs real worker calls concurrently but does not manufacture
+    # 1,000 concurrent threads: the selected value is a ceiling, and the host's
+    # executor/provider capacity determines measured overlap.
+    assert 1 < peak <= 1000
 
 
 def test_auto_replan_redirects_dependents_within_budget(tmp_path):

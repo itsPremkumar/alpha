@@ -7,6 +7,7 @@ import time
 import uuid
 from collections.abc import Mapping, Sequence
 
+from alpha.config.limits import MAX_SWARM_TASK_DEPENDENCIES
 from alpha.swarm.models import SwarmPlan, SwarmTaskLease, SwarmTaskNode, TaskNodeState
 
 
@@ -16,7 +17,10 @@ class SwarmPlanValidationError(ValueError):
 
 _TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _MAX_OBJECTIVE_CHARS = 32_000
-_MAX_DEPENDENCIES = 256
+# The fan-in ceiling is authority-owned: a map/reduce gather node depends on
+# every map task, so it must track the work-item ceiling rather than a local
+# literal that can silently refuse a legal plan size.
+_MAX_DEPENDENCIES = MAX_SWARM_TASK_DEPENDENCIES
 _MAX_RESULT_SUMMARY_CHARS = 50_000
 _MAX_EVIDENCE_ITEMS = 128
 _MAX_OUTPUT_ARTIFACTS = 128
