@@ -7,9 +7,95 @@ from collections.abc import Sequence
 
 from alpha.capabilities.eligibility import infer_capability_tags
 from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
-from alpha.swarm.planner import MAX_CANDIDATES, PlanCandidate, build_candidate, select_best_candidate
-from alpha.swarm.strategy import StrategyResolution, resolve_strategy
-from alpha.swarm.topology import compute_dag_features
+
+#: Capability-tag -> model-routing tier.  The tier names are the same keys the
+#: operator already declares under ``model_routing.tiers`` (frontier/coding/fast/
+#: local), so this adds no new config schema: a deployment that has not declared
+#: a tier simply gets no override and inherits the configured default model.
+#: Each tag maps to the tier whose *role* matches the work, not to a model name
+#: - names live in ``config.yaml``, never in code.
+_CAPABILITY_TIER: dict[str, str] = {
+    # Code production - the coding tier.
+    "code_generation": "coding",
+    "system_design": "coding",
+    "data_modeling": "coding",
+    "python": "coding",
+    "typescript": "coding",
+    "backend": "coding",
+    "sql": "coding",
+    "react": "coding",
+    "tailwind": "coding",
+    "docker": "coding",
+    "python_repl": "coding",
+    "performance_tuning": "coding",
+    # Review and verification - the frontier tier, because the judge must be at
+    # least as capable as the thing it judges.
+    "code_review": "frontier",
+    "code_audit": "frontier",
+    "security_review": "frontier",
+    "vulnerability_analysis": "frontier",
+    "permission_audit": "frontier",
+    "regression_suite": "frontier",
+    # Research and writing - the fast tier, because breadth beats depth here and
+    # these run in parallel.
+    "web_search": "fast",
+    "document_synthesis": "fast",
+    "technical_writing": "fast",
+    "incident_response": "fast",
+    "ui_design": "fast",
+}
+
+
+def _apply_capability_model_routing(task: SwarmTaskNode) -> None:
+    """Set ``model_override`` from capability tags, without overriding an
+    explicit caller choice.
+
+    A task that already carries ``model_override`` (an operator or a prior
+    build) keeps it - this layer only fills in the gap.  A missing tier or a
+    missing model name is silently skipped: routing is advisory, and the
+    runner's ``resolve_subagent_model_name`` falls back to the configured
+    default, which is exactly the pre-existing behaviour.
+    """
+
+    if task.model_override:
+        return
+    if not task.capability_tags:
+        return
+    try:
+        from alpha.config import get_app_config
+
+        app_config = get_app_config()
+        routing = getattr(app_config, "model_routing", None)
+        tiers = getattr(routing, "tiers", None) if routing is not None else None
+        if not isinstance(tiers, dict):
+            return
+    except Exception:
+        return
+
+    # Pick the tier of the highest-priority tag.  Frontier beats coding beats
+    # fast, so a task that both writes and reviews gets the judge's tier.
+    tier_priority = {"frontier": 3, "coding": 2, "fast": 1, "local": 0}
+    chosen_tier: str | None = None
+    for tag in task.capability_tags:
+        tier = _CAPABILITY_TIER.get(str(tag))
+        if tier is None:
+            continue
+        if chosen_tier is None or tier_priority.get(tier, -1) > tier_priority.get(chosen_tier, -1):
+            chosen_tier = tier
+
+    if chosen_tier is None or chosen_tier not in tiers:
+        return
+    chain = tiers.get(chosen_tier)
+    if not isinstance(chain, list) or not chain:
+        return
+    name = str(chain[0]).strip()
+    if name:
+        task.model_override = name
+
+
+from alpha.swarm.planner import MAX_CANDIDATES, PlanCandidate, build_candidate, select_best_candidate  # noqa: E402
+from alpha.swarm.strategy import StrategyResolution, resolve_strategy  # noqa: E402
+from alpha.swarm.topology import compute_dag_features  # noqa: E402
 
 
 class SwarmTaskDecomposer:
@@ -185,6 +271,7 @@ class SwarmTaskDecomposer:
             if task.capability_tags:
                 if task.capability_source == "none":
                     task.capability_source = "declared"
+                _apply_capability_model_routing(task)
                 continue
             directive = task.objective
             if goal and goal in directive:
@@ -196,6 +283,7 @@ class SwarmTaskDecomposer:
                 # two differently: a declaration must be covered in full, a
                 # hint needs at least one tag and is then ranked by coverage.
                 task.capability_source = "inferred"
+                _apply_capability_model_routing(task)
 
     @classmethod
     def _candidate_modes(cls, resolved: StrategyResolution, items: Sequence[str] | None) -> list[SwarmMode]:
