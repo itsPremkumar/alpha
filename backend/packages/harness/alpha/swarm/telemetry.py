@@ -320,20 +320,34 @@ class SwarmTelemetry:
 
         spawned = len(plan.tasks)
         completed = sum(1 for task in plan.tasks.values() if task.state == TaskNodeState.COMPLETED)
+        failed = sum(1 for task in plan.tasks.values() if task.state == TaskNodeState.FAILED)
         meaningful = sum(1 for task in plan.tasks.values() if task.state == TaskNodeState.COMPLETED and bool((task.result_summary or "").strip()))
         ratio = round(meaningful / spawned, 6) if spawned else None
         # A wide fan-out that completes little is the shape to flag.  The
         # threshold is deliberately low: four tasks is already a fan-out, and
         # fewer than half of them producing anything is not parallelism.
-        flagged = bool(spawned >= 4 and ratio is not None and ratio < 0.5)
+        #
+        # But only once the run has produced evidence.  A freshly spawned plan
+        # with four pending tasks and zero completions is not spurious
+        # parallelism - it has not started - and flagging it would report a
+        # verdict nobody measured.  Hence the terminal-state gate below.
+        has_evidence = completed + failed > 0
+        flagged = bool(spawned >= 4 and has_evidence and ratio is not None and ratio < 0.5)
+        if not has_evidence:
+            state = "unknown"
+        elif flagged:
+            state = "spurious"
+        else:
+            state = "ok"
         return {
             "tasks_spawned": spawned,
             "tasks_completed": completed,
+            "tasks_failed": failed,
             "tasks_with_results": meaningful,
             "completion_ratio": ratio,
             "flagged": flagged,
-            "state": "spurious" if flagged else ("ok" if ratio is not None else "unknown"),
-            "basis": "completed tasks with a non-empty result over spawned tasks; flagged at >=4 spawned with ratio < 0.5",
+            "state": state,
+            "basis": "completed tasks with a non-empty result over spawned tasks; flagged at >=4 spawned with ratio < 0.5 once any task reached a terminal state",
         }
 
     @staticmethod

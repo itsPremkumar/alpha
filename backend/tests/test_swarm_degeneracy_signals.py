@@ -128,6 +128,34 @@ class TestSpuriousParallelism(unittest.TestCase):
         self.assertIsNone(result["completion_ratio"])
         self.assertEqual(result["state"], "unknown")
 
+    def test_a_freshly_spawned_fan_out_is_not_yet_spurious(self) -> None:
+        """The regression: zero completions is not evidence of hollowness.
+
+        A plan with four pending tasks and nothing finished has not *failed* to
+        parallelise - it has not started.  Flagging it reported a verdict nobody
+        measured, which is the same class of lie as a fabricated zero.
+        """
+
+        plan = _plan([SwarmTaskNode(task_id=f"t{i}", objective=f"o{i}") for i in range(4)])
+        result = SwarmTelemetry.subtask_completion_ratio(plan)
+        self.assertEqual(result["tasks_spawned"], 4)
+        self.assertEqual(result["tasks_completed"], 0)
+        # The ratio is a real measurement (zero of four produced a result), so it
+        # is 0.0 rather than None.  What must NOT happen is the verdict: with no
+        # terminal state there is no evidence the fan-out was ever hollow.
+        self.assertEqual(result["completion_ratio"], 0.0)
+        self.assertIs(result["flagged"], False)
+        self.assertEqual(result["state"], "unknown")
+
+    def test_failures_alone_count_as_evidence(self) -> None:
+        """Four spawned, all failed: evidence exists, and it is not parallelism."""
+
+        plan = _plan([SwarmTaskNode(task_id=f"t{i}", objective=f"o{i}", state=TaskNodeState.FAILED) for i in range(4)])
+        result = SwarmTelemetry.subtask_completion_ratio(plan)
+        self.assertEqual(result["tasks_failed"], 4)
+        self.assertIs(result["flagged"], True)
+        self.assertEqual(result["state"], "spurious")
+
     def test_a_blank_result_summary_does_not_count_as_meaningful(self) -> None:
         """``completed`` means execution ended, not that it produced anything."""
 
