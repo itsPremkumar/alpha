@@ -113,10 +113,24 @@ test("the selector exposes real worker and category choices", () => {
   assert.match(composer, /Concurrent subagents/);
   assert.match(composer, /Total subagents/);
   assert.match(chat, /max_total_subagents/);
-  // Arena is not offered here; a fabricated option would be a claim no request
-  // can honour. Checked in both files because the rows now live in one of them.
+  // Arena used to be asserted ABSENT here. That has changed deliberately.
+  //
+  // It was absent because Arena cannot be a delegation mode: the run request
+  // carries only `preferred_subagent_type` and `preferred_subagent_category`, so
+  // an `arena:*` row would send nothing the server acts on and the message would
+  // silently run as plain `auto`. A control that looks like a choice and changes
+  // nothing is worse than no control.
+  //
+  // What replaced that is an `engine:` group whose rows NAVIGATE to the surface
+  // that owns each engine, so Arena is now reachable from the picker without ever
+  // pretending to be this run's delegation mode. The pin that matters is the
+  // namespace, not the absence.
   assert.doesNotMatch(composer, /<option disabled>Arena/);
-  assert.doesNotMatch(modeView, /Arena/);
+  assert.doesNotMatch(modeView, /"arena:[a-z]/);
+  assert.match(modeView, /engine:/);
+  assert.match(composer, /onDelegationEngineChange/);
+  // An engine row must navigate, never be sent as a delegation mode.
+  assert.match(composer, /next\.startsWith\("engine:"\)/);
 });
 
 test("the control is disabled while a run is in flight", () => {

@@ -41,7 +41,15 @@ const code = ts.transpileModule(source, {
   },
 }).outputText;
 
-const { firstSentence, buildDelegationGroups, optionText, selectedDetail } = await import(toDataUrl(code));
+const {
+  firstSentence,
+  buildDelegationGroups,
+  optionText,
+  selectedDetail,
+  buildEngineGroups,
+  engineValue,
+  engineTargetView,
+} = await import(toDataUrl(code));
 
 /** The words a shortened label must never end on. Mirrors the module's own set. */
 const DANGLING_WORDS = new Set([
@@ -383,4 +391,66 @@ test("an unknown persisted mode yields no tooltip text, not a guess", () => {
   const groups = buildDelegationGroups({ choices: catalog });
   assert.equal(selectedDetail(groups, "category:from-the-future"), "");
   assert.equal(selectedDetail(groups, "type:nope"), "");
+});
+
+// ---------------------------------------------------------------------------
+// The other engines — present, but never masquerading as a delegation mode
+// ---------------------------------------------------------------------------
+
+test("arena and the other engines are offered as their own group", () => {
+  const groups = buildEngineGroups({ arenaEnabled: true });
+  assert.equal(groups.length, 1);
+  const ids = groups[0].rows.map((r) => r.id);
+  for (const id of ["arena", "workflow", "council", "deliberation", "orchestration"]) {
+    assert.ok(ids.includes(id), `missing engine row: ${id}`);
+  }
+  // The group label must say these are separate runs, or the row reads as a
+  // delegation choice it cannot be.
+  assert.match(groups[0].label, /own run/i);
+});
+
+test("an engine row can never be mistaken for a delegation mode", () => {
+  // The run request carries only `preferred_subagent_type` and
+  // `preferred_subagent_category`. An unnamespaced value would be silently
+  // ignored and the message would run as plain `auto`.
+  const groups = buildEngineGroups({ arenaEnabled: true });
+  for (const row of groups[0].rows) {
+    assert.ok(engineValue(row).startsWith("engine:"), row.id);
+    assert.ok(!engineValue(row).startsWith("type:"));
+    assert.ok(!engineValue(row).startsWith("category:"));
+  }
+});
+
+test("every engine row names the view that owns it", () => {
+  const groups = buildEngineGroups({ arenaEnabled: true });
+  for (const row of groups[0].rows) {
+    assert.ok(row.view.trim().length > 0, `${row.id} names no view`);
+    assert.ok(row.hint.trim().length > 0, `${row.id} has no hint`);
+    assert.equal(engineTargetView(groups, engineValue(row)), row.view);
+  }
+});
+
+test("a real delegation mode is not an engine row", () => {
+  const groups = buildEngineGroups({ arenaEnabled: true });
+  assert.equal(engineTargetView(groups, "category:quick"), null);
+  assert.equal(engineTargetView(groups, "type:bash"), null);
+  assert.equal(engineTargetView(groups, "off"), null);
+});
+
+test("arena disabled by the Gateway is reported, not offered as usable", () => {
+  // `GET /arena/config` is a real read; when it says Arena is off the row must
+  // say so rather than present a tournament the Gateway would refuse.
+  const groups = buildEngineGroups({ arenaEnabled: false });
+  const arena = groups[0].rows.find((r) => r.id === "arena");
+  assert.match(arena.hint, /disabled/i);
+  assert.ok(arena.unavailable.length > 0, "a disabled engine must carry the reason");
+});
+
+test("an unreadable arena state does not hide a working feature", () => {
+  // A failed read is `null`, not `false`. Claiming "disabled" from a read that
+  // did not answer would be inventing a measurement.
+  const groups = buildEngineGroups({ arenaEnabled: null });
+  const arena = groups[0].rows.find((r) => r.id === "arena");
+  assert.ok(!/disabled/i.test(arena.hint), arena.hint);
+  assert.equal(arena.unavailable, "");
 });

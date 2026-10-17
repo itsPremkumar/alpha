@@ -266,6 +266,121 @@ export function buildDelegationGroups(input: {
   return groups;
 }
 
+// ---------------------------------------------------------------------------
+// Other engines — NOT delegation modes
+// ---------------------------------------------------------------------------
+
+/**
+ * An execution engine that owns its own run, rather than a way to delegate one.
+ *
+ * These cannot be `delegationMode` values. The run request carries exactly two
+ * delegation fields — `preferred_subagent_type` and
+ * `preferred_subagent_category` — and nothing else. An `arena:standard` row
+ * would send neither, so the server would treat it as plain `auto`: a control
+ * that looks like a choice and changes nothing. So these are *navigational* rows
+ * that open the surface which owns the engine, and their `value` is prefixed
+ * `engine:` precisely so no prefix-stripping branch can mistake one for a
+ * delegation mode.
+ */
+export interface EngineRow {
+  id: string;
+  label: string;
+  /** What this engine is, and why it is not a delegation option. */
+  hint: string;
+  /** The workspace view that owns it. */
+  view: string;
+  /** Why it is unavailable, when it is. `""` means available. */
+  unavailable: string;
+}
+
+export interface EngineGroup {
+  id: string;
+  label: string;
+  rows: EngineRow[];
+}
+
+/**
+ * The engines that exist beside the delegation picker.
+ *
+ * `arenaEnabled` is a real measurement (`GET /arena/config`), not a guess: when
+ * the Gateway says Arena is off, the row is not offered as though it could run.
+ * The remaining engines have **no read route** for their current state, which is
+ * why their `unavailable` is `""` — the surface itself is the authority, and this
+ * catalogue does not claim a value it cannot measure.
+ */
+export function buildEngineGroups(input: { arenaEnabled?: boolean | null }): EngineGroup[] {
+  const arena =
+    input.arenaEnabled === false
+      ? {
+          id: "arena",
+          label: "Arena",
+          hint: "competitive sub-agents, judged — reports Arena disabled",
+          view: "team",
+          unavailable: "Arena is disabled in this deployment's configuration.",
+        }
+      : {
+          id: "arena",
+          label: "Arena",
+          hint: "competitive sub-agents, judged — starts its own run",
+          view: "team",
+          unavailable: "",
+        };
+
+  return [
+    {
+      id: "engines",
+      label: "Other engines — each starts its own run",
+      rows: [
+        arena,
+        {
+          id: "workflow",
+          label: "Dynamic workflow",
+          hint: "the engine picks the tier per prompt — auto-routed",
+          view: "workflows",
+          unavailable: "",
+        },
+        {
+          id: "council",
+          label: "Council",
+          hint: "several models settle one disagreement — starts its own run",
+          view: "messages",
+          unavailable: "",
+        },
+        {
+          id: "deliberation",
+          label: "Staged deliberation",
+          hint: "ordered stages with quorum and recorded dissent",
+          view: "deliberation",
+          unavailable: "",
+        },
+        {
+          id: "orchestration",
+          label: "Orchestration mode",
+          hint: "per project: parallel, moderated, quorum, round_robin",
+          view: "projects",
+          unavailable: "",
+        },
+      ],
+    },
+  ];
+}
+
+/** The value an engine row sends, namespaced so it can never be a mode. */
+export function engineValue(row: EngineRow): string {
+  return `engine:${row.id}`;
+}
+
+/** The delegation value implied by an `engine:` row, or `null` if it is not one. */
+export function engineTargetView(groups: EngineGroup[], value: string): string | null {
+  if (!value.startsWith("engine:")) return null;
+  for (const group of groups) {
+    for (const row of group.rows) {
+      if (engineValue(row) === value) return row.view;
+    }
+  }
+  return null;
+}
+
 /** `label · hint` is what a native `<select>` row can actually render. */
 export function optionText(option: DelegationOption): string {
   return option.hint ? `${option.label} · ${option.hint}` : option.label;

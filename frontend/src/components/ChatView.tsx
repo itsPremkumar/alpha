@@ -4406,6 +4406,10 @@ export default function ChatView({
                         isLoading={isLoading}
                         delegationMode={delegationMode}
                         onDelegationModeChange={setDelegationMode}
+                // Arena / dynamic workflow / council own their own runs, so the
+                // picker navigates to the surface that configures them instead
+                // of pretending they are this run's delegation mode.
+                onDelegationEngineChange={(target) => setView(target as WorkspaceView)}
                         subagentConcurrency={subagentConcurrency}
                         onSubagentConcurrencyChange={setSubagentConcurrency}
                         subagentTotal={subagentTotal}

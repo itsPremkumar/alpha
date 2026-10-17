@@ -38,7 +38,15 @@ import { InsertMenu } from "@/components/InsertMenu";
 import { ModelMenu } from "@/components/ModelMenu";
 import { QUICK_KEY_PROVIDERS } from "@/lib/model-menu";
 import { listSubagentCatalog, type SubagentDef } from "@/lib/subagents";
-import { buildDelegationGroups, optionText, selectedDetail } from "@/lib/delegation-mode-view";
+import { getArenaConfig } from "@/lib/arena";
+import {
+  buildDelegationGroups,
+  buildEngineGroups,
+  engineTargetView,
+  engineValue,
+  optionText,
+  selectedDetail,
+} from "@/lib/delegation-mode-view";
 import {
   concurrencyForTotal,
   concurrencyOptionsForTotal,
@@ -301,6 +309,15 @@ interface ComposerProps {
   /** Selected native task mode: off, automatic, a category, or a catalog worker. */
   delegationMode?: string;
   onDelegationModeChange?: (mode: string) => void;
+  /**
+   * Open the workspace view that owns another execution engine.
+   *
+   * Arena, dynamic workflow, council and staged deliberation each run their own
+   * engine with its own lifecycle, so the picker cannot select them for this
+   * message — it navigates to where they are chosen. Omit and the engine rows
+   * are omitted too, rather than offering a control that goes nowhere.
+   */
+  onDelegationEngineChange?: (view: string) => void;
   subagentConcurrency?: number;
   onSubagentConcurrencyChange?: (count: number) => void;
   subagentTotal?: number;
@@ -367,6 +384,7 @@ export function Composer({
   onEffortChange,
   delegationMode = "off",
   onDelegationModeChange,
+  onDelegationEngineChange,
   subagentConcurrency = 3,
   onSubagentConcurrencyChange,
   subagentTotal = 6,
@@ -402,6 +420,39 @@ export function Composer({
     () => buildDelegationGroups({ choices: subagentChoices, error: subagentCatalogError }),
     [subagentChoices, subagentCatalogError],
   );
+  /**
+   * Whether Arena reports itself enabled, read from the Gateway.
+   *
+   * A real measurement, not a guess: the Arena row is only offered as usable
+   * when `GET /arena/config` said so. A failed or absent read leaves the row
+   * alone rather than hiding a working feature — the Arena panel itself is the
+   * authority, and this control only refuses to claim more than it measured.
+   */
+  const [arenaEnabled, setArenaEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    let active = true;
+    void getArenaConfig()
+      .then((cfg) => {
+        if (active) setArenaEnabled(cfg.enabled);
+      })
+      .catch(() => {
+        if (active) setArenaEnabled(null);
+      });
+    return () => { active = false; };
+  }, []);
+  const engineGroups = useMemo(() => buildEngineGroups({ arenaEnabled }), [arenaEnabled]);
+  /**
+   * Open the surface that owns an engine row.
+   *
+   * The picker's `value` is a real delegation mode, so selecting an engine row
+   * navigates and the control renders the unchanged delegation mode again. That
+   * is intentional: an engine is not a delegation mode, and letting it linger as
+   * the selected value would imply the next message runs as an Arena.
+   */
+  const openEngine = (next: string) => {
+    const view = engineTargetView(engineGroups, next);
+    if (view) onDelegationEngineChange?.(view);
+  };
   /**
    * The tooltip for the closed control.
    *
@@ -1247,7 +1298,13 @@ export function Composer({
                 id="composer-subagent-mode"
                 value={delegationMode}
                 disabled={isLoading}
-                onChange={(event) => onDelegationModeChange(event.target.value)}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  // An `engine:` row opens its own surface instead of changing
+                  // this run's delegation mode; everything else is a real mode.
+                  if (next.startsWith("engine:")) openEngine(next);
+                  else onDelegationModeChange(next);
+                }}
                 aria-label="Subagent mode"
                 title={delegationTitle}
                 className={`max-w-56 rounded-lg border border-border/70 bg-muted/60 px-2 py-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 ${delegationMode !== "off" ? "border-primary/40 text-primary" : "text-muted-foreground"}`}
@@ -1273,6 +1330,26 @@ export function Composer({
                     ))}
                   </optgroup>
                 ))}
+                {/*
+                  The other engines. Deliberately a separate `<optgroup>` and
+                  deliberately NOT delegation modes: the run request carries only
+                  `preferred_subagent_type` and `preferred_subagent_category`, so
+                  a row claiming to be one would change nothing. These navigate.
+                */}
+                {onDelegationEngineChange &&
+                  engineGroups.map((group) => (
+                    <optgroup key={group.id} label={group.label}>
+                      {group.rows.map((row) => (
+                        <option
+                          key={row.id}
+                          value={engineValue(row)}
+                          title={row.unavailable || row.hint}
+                        >
+                          {optionText({ label: row.label, hint: row.unavailable || row.hint, value: engineValue(row), detail: "" })}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
               </select>
             )}
             {delegationMode !== "off" && onSubagentConcurrencyChange && onSubagentTotalChange && (
