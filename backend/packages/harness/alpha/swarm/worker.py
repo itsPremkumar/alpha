@@ -197,8 +197,14 @@ def _deliver_objective(*, model, system_prompt: str, objective: str, worker_labe
 
 
 def _model_label(model, requested: str | None) -> str:
-    """Name of the model that actually produced the output (for evidence)."""
-    return str(getattr(model, "model_name", None) or getattr(model, "model", None) or requested or "default")
+    """Name of the model that actually produced the output (for evidence).
+
+    The last rung answers ``"unknown"``, never ``"default"``: this label feeds
+    the governor's ``models_used``, and borrowing the deployment's
+    default-model identity for a lookup nobody performed would attribute work
+    to a model that was never resolved.
+    """
+    return str(getattr(model, "model_name", None) or getattr(model, "model", None) or requested or "unknown")
 
 
 class SpecialistBotWorker:

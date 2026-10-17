@@ -143,6 +143,26 @@ def test_default_model_is_not_a_made_up_alias():
     assert worker_mod.EphemeralSubagentWorker("worker-x").model is None
 
 
+def test_model_label_never_claims_a_default_nobody_measured():
+    """The label feeds governor ``models_used`` — the latest rung of the
+    fallback used to answer ``"default"``, which borrows the deployment's
+    default-model identity for a lookup nobody performed. Object names win;
+    the requested override is then honest (it names what was asked to run);
+    past that the only truthful word is ``unknown``."""
+
+    class _Unnamed:
+        pass
+
+    named = worker_mod._model_label(object, None)  # neither model_name nor model attribute
+    assert named == "unknown", "an unnameable model must not be reported as 'default'"
+
+    class _HasModel:
+        model = "union-alpha"
+
+    assert worker_mod._model_label(_HasModel(), None) == "union-alpha"
+    assert worker_mod._model_label(None, "union-alpha") == "union-alpha"
+
+
 def test_worker_without_models_fails_loudly(monkeypatch):
     # Teeth: with zero models configured the old code still returned
     # status=success plus fabricated evidence.
