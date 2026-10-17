@@ -416,15 +416,13 @@ def _run_streaming_process(
                 if text:
                     log_file.write(text)
                     log_file.flush()
-                    sys.stdout.write(text)
-                    sys.stdout.flush()
+                    _write_console(text)
                     output_tail = (output_tail + text)[-3000:]
             final_text = decoder.decode(b"", final=True)
             if final_text:
                 log_file.write(final_text)
                 log_file.flush()
-                sys.stdout.write(final_text)
-                sys.stdout.flush()
+                _write_console(final_text)
                 output_tail = (output_tail + final_text)[-3000:]
             exit_code = process.wait()
         except BaseException:
@@ -440,6 +438,20 @@ def _run_streaming_process(
             if process.stdout is not None:
                 process.stdout.close()
     return output_tail, exit_code
+
+
+def _write_console(text: str) -> None:
+    """Write streamed output without letting a legacy console encoding abort a stage.
+
+    The UTF-8 stage log remains authoritative and retains the original text.
+    For a Windows terminal such as cp1252, characters the console cannot encode
+    are rendered as ``\\uXXXX`` escapes so the diagnostic run can finish.
+    """
+    stream = sys.stdout
+    encoding = getattr(stream, "encoding", None) or "utf-8"
+    safe_text = text.encode(encoding, errors="backslashreplace").decode(encoding, errors="replace")
+    stream.write(safe_text)
+    stream.flush()
 
 
 def _args() -> argparse.Namespace:

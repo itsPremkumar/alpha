@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import sys
 import threading
 import time
@@ -320,3 +321,27 @@ def test_streaming_runtime_stage_keeps_failure_output_and_exit_code(tmp_path: Pa
     assert "assertion failure details" in result.output_tail
     assert "assertion failure details" in (reports / "pytest-failure.log").read_text(encoding="utf-8")
     assert "assertion failure details" in capsys.readouterr().out
+
+
+def test_streaming_runtime_stage_escapes_characters_unsupported_by_console_encoding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_diagnostics_module()
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    console_bytes = io.BytesIO()
+    console = io.TextIOWrapper(console_bytes, encoding="cp1252", errors="strict")
+    monkeypatch.setattr(sys, "stdout", console)
+
+    result = module._run_process_stage(
+        "pytest-unicode",
+        [sys.executable, "-c", "import sys; sys.stdout.reconfigure(encoding='utf-8'); print('check ✓ passed')"],
+        cwd=tmp_path,
+        reports_dir=reports,
+        stream_output=True,
+    )
+
+    assert result.ok is True
+    assert "check ✓ passed" in (reports / "pytest-unicode.log").read_text(encoding="utf-8")
+    assert b"check \\u2713 passed" in console_bytes.getvalue()
