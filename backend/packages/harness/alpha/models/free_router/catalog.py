@@ -64,6 +64,9 @@ _MODELS_SHOWN_IN_API = 25
 # must not be multiplied by the number of sequential failover candidates.
 CHAT_ATTEMPT_TIMEOUT_SECONDS = 30.0
 CHAT_TOTAL_TIMEOUT_SECONDS = 120.0
+# Keep operator-triggered health probes concurrent without allowing a large
+# operator-supplied gateway catalog to create an unbounded thread burst.
+MAX_CONCURRENT_PROBES = 8
 
 
 class FreeLLMUnavailableError(ConnectionError):
@@ -689,21 +692,46 @@ class FreeLLMRouter:
         if not self._loaded or not any(state.models for state in self._states.values()):
             self.refresh()
 
+        candidates = self._candidates_for_probe()
+        if not candidates:
+            return {}
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        # One slow anonymous endpoint must not hold every later provider's
+        # result hostage. Provider calls keep their own 12s deadline, while a
+        # fixed worker cap prevents a large config from spawning one thread per
+        # gateway. Futures are consumed in provider order so the API result is
+        # deterministic even though the probes run concurrently.
+        workers = min(MAX_CONCURRENT_PROBES, len(candidates))
         summary: dict[str, Any] = {}
-        for spec, mid in self._candidates_for_probe():
-            probe_result = self._layer.health_probe(spec, mid)
-            if probe_result.ok:
-                self.mark_success(spec.name, latency_ms=probe_result.latency_ms)
-            else:
-                self.mark_failure(spec.name, probe_result.error or "probe failed", inconclusive=True)
-            summary[spec.name] = {
-                "ok": probe_result.ok,
-                "latency_ms": round(probe_result.latency_ms, 1),
-                "error": probe_result.error,
-                "note": "failed probe is inconclusive; chat health unchanged unless previously proven",
-            }
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="alpha-free-probe") as pool:
+            futures = [(spec, pool.submit(self._safe_health_probe, spec, mid)) for spec, mid in candidates]
+            for spec, future in futures:
+                probe_result = future.result()
+                if probe_result.ok:
+                    self.mark_success(spec.name, latency_ms=probe_result.latency_ms)
+                else:
+                    self.mark_failure(spec.name, probe_result.error or "probe failed", inconclusive=True)
+                summary[spec.name] = {
+                    "ok": probe_result.ok,
+                    "latency_ms": round(probe_result.latency_ms, 1),
+                    "error": probe_result.error,
+                    "note": "failed probe is inconclusive; chat health unchanged unless previously proven",
+                }
         self._save_cache()
         return summary
+
+    def _safe_health_probe(self, spec: Any, model_id: str) -> Any:
+        """Keep an unexpected adapter exception local to its provider result."""
+        try:
+            return self._layer.health_probe(spec, model_id)
+        except Exception as exc:  # noqa: BLE001 - one provider cannot sink the probe set
+            return provider_layer.ProbeResult(
+                ok=False,
+                latency_ms=0.0,
+                error=f"{type(exc).__name__}: {str(exc)[:150]}",
+            )
 
     def _candidates_for_probe(self) -> list[tuple[Any, str]]:
         """Probe set: providers with models, not currently cooling down."""

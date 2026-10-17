@@ -796,6 +796,50 @@ def test_free_catalog_endpoint_wires_refresh_and_probe(monkeypatch):
     assert view["probes"]["vireonix"]["ok"] is True
 
 
+def test_health_probes_run_concurrently_and_isolate_adapter_exceptions(tmp_path):
+    from types import SimpleNamespace
+
+    specs = [
+        providers_mod.ProviderSpec(
+            name=f"probe-{index}",
+            base_url=f"https://probe-{index}.example",
+            chat_path="/chat/completions",
+            models_path="/models",
+        )
+        for index in range(4)
+    ]
+    barrier = threading.Barrier(len(specs))
+
+    def health_probe(spec, _model_id):
+        # A sequential implementation times out at this barrier. The four
+        # parties can pass only if the router dispatches all probes together.
+        barrier.wait(timeout=2)
+        if spec.name == "probe-2":
+            raise RuntimeError("one gateway adapter failed")
+        return providers_mod.ProbeResult(ok=True, latency_ms=3.5)
+
+    layer = SimpleNamespace(
+        PROVIDER_ORDER=tuple(spec.name for spec in specs),
+        PROVIDERS={spec.name: spec for spec in specs},
+        health_probe=health_probe,
+    )
+    router = FreeLLMRouter(ttl=300, cache_path=tmp_path / "parallel-probes.json", layer=layer)
+    router._loaded = True
+    for spec in specs:
+        router._states[spec.name].models = [{"id": "test-model"}]
+    candidates = [(spec, "test-model") for spec in specs]
+    router._candidates_for_probe = lambda: candidates
+
+    results = router.probe()
+
+    assert list(results) == [spec.name for spec in specs]
+    assert all(results[spec.name]["ok"] for spec in specs if spec.name != "probe-2")
+    assert results["probe-2"]["ok"] is False
+    assert results["probe-2"]["error"] == "RuntimeError: one gateway adapter failed"
+    assert router._states["probe-2"].healthy is None  # an inconclusive probe is not chat failure
+    assert router._states["probe-0"].healthy is True
+
+
 def test_singleton_lifecycle():
     reset_free_router()
     first = get_free_router()

@@ -947,8 +947,10 @@ exactly-once execution.
   adapter is wired.
 - **Free model gateways & fail-closed routing** — keyless `alpha-free` routing
   over daily-refreshed free catalogs (free is **computed**, not trusted), with
-  automatic failover. Async cancellation closes Alpha's local provider request
-  and stops failover; remote providers may continue already-accepted work. A
+  automatic failover. The optional provider health check probes gateways in a
+  bounded concurrent pool so one slow endpoint does not serialize the catalog.
+  Async cancellation closes Alpha's local provider request and stops failover;
+  remote providers may continue already-accepted work. A
   routing table that resolves to nothing returns an empty chain plus a reason
   instead of an invented model. The workspace header and composer both identify
   the default selection as **Default (auto-routed)**; unknown saved model ids

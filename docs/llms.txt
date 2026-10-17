@@ -72,6 +72,7 @@ Operator console: the Mods workspace view renders the ordered chain and each mod
 ## Operations
 
 - [Configuration](CONFIGURATION.md): every setting, resolution order, and environment variable.
+- [Model routing](https://github.com/itsPremkumar/alpha/blob/main/backend/packages/harness/alpha/models/AGENTS.md): configured free gateways, bounded health probes, tri-state provider status, and fail-closed routing.
 - [Deployment](DEPLOYMENT.md): Docker Compose, Kubernetes Helm, Nginx, and the Windows installer.
 - [Production runbook](PRODUCTION.md): probes, `/api/ops/*`, monitoring, and disaster recovery.
 - [Production readiness inventory](PRODUCTION_READINESS_INVENTORY.md): evidence-backed status and open gaps. Read before exposing a deployment.

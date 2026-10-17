@@ -17,6 +17,7 @@ Alpha is a LangGraph-based AI super-agent system — a backend "super agent" wit
 ## Key Capabilities
 
 - **Super Agent**: LangGraph-based orchestrator with tool calling, model routing, and autonomous execution
+- **Keyless model routing**: `alpha-free` discovers configured public gateways, uses bounded concurrent health probes, and fails over without promising anonymous-provider availability
 - **Sandboxed Execution**: Isolated environments (Docker, AIO, E2B, local) per thread with file I/O, network, and process isolation
 - **Persistent Memory**: owner-scoped memory with heuristic secret redaction before L1 record IDs are created, fail-closed writes, explicit refusal when memory-fabric data uses an unsupported future schema, optional deterministic task-aware recall, and default-off codebase structure memory that indexes only a trusted internal workspace root and recalls query-matched symbols/dependencies without injecting source text ([memory guide](https://github.com/itsPremkumar/alpha/blob/main/docs/MEMORY.md))
 - **Subagent Delegation**: Spawn bounded specialists; chat progress cards show status, readable latest step/tool-call summaries, reported steps and measured usage. The [Workforce guide](https://github.com/itsPremkumar/alpha/blob/main/docs/WORKFORCE.md) explains when to use subagents, swarm topologies, Arena counts, and how their limits differ
@@ -33,7 +34,7 @@ Alpha is a LangGraph-based AI super-agent system — a backend "super agent" wit
 - **Governance**: Tool risk policies, approval gates, capability ceilings, emergency stop
 - **Durable Runtime**: Crash recovery, network partitions, graceful shutdown, session persistence
 - **Autonomous command receipts**: Natural-language lifecycle matches show the Gateway's execution status and returned output in the chat; detection alone is not shown as a completed action
-- **APEX Autopilot**: Dispatches objectives through RunManager; completion requires evidence for every criterion. Registered probes and the shared run verifier can automatically measure exact-text/artifact readbacks and the typed auto-detected project-test criterion; supplied commands and arbitrary criteria remain unverified until a supported collector or owner evidence covers them.
+- **APEX Autopilot**: Dispatches objectives through RunManager; completion requires evidence for every criterion. The UI applies editable finite per-session defaults (100,000 tokens, 200 tool calls, 60 minutes); expanded session history shows those ceilings beside usage, and one in-flight model call can exceed the token ceiling. Registered probes and the shared run verifier can automatically measure exact-text/artifact readbacks and the typed auto-detected project-test criterion; supplied commands and arbitrary criteria remain unverified until a supported collector or owner evidence covers them.
 - **Conversation goal completion**: The bounded goal loop evaluates visible chat plus persisted successful tool receipts, while treating tool output as untrusted data; this model judgment is separate from measured APEX acceptance verification.
 - **Alpha-to-Alpha peer network**: Pair installations with single-use invites shown as QR codes and scanned locally from a camera or image; the peer network is disabled by default.
 

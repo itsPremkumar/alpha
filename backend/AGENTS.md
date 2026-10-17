@@ -108,6 +108,10 @@ guides under `packages/harness/alpha/`) and win where they are stricter.
 - Mechanically enforced delegation, fan-out, workflow and group ceilings are
   owned by `alpha.config.limits`; consumers import the shared constants.
   `tests/test_limit_authority_consistency.py` pins that boundary.
+- The keyless model router's operator health probe uses a fixed-size concurrent
+  pool, not a sequential provider loop; each failed probe is inconclusive and
+  must not downgrade chat health. See `alpha.models.free_router.catalog` and
+  `tests/test_free_llm_router.py`.
 - Workflow templates are proposals, not proof: built-in blueprints are seeded
   by `alpha.workflow.builtin_templates`; promotion requires measured evidence.
   See `tests/test_builtin_workflow_templates.py` and

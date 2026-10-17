@@ -174,6 +174,14 @@ is included in the honest exhaustion error; do not make a 600s model timeout
 apply independently to every free gateway. Coverage:
 `tests/test_free_llm_router.py` (`test_chat_caps_each_provider_attempt_even_when_model_timeout_is_long`,
 `test_chat_stops_failover_at_the_bounded_total_deadline`).
+
+The operator-triggered catalog health check runs one probe per eligible provider
+through a fixed worker pool (`MAX_CONCURRENT_PROBES`), keeping the result latency
+near the slowest probe rather than multiplying the 12-second probe timeout by
+provider count. Result rows are reassembled in configured provider order; one
+adapter exception becomes an inconclusive row for that provider and cannot hide
+the others. A failed probe never downgrades proven chat health. Coverage:
+`tests/test_free_llm_router.py::test_health_probes_run_concurrently_and_isolate_adapter_exceptions`.
 - **Egress-screened** by `assert_model_endpoint_url` before every request — the
   same policy that guards BYO model configuration — so discovery cannot become
   an SSRF probe against loopback, RFC1918, or cloud metadata.

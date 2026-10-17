@@ -17,6 +17,7 @@ Alpha is a LangGraph-based AI super-agent system — a backend "super agent" wit
 ## Key Capabilities
 
 - **Super Agent**: LangGraph-based orchestrator with tool calling, model routing, and autonomous execution
+- **Keyless model routing**: `alpha-free` discovers configured public gateways, uses bounded concurrent health probes, and fails over without promising anonymous-provider availability
 - **Sandboxed Execution**: Isolated environments (Docker, AIO, E2B, local) per thread with file I/O, network, and process isolation
 - **Persistent Memory**: owner-scoped memory with heuristic secret redaction before L1 record IDs are created, fail-closed writes, explicit refusal when memory-fabric data uses an unsupported future schema, optional deterministic task-aware recall, and default-off codebase structure memory that indexes only a trusted internal workspace root and recalls query-matched symbols/dependencies without injecting source text ([memory guide](https://github.com/itsPremkumar/alpha/blob/main/docs/MEMORY.md))
 - **Subagent Delegation**: Spawn bounded specialists; chat progress cards show status, readable latest step/tool-call summaries, reported steps and measured usage. The [Workforce guide](https://github.com/itsPremkumar/alpha/blob/main/docs/WORKFORCE.md) explains when to use subagents, swarm topologies, Arena counts, and how their limits differ

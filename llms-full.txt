@@ -100,6 +100,10 @@ cd frontend && pnpm test              # unit tests only
   and both build hooks and extension code execute with Gateway privileges.
 - Background autonomy loops are gated by `config.yaml -> autonomy.loops`. An
   absent id means disabled; all flags off means zero tasks.
+- Keyless `alpha-free` model routing discovers only gateways configured in
+  `config.yaml -> free_gateways`. Its optional health view uses a fixed-size
+  concurrent probe pool and per-provider timeouts; provider health is tri-state,
+  and public anonymous endpoints have no availability guarantee.
 - Per-bot model settings are **not** a second model file. Each bot profile may
   carry a `model_config` block (primary, ordered fallbacks, sampling, a
   counselling panel and a mixture panel) that only *names* models declared
