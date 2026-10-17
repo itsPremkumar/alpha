@@ -56,6 +56,7 @@ EXPECTED_GUIDANCE_PATHS = {
     "backend/packages/harness/alpha/reflection/AGENTS.md",
     "backend/packages/harness/alpha/reasoning_bank/AGENTS.md",
     "backend/packages/harness/alpha/skills/AGENTS.md",
+    "backend/packages/harness/alpha/swarm/AGENTS.md",
     "backend/packages/harness/alpha/subagents/AGENTS.md",
     "backend/packages/harness/alpha/tasks/AGENTS.md",
     "backend/packages/harness/alpha/tools/AGENTS.md",
