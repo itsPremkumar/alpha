@@ -48,6 +48,7 @@ Operator console: the Mods workspace view renders the ordered chain and each mod
 - Swarm creation reports the decomposer's predicted critical path and speedup; a plan estimated to exceed its declared wall-clock budget is refused before registration. Token and tool-call projections remain unmeasured.
 - Team Ops distinguishes requested model overrides from model labels recorded in worker evidence; the UI does not infer a model that the Gateway did not report.
 - Team Ops' swarm structure panel reports measured task overlap and meaningful completion from Gateway telemetry; unknown values and metric-read failures remain distinct, and the advisory signals do not verify correctness. Nonterminal swarm rows refresh every three seconds without reloading unrelated panels.
+- The swarm API and Team Ops support up to 1,000 explicit work items and a requested concurrency ceiling of 1,000. Actual overlap depends on ready-task count, local executor/provider capacity, and run budgets; see the [Workforce guide](https://github.com/itsPremkumar/alpha/blob/main/docs/WORKFORCE.md#choosing-a-method-and-its-size-in-the-ui).
 - [Per-bot model configuration](BOT_MODEL_CONFIG.md): each bot's primary model, fallback chain, counselling and mixture panels, named only from `config.yaml` `models[]`.
 - [Lion companion](LION_COMPANION.md): the local-first Milo companion and its presentation contract.
 - [Run recovery](RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.

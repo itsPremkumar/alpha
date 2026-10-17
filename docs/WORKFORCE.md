@@ -430,9 +430,12 @@ worker choices:
 | APEX | A bounded executive control plane that chooses among already-wired work engines | APEX session and mode surfaces; it does not replace `RunManager` or make every engine available |
 
 The composer controls only native `task` worker/category behavior; it does not
-pretend to launch another engine. Team Ops → Swarms selects all eight backend
+pretend to launch another engine. Team Ops → Swarms selects all ten backend
 topologies and a per-plan concurrency ceiling (safe default 4; Gateway maximum
-64). Team Ops → Arena selects among server-declared run modes, profiles and a
+1,000). The UI can accept up to 1,000 explicit map/reduce work items; each item
+becomes a map task and the gather stage adds one task. The requested concurrency
+is only a ceiling: actual overlap is limited by available DAG width, the local
+worker executor, provider capacity, and the run budget. Team Ops → Arena selects among server-declared run modes, profiles and a
 custom competitor count up to the operator's configured ceiling; modes absent
 from `implemented_modes` remain disabled with the server's explanation. Arena
 starts separately from draft creation and its confirmation gate is preserved.
@@ -453,14 +456,16 @@ execution policies, not interchangeable kinds of worker.
 | --- | --- | --- |
 | **Subagents → Off** | The lead should handle a routine request without native `task` delegation. | No subagent capacity is enabled for this run. |
 | **Subagents → Auto / category / named worker** | A task needs an isolated helper, or several independent bounded subtasks. Use `quick` for small jobs, `research` for evidence gathering, and `deep-research` for a longer multi-pass investigation; choose a named worker when its declared tools and role fit. | The concurrent and total values are ceilings (safe defaults 3 and 6), not a promise that Alpha will spawn that many agents. The Gateway also applies its capacity and allowlist. |
-| **Team Ops → Swarms → Auto** | Let the router choose a coordination shape after measuring the decomposed task graph. | `Max concurrency` is an upper bound on tasks running at once, not a fixed worker count; the server may lower it to its configured capacity. |
+| **Team Ops → Swarms → Auto** | Let the router choose a coordination shape after measuring the decomposed task graph. | `Max concurrency` is a requested ceiling up to 1,000, not a fixed worker count; DAG width, runtime/provider capacity and budgets can lower actual overlap. |
 | **Swarm → Parallel** | Tasks are independent and can proceed at the same time. | Same concurrency ceiling; dependencies can still prevent tasks from overlapping. |
-| **Swarm → Map–Reduce** | Split a collection or input into independent pieces, then combine their results. | Same concurrency ceiling across map work; reduction follows the map stage. |
+| **Swarm → Map–Reduce** | Split a collection or input into independent pieces, then combine their results. | Team Ops accepts up to 1,000 explicit work items; one gather task follows the map stage. The run budget must cover all map tasks plus gather. |
 | **Swarm → Scatter–Gather** | Explore a question or workload broadly, then collect results in a later phase. | Same concurrency ceiling; it does not set the number of candidate tasks. |
 | **Swarm → Hierarchical** | Work naturally separates into levels that need coordination between parent and child tasks. | Same concurrency ceiling across ready tasks at all levels. |
 | **Swarm → Debate** | Independent positions should challenge assumptions or expose disagreements. | Same concurrency ceiling; the task plan determines how many positions exist. |
 | **Swarm → Ensemble** | Generate independent candidate solutions and synthesize their useful parts. | Same concurrency ceiling; it is not a fixed number of candidates. |
 | **Swarm → Coding Worktree** | Parallel coding tasks need separate worktree isolation. | Same concurrency ceiling; it does not remove integration or merge-conflict work. |
+| **Swarm → Read Fanout** | Several independent read-only investigations can proceed in parallel. | Concurrency is capped by available tasks and runtime/provider capacity. |
+| **Swarm → Critical Path Split** | Work with a long dependency chain needs the longest branch shortened. | Dependencies remain authoritative; only ready tasks overlap. |
 | **Team Ops → Arena** | Compare multiple independent solutions through the attack/defend/judge bracket. | The competitor count is a real count. Start with `quick` (3) or `standard` (5); `deep` uses 8. Custom counts are bounded by operator configuration, and the estimate/confirmation gate applies before execution. See [Arena's call-cost table](ARENA.md#1-what-a-run-costs-and-why-it-asks-first). |
 
 The key distinction is that **Arena's count means competitors**, while a

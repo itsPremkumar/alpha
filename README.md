@@ -562,8 +562,10 @@ make doctor    # verify the environment
   messages, replans, progress, and leader/resource telemetry; the `swarm` tool
   exposes the same to authorized agents, plus `strategy` (why this mode was
   chosen), `telemetry`, and `trace` (ranked advisory context workers leave each
-  other). Team Ops exposes all eight swarm topologies and an operator-selectable
-  concurrency ceiling (safe UI default: four workers; the Gateway caps at 64).
+  other). Team Ops exposes all ten swarm topologies and an operator-selectable
+  concurrency ceiling up to 1,000 (safe UI default: four). Up to 1,000 explicit
+  work items can be fanned out; actual overlap remains bounded by task graph
+  width, local runtime capacity, provider limits, and the run budget.
 - **Multi-agent run controls** — the chat composer lets users opt into specialist
   task delegation and select bounded per-run concurrency/total limits (defaults
   3 and 6). Team Ops → Arena exposes server-supported bracket modes, profiles,

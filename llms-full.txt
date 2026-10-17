@@ -170,7 +170,7 @@ citations for action claims are surfaced as uncorroborated. A resolved call
 receipt proves only that the matching call was recorded as successful, not that
 the claim or delivery is correct.
 The [Workforce selection guide](https://github.com/itsPremkumar/alpha/blob/main/docs/WORKFORCE.md#choosing-a-method-and-its-size-in-the-ui)
-explains the eight swarm topologies and distinguishes a swarm's concurrency
+explains the ten swarm topologies and distinguishes a swarm's concurrency
 ceiling from subagent delegation limits and Arena's actual competitor count.
 
 ### 5.3 Continuous execution
