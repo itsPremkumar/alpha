@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from langchain_core.tools import StructuredTool
 
 from alpha.agents.lead_agent import agent as lead_agent_module
 from alpha.config.agent_preset_config import (
@@ -37,9 +37,10 @@ def _make_app_config(*, presets: dict | None = None) -> AppConfig:
 
 
 def _named_tool(name: str):
-    tool = MagicMock()
-    tool.name = name
-    return tool
+    def invoke(query: str) -> str:
+        return query
+
+    return StructuredTool.from_function(invoke, name=name, description=f"Test tool {name}")
 
 
 def _install_assembly_mocks(monkeypatch, app_config, tools: list, captured: dict) -> None:
@@ -127,7 +128,7 @@ class TestPresetAssembly:
         assert captured["groups"] is None
         assert captured["include_mcp"] is True
         assert captured["subagent_enabled"] is True
-        assert [tool.name for tool in result["tools"]] == ["bash", "ask_clarification"]
+        assert [tool.name for tool in result["tools"]] == ["bash", "ask_clarification", "tool_search"]
 
     def test_minimal_disables_mcp_subagents_and_clarification(self, monkeypatch):
         app_config = _make_app_config()
@@ -140,7 +141,7 @@ class TestPresetAssembly:
         )
         assert captured["include_mcp"] is False
         assert captured["subagent_enabled"] is False
-        assert [tool.name for tool in result["tools"]] == ["bash"]
+        assert [tool.name for tool in result["tools"]] == ["bash", "tool_search"]
 
     def test_custom_preset_groups_and_disabled_tools(self, monkeypatch):
         app_config = _make_app_config(presets={"research": AgentPresetConfig(tool_groups=["web"], disabled_tools=["bash"], subagent_enabled=False)})
@@ -153,14 +154,14 @@ class TestPresetAssembly:
         )
         assert captured["groups"] == ["web"]
         assert captured["subagent_enabled"] is False
-        assert [tool.name for tool in result["tools"]] == ["web_search"]
+        assert [tool.name for tool in result["tools"]] == ["web_search", "tool_search"]
 
     def test_unknown_preset_falls_back_without_breaking_assembly(self, monkeypatch):
         app_config = _make_app_config()
         tools = [_named_tool("bash")]
         result, captured = _assemble(monkeypatch, app_config, tools, {"agent_preset": "typo"})
         assert captured["include_mcp"] is True
-        assert [tool.name for tool in result["tools"]] == ["bash"]
+        assert [tool.name for tool in result["tools"]] == ["bash", "tool_search"]
 
     def test_preset_without_update_agent_withholds_extra_tool(self, monkeypatch):
         # agent_name path is covered implicitly: default agent has no
@@ -168,4 +169,4 @@ class TestPresetAssembly:
         app_config = _make_app_config(presets={"locked": AgentPresetConfig(allow_update_agent=False)})
         tools = [_named_tool("bash")]
         result, _ = _assemble(monkeypatch, app_config, tools, {"agent_preset": "locked"})
-        assert [tool.name for tool in result["tools"]] == ["bash"]
+        assert [tool.name for tool in result["tools"]] == ["bash", "tool_search"]
