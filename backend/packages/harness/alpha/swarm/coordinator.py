@@ -232,6 +232,9 @@ class SwarmCoordinator:
         max_concurrency: int = 8,
         *,
         owner_id: str = "default",
+        run_id: str | None = None,
+        thread_id: str | None = None,
+        requested_by: str | None = None,
         budget: SwarmBudget | Mapping[str, Any] | None = None,
         auto_replan: bool = False,
         requires_consensus: bool = False,
@@ -262,6 +265,18 @@ class SwarmCoordinator:
         normalized_owner = str(owner_id or "default").strip() or "default"
         if len(normalized_owner) > 256:
             raise ValueError("owner_id is limited to 256 characters")
+        # Run correlation is server-owned: the caller passes the run it is
+        # already executing in, never an arbitrary id it made up.  Bounded like
+        # owner_id so a malformed value cannot bloat the checkpoint.
+        normalized_run_id = str(run_id).strip() if run_id else ""
+        if len(normalized_run_id) > 256:
+            raise ValueError("run_id is limited to 256 characters")
+        normalized_thread_id = str(thread_id).strip() if thread_id else ""
+        if len(normalized_thread_id) > 256:
+            raise ValueError("thread_id is limited to 256 characters")
+        normalized_requested_by = str(requested_by).strip() if requested_by else ""
+        if len(normalized_requested_by) > 256:
+            raise ValueError("requested_by is limited to 256 characters")
         normalized_key = str(idempotency_key).strip() if idempotency_key else ""
         if normalized_key and len(normalized_key) > 256:
             raise ValueError("idempotency_key is too long")
@@ -300,6 +315,15 @@ class SwarmCoordinator:
             requires_consensus=bool(requires_consensus),
         )
         plan.owner_id = normalized_owner
+        plan.run_id = normalized_run_id or None
+        plan.thread_id = normalized_thread_id or None
+        plan.requested_by = normalized_requested_by or None
+        if plan.run_id or plan.thread_id:
+            plan.metrics["run"] = {
+                "run_id": plan.run_id,
+                "thread_id": plan.thread_id,
+                "requested_by": plan.requested_by,
+            }
         plan.budget = effective_budget
         projection = SwarmTelemetry.cost_projection(plan)
         if projection["wall_budget_exceeded"] is True:
@@ -392,6 +416,8 @@ class SwarmCoordinator:
                     "critical_path_seconds": plan.critical_path_seconds,
                     "schema_version": plan.schema_version,
                     "owner_id": plan.owner_id,
+                    "run_id": plan.run_id,
+                    "thread_id": plan.thread_id,
                     "team": {
                         "assigned": team_assignment.assigned_count,
                         "unassigned": team_assignment.unassigned_count,
@@ -461,6 +487,28 @@ class SwarmCoordinator:
             self.append_event(swarm_id, "SWARM_CANCELLED", details={"reason": str(reason or "")})
             self.checkpoint(swarm_id)
             return True
+
+    def cancel_for_run(self, run_id: str, reason: str = "run_cancelled") -> list[str]:
+        """Cancel every non-terminal swarm that ``run_id`` requested.
+
+        Called when the run that created a swarm is cancelled.  Without this the
+        swarm keeps spending budget after its requester is gone, because it has
+        no other link back to the run.  Already-terminal swarms are left alone:
+        their result is real and cancelling them would discard it.
+
+        Returns the ids actually cancelled, so a caller can report what it did
+        rather than assuming every matched swarm changed state.
+        """
+        target = str(run_id or "").strip()
+        if not target:
+            return []
+        with self._lock:
+            swarm_ids = [plan.swarm_id for plan in self._swarms.values() if plan.run_id == target and not is_terminal_swarm_status(plan.status)]
+        cancelled: list[str] = []
+        for swarm_id in swarm_ids:
+            if self.cancel_swarm(swarm_id, reason=reason):
+                cancelled.append(swarm_id)
+        return cancelled
 
     def step(self, swarm_id: str) -> dict[str, Any]:
         """Advance one durable scheduler tick (used by tools and integrations)."""

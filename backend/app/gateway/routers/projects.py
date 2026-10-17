@@ -1837,6 +1837,12 @@ async def trigger_project_perpetual_discovery(project_id: str, request: Request)
 @router.post("/{project_id}/perpetual/consolidate")
 @require_permission("projects", "write")
 async def trigger_project_perpetual_consolidation(project_id: str, request: Request) -> dict:
+    """Run a memory-consolidation cycle.
+
+    Returns 501 when no extractor is wired.  A consolidation that read no traces
+    and wrote no facts is not a 200 with zeroes — it is an unimplemented
+    capability, and the status code should say so.
+    """
     await _require_project(project_id, request)
 
     def _do():
@@ -1845,7 +1851,13 @@ async def trigger_project_perpetual_consolidation(project_id: str, request: Requ
         daemon = get_perpetual_daemon(project_id)
         return daemon.trigger_consolidation()
 
-    return await asyncio.to_thread(_do)
+    result = await asyncio.to_thread(_do)
+    if result.get("consolidation_skipped") or result.get("status") == "unavailable":
+        raise HTTPException(
+            status_code=501,
+            detail=result.get("reason") or result.get("unavailable_reason") or "memory consolidation is not implemented",
+        )
+    return result
 
 
 @router.post("/{project_id}/perpetual/goals")

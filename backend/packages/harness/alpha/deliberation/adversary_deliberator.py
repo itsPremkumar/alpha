@@ -1,8 +1,16 @@
 """Multi-Perspective Red-Team & Adversary Deliberator.
 
-Actively stress-tests proposed architectures, Living Specifications, and API schemas.
-Breaks multi-agent sycophancy by aggressively challenging optimistic assumptions,
-identifying boundary edge cases, and formulating concrete failure-mode attack vectors.
+Stress-tests proposed architectures, Living Specifications, and API schemas by
+challenging optimistic assumptions, identifying boundary edge cases, and
+formulating concrete failure-mode attack vectors.
+
+**Method disclosure:** this engine is a *keyword heuristic*, not a model call.
+It scans the design text for known risk terms (locking, retry, pagination, auth)
+and emits the attack vectors associated with those terms. It does not reason
+about the design, and a design that avoids the trigger vocabulary will score
+low regardless of its actual risk. Every critique carries
+``method="keyword_heuristic"`` so a caller cannot mistake this for model-backed
+adversarial reasoning.
 """
 
 from __future__ import annotations
@@ -46,6 +54,9 @@ class AdversaryCritique:
     attack_vectors: list[AdversaryAttackVector] = field(default_factory=list)
     risk_score: float = 0.0
     recommendations: list[str] = field(default_factory=list)
+    # How this critique was produced.  Always "keyword_heuristic" today: the
+    # engine matches trigger terms, it does not call a model.
+    method: str = "keyword_heuristic"
     created_at: str = field(default_factory=_now)
 
     def to_dict(self) -> dict[str, Any]:

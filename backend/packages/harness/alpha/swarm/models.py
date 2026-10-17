@@ -452,9 +452,19 @@ class SwarmPlan:
     quality_score: float = 0.0
     metrics: dict[str, Any] = field(default_factory=dict)
     # Swarm v2 state and policy fields.
-    schema_version: int = 2
+    # v3 adds run/thread correlation.  Readers accept any version; a v2
+    # checkpoint simply loads with the three new fields as None.
+    schema_version: int = 3
     revision: int = 0
     owner_id: str = "default"
+    # Run correlation.  A swarm created from inside a run records the run and
+    # thread that asked for it, so run-level cancel and recovery can reach the
+    # swarm instead of leaving it orphaned.  All three are optional: a swarm
+    # created from the HTTP API has no requesting run, and older checkpoints
+    # predate these fields.
+    run_id: str | None = None
+    thread_id: str | None = None
+    requested_by: str | None = None
     budget: SwarmBudget = field(default_factory=SwarmBudget)
     replan_count: int = 0
     round: int = 0
@@ -481,6 +491,9 @@ class SwarmPlan:
             "revision": self.revision,
             "swarm_id": self.swarm_id,
             "owner_id": self.owner_id,
+            "run_id": self.run_id,
+            "thread_id": self.thread_id,
+            "requested_by": self.requested_by,
             "goal": self.goal,
             # ``objective`` was the original public spelling.  Keep it as an
             # additive compatibility alias while new clients use ``goal``.
@@ -520,6 +533,11 @@ class SwarmPlan:
         return cls(
             swarm_id=str(data.get("swarm_id", "")),
             owner_id=str(data.get("owner_id", "default")),
+            # Tolerant read: an older checkpoint has none of these keys, and a
+            # missing run link must degrade to "unknown", never to a guess.
+            run_id=(str(data["run_id"]) if data.get("run_id") else None),
+            thread_id=(str(data["thread_id"]) if data.get("thread_id") else None),
+            requested_by=(str(data["requested_by"]) if data.get("requested_by") else None),
             goal=str(data.get("goal", "")),
             mode=mode,
             tasks=tasks,

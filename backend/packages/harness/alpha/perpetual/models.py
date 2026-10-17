@@ -88,6 +88,10 @@ class MemoryConsolidationReport:
     skills_indexed: int = 0
     pruned_tokens: int = 0
     summary: str = ""
+    # Honest outcome of the cycle.  ``unavailable`` means no consolidation ran
+    # and every count above is a real zero, not an estimate.
+    status: str = "ok"
+    unavailable_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

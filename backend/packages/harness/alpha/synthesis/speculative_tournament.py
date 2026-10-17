@@ -49,6 +49,10 @@ class TournamentBakeoffResult:
     execution_time_seconds: float
     cyclomatic_complexity: int
     pareto_score: float
+    # Why a candidate was not scored.  ``invalid_syntax`` means the patched
+    # code did not parse, so it was never executed and cannot win.  Empty for a
+    # candidate that actually ran.
+    rejection_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -156,6 +160,7 @@ class SpeculativeSynthesisEngine:
                     execution_time_seconds=0.0,
                     cyclomatic_complexity=cand.cyclomatic_complexity,
                     pareto_score=0.0,
+                    rejection_reason="invalid_syntax",
                 )
 
             start = time.time()

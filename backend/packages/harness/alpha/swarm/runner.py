@@ -73,6 +73,18 @@ def _final_event_for(status: str) -> str:
     return "SWARM_PARTIAL_SUCCESS"
 
 
+def shutdown_background_swarms(timeout: float = 5.0) -> dict[str, Any]:
+    """Stop every background swarm owned by this process.
+
+    Gateway-shutdown entry point.  A fresh runner is used because shutdown only
+    touches the module-level registries and the coordinator; it needs no
+    worker state of its own.
+    """
+    from alpha.swarm.coordinator import get_swarm_coordinator
+
+    return AsyncSwarmRunner(get_swarm_coordinator()).shutdown(timeout=timeout)
+
+
 class AsyncSwarmRunner:
     """Asynchronous background execution engine for :class:`SwarmPlan`."""
 
@@ -91,6 +103,9 @@ class AsyncSwarmRunner:
         self.reflector = reflector or SwarmReflector()
         self.provider = str(provider or "default")
         self._active_tasks: dict[str, asyncio.Task | threading.Thread] = {}
+        # Set by ``shutdown()``.  A background loop checks it before leasing new
+        # work so a stopping process does not start a task it cannot finish.
+        self._shutting_down = False
         # One shared tool pool for every specialist in a run, assembled at most
         # once and threaded through each worker. Per-worker assembly would
         # re-enter MCP discovery once per task; the pool is the same list
@@ -904,3 +919,60 @@ class AsyncSwarmRunner:
 
             task.add_done_callback(_cleanup)
             return task
+
+    def shutdown(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Stop in-flight swarms and record that they were interrupted.
+
+        Daemon threads are not joined at interpreter exit, so without this a
+        Gateway restart kills a running swarm with no event and no checkpoint:
+        the plan stays ``running`` on disk and nothing explains why it stopped.
+        Every swarm that was active here is cancelled/joined and then marked
+        ``paused`` with ``terminal_reason="gateway_shutdown"``, so a later boot
+        can resume it deliberately instead of guessing what happened.
+
+        Returns the swarm ids stopped, and those whose thread refused to join
+        within the timeout (still marked paused — a plan claiming to run with no
+        live worker is the failure this prevents).
+        """
+        self._shutting_down = True
+        deadline = time.time() + max(0.0, float(timeout))
+        with _ACTIVE_SWARM_REGISTRY_LOCK:
+            tasks = dict(_ACTIVE_SWARM_TASKS)
+            threads = dict(_ACTIVE_SWARM_THREADS)
+
+        for task in tasks.values():
+            task.cancel()
+
+        forced: list[str] = []
+        for swarm_id, thread in threads.items():
+            remaining = deadline - time.time()
+            if remaining > 0:
+                thread.join(remaining)
+            if thread.is_alive():
+                forced.append(swarm_id)
+
+        stopped: list[str] = []
+        for swarm_id in set(tasks) | set(threads):
+            with self.coordinator.state_lock:
+                plan = self.coordinator.get_swarm(swarm_id)
+                if plan is None or is_terminal_swarm_status(plan.status):
+                    continue
+                if plan.status != "paused":
+                    plan.status = "paused"
+                    plan.terminal_reason = "gateway_shutdown"
+                    self.coordinator.append_event(
+                        swarm_id,
+                        "SWARM_INTERRUPTED",
+                        details={"reason": "gateway_shutdown", "forced": swarm_id in forced},
+                    )
+                    self.coordinator.checkpoint(swarm_id)
+                stopped.append(swarm_id)
+
+        with _ACTIVE_SWARM_REGISTRY_LOCK:
+            for swarm_id in stopped:
+                _ACTIVE_SWARM_THREADS.pop(swarm_id, None)
+                task = _ACTIVE_SWARM_TASKS.get(swarm_id)
+                if task is not None and task.done():
+                    _ACTIVE_SWARM_TASKS.pop(swarm_id, None)
+        self._active_tasks.clear()
+        return {"stopped": stopped, "forced": forced, "shutting_down": True}

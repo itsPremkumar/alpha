@@ -1,5 +1,7 @@
 import json
 
+from langchain.tools import ToolRuntime
+
 from alpha.tools.builtins import (
     cognitive_plan,
     company_tool,
@@ -9,7 +11,6 @@ from alpha.tools.builtins import (
     resolve_builtin_tool,
     subagent_control,
     supervision_tool,
-    swarm_tool,
 )
 from alpha.tools.tools import BUILTIN_TOOLS, SUBAGENT_TOOLS, get_available_tools
 from app.gateway.app import app
@@ -154,7 +155,23 @@ def test_tool_invocability_end_to_end():
     assert isinstance(json.loads(sup_res), dict)
 
     # 8. swarm_tool
-    swarm_res = swarm_tool.invoke({"action": "evaluate", "goal": "Index 1000 repositories in parallel"})
+    # ``swarm`` takes an injected runtime because it records the run that
+    # requested the swarm (run correlation). Passing it explicitly is the same
+    # pattern the agent-messaging tests use for their injected runtime.
+    # Resolve through ``resolve_builtin_tool`` rather than the package attribute:
+    # if the ``swarm_tool`` submodule was imported first, the package attribute
+    # is the *module*, not the tool (the documented shadowing this helper exists
+    # for), and ``.invoke`` would not exist on it.
+    swarm_tool_impl = resolve_builtin_tool("swarm_tool")
+    swarm_runtime = ToolRuntime(
+        state={},
+        context={"thread_id": "wiring_thread", "run_id": "wiring_run"},
+        config={},
+        stream_writer=lambda _chunk: None,
+        tool_call_id="tool-call-swarm",
+        store=None,
+    )
+    swarm_res = swarm_tool_impl.invoke({"runtime": swarm_runtime, "action": "evaluate", "goal": "Index 1000 repositories in parallel"})
     assert "swarm" in str(swarm_res).lower() or "speedup" in str(swarm_res).lower()
 
     # 9. subagent_control

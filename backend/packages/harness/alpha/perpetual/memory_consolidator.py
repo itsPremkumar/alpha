@@ -17,23 +17,27 @@ class PerpetualMemoryConsolidator:
         self._reports: list[MemoryConsolidationReport] = []
 
     def consolidate(self, trace_count: int = 5) -> MemoryConsolidationReport:
-        """Run consolidation cycle over recent execution history."""
-        # Simulated extraction of verified facts from traces
-        facts_extracted = max(1, trace_count // 2)
-        skills_indexed = max(1, trace_count // 3)
-        pruned_tokens = trace_count * 1250
+        """Report the consolidation outcome.
 
-        summary = f"Consolidated {trace_count} episodic traces into {facts_extracted} semantic belief claims. Indexed {skills_indexed} reusable procedural skills and compacted {pruned_tokens} redundant tokens."
-
+        No extractor is wired yet, so this returns a real zero-count report
+        marked ``unavailable`` rather than numbers derived from ``trace_count``.
+        The previous implementation computed ``facts = trace_count // 2`` and
+        friends — arithmetic dressed as extraction, which a caller could not
+        distinguish from measured output.  Every count below is therefore a
+        genuine zero.
+        """
+        reason = "No memory-consolidation extractor is wired: no traces were read and no facts were written. Counts are real zeros, not estimates."
         report = MemoryConsolidationReport(
-            traces_analyzed=trace_count,
-            facts_extracted=facts_extracted,
-            skills_indexed=skills_indexed,
-            pruned_tokens=pruned_tokens,
-            summary=summary,
+            traces_analyzed=0,
+            facts_extracted=0,
+            skills_indexed=0,
+            pruned_tokens=0,
+            summary=reason,
+            status="unavailable",
+            unavailable_reason=reason,
         )
         self._reports.append(report)
-        logger.info("Memory consolidation completed: %s", summary)
+        logger.info("Memory consolidation unavailable: %s", reason)
         return report
 
     def get_latest_report(self) -> MemoryConsolidationReport | None:

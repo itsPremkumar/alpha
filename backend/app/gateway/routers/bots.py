@@ -1299,10 +1299,11 @@ async def run_bot_workflow_endpoint(
                 context={**body.context, "bot_name": key, "owner_id": owner},
                 initial_state={**body.initial_state, "bot_name": key},
                 max_steps=body.max_steps,
-                # A bot profile is not a digest projection.  Leave the bot
-                # executor unbound unless the host explicitly registers this
-                # server-owned capability; a missing executor then fails with a
-                # real reason instead of returning false success.
+                # A bot profile is not a digest projection.  ``alpha.local.bot``
+                # is registered by ``alpha.orchestrator.executors`` and executes
+                # each node as this bot (real model call, bot SOUL as the system
+                # prompt).  It still refuses with a named reason on an
+                # unknown/archived bot, an engaged ESTOP, or no configured model.
                 default_executor="alpha.local.bot",
             ),
             auto_execute=body.auto_execute,

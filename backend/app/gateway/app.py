@@ -780,6 +780,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             except Exception:
                 logger.exception("Failed to stop autonomy supervisor")
 
+        # Stop in-flight swarms and record them as interrupted.  A daemon swarm
+        # thread is not joined at interpreter exit, so without this a restart
+        # leaves the plan "running" on disk with no event explaining the stop.
+        # ``shutdown`` marks each active swarm paused with
+        # terminal_reason="gateway_shutdown" so a later boot can resume it.
+        try:
+            from alpha.swarm.runner import shutdown_background_swarms
+
+            swarm_result = await asyncio.wait_for(
+                asyncio.to_thread(shutdown_background_swarms, _SHUTDOWN_HOOK_TIMEOUT_SECONDS),
+                timeout=_SHUTDOWN_HOOK_TIMEOUT_SECONDS + 1.0,
+            )
+            if swarm_result.get("stopped"):
+                logger.info("Stopped %d in-flight swarm(s) on shutdown: %s", len(swarm_result["stopped"]), swarm_result["stopped"])
+            if swarm_result.get("forced"):
+                logger.warning(
+                    "Swarm thread(s) did not join within %.1fs: %s",
+                    _SHUTDOWN_HOOK_TIMEOUT_SECONDS,
+                    swarm_result["forced"],
+                )
+        except TimeoutError:
+            logger.warning("Swarm shutdown exceeded %.1fs; proceeding.", _SHUTDOWN_HOOK_TIMEOUT_SECONDS)
+        except Exception:
+            logger.exception("Failed to stop in-flight swarms")
+
         # Peer discovery is stopped after the supervisor, matching the reverse
         # startup order and preventing late network events from racing teardown.
         peer_network_service = getattr(app.state, "peer_network_service", None)
