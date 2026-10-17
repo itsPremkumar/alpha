@@ -43,6 +43,7 @@ const mapTask = (over = {}) => ({
   assigned_worker: null,
   worker_type: "ephemeral",
   model_override: null,
+  evidence: [],
   state: "completed",
   result_summary: "time.to_iso has one branch that overflows on year 9999.",
   lease_expires_at: null,
@@ -175,6 +176,32 @@ test("an ephemeral worker explains why no bot name is expected", () => {
   // no worker has claimed this" would read as a fault.
   const rows = swarmTaskRows({ t: mapTask({ assigned_worker: null, worker_type: "ephemeral" }) });
   assert.match(rows[0].workerNote, /ephemeral/);
+});
+
+test("requested model override and worker-evidenced model stay distinct", () => {
+  const rows = swarmTaskRows({
+    t: mapTask({
+      model_override: "configured-alias",
+      evidence: [
+        { model: "provider/resolved-model" },
+        { model: "provider/resolved-model" },
+        { model: "  " },
+        null,
+      ],
+    }),
+  });
+  assert.equal(rows[0].requestedModel, "configured-alias");
+  assert.equal(rows[0].requestedModelNote, "");
+  assert.deepEqual(rows[0].usedModels, ["provider/resolved-model"]);
+  assert.equal(rows[0].usedModelNote, "");
+});
+
+test("missing requested and used model labels remain explicit", () => {
+  const row = swarmTaskRows({ t: mapTask({ model_override: null, evidence: undefined }) })[0];
+  assert.equal(row.requestedModel, null);
+  assert.match(row.requestedModelNote, /no per-task model override/);
+  assert.deepEqual(row.usedModels, []);
+  assert.match(row.usedModelNote, /not reported in worker evidence/);
 });
 
 test("a missing duration reads as unreported, never 0s", () => {

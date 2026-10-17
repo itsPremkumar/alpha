@@ -37,6 +37,20 @@ test("listSwarms surfaces request failures instead of fabricating an empty list"
 });
 
 test("createSwarm sends goal and explicit execution-neutral options", async () => {
+  const expectedProjection = {
+    projected_tasks: 2,
+    projected_wall_seconds: 12.5,
+    projected_serial_seconds: 20,
+    estimated_speedup: 1.6,
+    wall_budget_seconds: null,
+    wall_budget_exceeded: null,
+    tool_budget_calls: null,
+    projected_tokens: null,
+    projected_tool_calls: null,
+    max_concurrency: 4,
+    estimate_method: "critical_path_v1",
+    basis: "decomposer estimate",
+  };
   setHttpHandler((path, method, payload) => {
     assert.equal(path, "/swarms");
     assert.equal(method, "POST");
@@ -46,8 +60,14 @@ test("createSwarm sends goal and explicit execution-neutral options", async () =
       max_concurrency: 4,
       items: undefined,
     });
+    return { cost_projection: expectedProjection };
   });
-  await teamops.createSwarm("Audit services");
+  assert.deepEqual(await teamops.createSwarm("Audit services"), expectedProjection);
+});
+
+test("createSwarm keeps an absent projection distinct from a measured zero", async () => {
+  setHttpHandler(() => ({ swarm_id: "s1" }));
+  assert.equal(await teamops.createSwarm("Audit services"), null);
 });
 
 test("createSwarm sends the selected topology and worker concurrency", async () => {
@@ -65,6 +85,9 @@ test("Team Ops presents every Gateway swarm topology and a safe selectable capac
   }
   assert.match(component, /value=\{swarmConcurrency\}/);
   assert.match(component, /maxConcurrency: swarmConcurrency/);
+  assert.match(component, /Pre-run estimate/);
+  assert.match(component, /Tokens \{lastSwarmProjection\.projection\.projected_tokens \?\? "not estimated"\}/);
+  assert.match(component, /model evidenced \{t\.usedModels\.length > 0 \? t\.usedModels\.join/);
 });
 
 test("swarm actions and message helpers use encoded swarm ids and bounded routes", async () => {

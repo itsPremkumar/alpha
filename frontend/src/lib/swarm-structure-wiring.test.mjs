@@ -82,6 +82,8 @@ test("the section imports the pure view module rather than re-deriving sentences
   // cannot contradict each other for the same field.
   assert.match(section, /from "@\/lib\/swarm-structure-view"/);
   assert.match(section, /swarmStructureView\(/);
+assert.match(section, /requested model \{t\.requestedModel \?\? t\.requestedModelNote\}/);
+assert.match(section, /model evidenced \{t\.usedModels\.length > 0 \? t\.usedModels\.join/);
 });
 
 test("the structure panel renders Gateway acceptance separately from execution state", () => {

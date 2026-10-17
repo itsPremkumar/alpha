@@ -533,6 +533,15 @@ make doctor    # verify the environment
 - **Bounded execution** — token / tool-call / wall-clock / task / replan budgets,
   adaptive provider concurrency, watchdog recovery, pause / resume / cancel, and
   explicit `budget_exhausted` / `stalled` states.
+- **Pre-run swarm projection** — each created plan reports its decomposer's
+  predicted critical path and speedup before execution; a plan exceeding its
+  declared wall-clock budget is refused before it is registered. Token and tool
+  call projections remain explicitly unmeasured because the plan has no
+  per-task estimates for them.
+- **Model-use transparency** — Team Ops separates a task's requested model
+  override from model labels recorded in worker evidence. Missing evidence is
+  shown as unreported, and the governor no longer publishes hardcoded model
+  tiers as if they were routes.
 - **Typed communication & consensus** — a bounded blackboard of untrusted
   observations; evidence-backed votes, leader election, and acceptance
   verification that separates *execution success* from *verified delivery*.

@@ -152,6 +152,13 @@ structured messages remain intact in durable run receipts.
 Team Ops shows each swarm task's typed Gateway acceptance state. A completed
 task without declared acceptance criteria is explicitly unverified; completion
 records execution state, not proof that the result is correct.
+Newly created swarm plans also report the decomposer's predicted critical path
+and speedup before execution; estimates over a declared wall-clock ceiling are
+refused before the plan is registered. Token and tool-call projections remain
+unmeasured because the plan has no per-task estimates for those dimensions.
+Team Ops distinguishes each task's requested model override from model names
+recorded in worker evidence; an absent label is shown as unreported rather than
+inferred from a configured default or a hardcoded tier.
 Specialist swarm reports also carry an advisory receipt-citation audit: cited
 IDs are checked against harvested tool calls, while missing or unresolved
 citations for action claims are surfaced as uncorroborated. A resolved call

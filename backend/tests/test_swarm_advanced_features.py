@@ -149,15 +149,16 @@ def test_tri_tier_swarm_memory():
     assert mem.promote_to_org_memory("swm-pass", passing_plan, min_quality=0.8) is True
 
 
-# 4. Heterogeneous Model Routing & Rate-Limit Adaptive Governor
+# 4. Configured Model Reporting & Rate-Limit Adaptive Governor
 def test_resource_governor_routing_and_throttling():
     gov = SwarmResourceGovernor()
 
-    # Model tier resolution
-    assert gov.resolve_model_for_role("Chief Architect") == gov.MODEL_TIERS["frontier"]
-    assert gov.resolve_model_for_role("Batch Data Extractor", is_batch=True) == gov.MODEL_TIERS["local"]
-    assert gov.resolve_model_for_role("QA Verifier") == gov.MODEL_TIERS["verifier"]
-    assert gov.resolve_model_for_role("General Worker") == gov.MODEL_TIERS["fast"]
+    # The governor measures requested and used models; it does not invent
+    # role-based fallbacks outside config.yaml.
+    status_before = gov.get_status()
+    assert status_before["routing_method"] == "config_yaml_task_override_v1"
+    assert status_before["models_requested"] is None
+    assert status_before["models_used"] is None
 
     # Concurrency without throttling
     assert gov.get_effective_concurrency(base_concurrency=8, provider="openai") == 8
@@ -253,7 +254,11 @@ def test_swarm_tool_advanced_actions():
     # Governor action
     gov_out = swarm_tool.invoke({"action": "governor"})
     assert "Swarm Resource Governor Status" in gov_out
-    assert "frontier" in gov_out
+    assert '"models_requested": null' in gov_out
+    assert '"models_used": null' in gov_out
+    scoped_gov_out = swarm_tool.invoke({"action": "governor", "swarm_id": sid})
+    assert '"models_requested": []' in scoped_gov_out
+    assert '"models_used": []' in scoped_gov_out
 
     # Incidents action
     inc_out = swarm_tool.invoke({"action": "incidents", "swarm_id": sid})
@@ -296,7 +301,12 @@ async def test_gateway_swarms_advanced_endpoints():
 
     # Governor status endpoint
     gov_resp = await swarms.get_resource_governor_status()
-    assert "model_tiers" in gov_resp
+    assert gov_resp["routing_method"] == "config_yaml_task_override_v1"
+    assert gov_resp["models_requested"] is None
+    assert gov_resp["models_used"] is None
+    scoped_gov_resp = await swarms.get_resource_governor_status(sid, admin_req)
+    assert scoped_gov_resp["models_requested"] == []
+    assert scoped_gov_resp["models_used"] == []
 
     # Run async endpoint
     async_resp = await swarms.run_swarm_background(sid, admin_req)

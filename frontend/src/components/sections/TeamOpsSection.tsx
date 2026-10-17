@@ -6,7 +6,7 @@ import {
   swarmAction, swarmMessages, publishSwarmMessage, SWARM_MESSAGE_WINDOW,
   swarmProgress, swarmProgressLabel,
   swarmDetails, swarmEvents,
-  type Swarm, type SwarmAction, type SwarmMessage, listMcpTasks, listJobs, cancelJob,
+  type Swarm, type SwarmAction, type SwarmMessage, type SwarmCostProjection, listMcpTasks, listJobs, cancelJob,
   companyStatus, executiveDigest, companyKpis,
 } from "@/lib/teamops";
 import {
@@ -113,6 +113,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
   const [swarmObjective, setSwarmObjective] = useState("");
   const [swarmMode, setSwarmMode] = useState("auto");
   const [swarmConcurrency, setSwarmConcurrency] = useState(4);
+  const [lastSwarmProjection, setLastSwarmProjection] = useState<{ goal: string; projection: SwarmCostProjection | null } | null>(null);
   const [openSwarmBoard, setOpenSwarmBoard] = useState<string | null>(null);
   /**
    * Which swarm's structure panel is open.
@@ -224,6 +225,16 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
     } catch (e) {
       setError(errMsg(e));
     }
+  };
+
+  const submitSwarmPlan = () => {
+    const goal = swarmObjective.trim();
+    if (!goal) return;
+    return act(async () => {
+      const projection = await createSwarm(goal, { mode: swarmMode, maxConcurrency: swarmConcurrency });
+      setLastSwarmProjection({ goal, projection });
+      setSwarmObjective("");
+    }, "Swarm plan created. Use Run to start execution.");
   };
 
   /**
@@ -450,7 +461,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
           <div className="rounded-2xl border border-border/60 bg-card p-4">
             <Field label="Create a swarm plan" hint="Create a bounded DAG, then run it explicitly when you are ready.">
               <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
-                <input value={swarmObjective} onChange={(e) => setSwarmObjective(e.target.value)} onKeyDown={(e) => e.key === "Enter" && swarmObjective.trim() && act(() => createSwarm(swarmObjective.trim(), { mode: swarmMode, maxConcurrency: swarmConcurrency }).then(() => setSwarmObjective("")), "Swarm plan created. Use Run to start execution.")} placeholder="Objective…" className={inputCls} aria-label="Swarm objective" />
+                <input value={swarmObjective} onChange={(e) => setSwarmObjective(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitSwarmPlan()} placeholder="Objective…" className={inputCls} aria-label="Swarm objective" />
                 <label className="sr-only" htmlFor="swarm-mode">Swarm coordination mode</label>
                 <select id="swarm-mode" aria-label="Swarm coordination mode" title="Choose the swarm topology; Auto routes from the goal and task graph" value={swarmMode} onChange={(event) => setSwarmMode(event.target.value)} className={inputCls}>
                   {SWARM_MODES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -459,11 +470,38 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                 <select id="swarm-concurrency" aria-label="Maximum concurrent swarm agents" title="Maximum workers scheduled at once; Gateway and provider capacity may reduce effective concurrency" value={swarmConcurrency} onChange={(event) => setSwarmConcurrency(Number(event.target.value))} className={inputCls}>
                   {[2, 4, 6, 8, 12, 16, 24, 32, 48, 64].map((count) => <option key={count} value={count}>{count} agents at once</option>)}
                 </select>
-                <Btn onClick={() => swarmObjective.trim() && act(() => createSwarm(swarmObjective.trim(), { mode: swarmMode, maxConcurrency: swarmConcurrency }).then(() => setSwarmObjective("")), "Swarm plan created. Use Run to start execution.")} disabled={!swarmObjective.trim()}>
+                <Btn onClick={submitSwarmPlan} disabled={!swarmObjective.trim()}>
                   <Play className="size-3.5" /> Create plan
                 </Btn>
               </div>
               <p className="mt-2 text-[10px] text-muted-foreground">Safe default: Auto with 4 concurrent workers. You can choose up to 64; runtime admission, provider capacity and budget can reduce the effective parallelism.</p>
+              {lastSwarmProjection && (
+                <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs" aria-live="polite">
+                  <p className="font-semibold">Pre-run estimate · {lastSwarmProjection.goal}</p>
+                  {lastSwarmProjection.projection ? (
+                    <>
+                      <p className="mt-1 text-muted-foreground">
+                        Predicted critical path {lastSwarmProjection.projection.projected_wall_seconds.toFixed(1)}s
+                        {lastSwarmProjection.projection.wall_budget_seconds === null
+                          ? " · no wall-clock ceiling was set"
+                          : ` · ${lastSwarmProjection.projection.wall_budget_seconds.toFixed(1)}s wall-clock ceiling`}
+                        {lastSwarmProjection.projection.estimated_speedup === null
+                          ? " · speedup not reported"
+                          : ` · estimated speedup ${lastSwarmProjection.projection.estimated_speedup.toFixed(2)}×`}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        Tokens {lastSwarmProjection.projection.projected_tokens ?? "not estimated"}
+                        {" · "}
+                        Tool calls {lastSwarmProjection.projection.projected_tool_calls ?? "not estimated"}
+                        {" · "}
+                        {lastSwarmProjection.projection.estimate_method}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-amber-600 dark:text-amber-500">The Gateway did not return a pre-run cost projection.</p>
+                  )}
+                </div>
+              )}
             </Field>
           </div>
           {readErrors.swarms ? (
@@ -792,6 +830,11 @@ function SwarmStructurePanel(props: { swarmId: string }) {
                   {t.totalTokens === null ? t.tokenNote : `${t.totalTokens} tokens`}
                   {" · "}
                   {t.toolCalls === null ? t.toolCallNote : `${t.toolCalls} tool call(s)`}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  requested model {t.requestedModel ?? t.requestedModelNote}
+                  {" · "}
+                  model evidenced {t.usedModels.length > 0 ? t.usedModels.join(", ") : t.usedModelNote}
                 </p>
                 {t.error && <p className="text-[10px] text-destructive">failed: {t.error}</p>}
                 {t.summary && <p className="text-[10px] text-muted-foreground">{t.summary}</p>}

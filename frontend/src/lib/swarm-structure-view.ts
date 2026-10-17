@@ -109,6 +109,12 @@ export interface SwarmTaskRow {
   worker: string | null;
   workerNote: string;
   workerType: string | null;
+  /** Per-task requested model override, or null when no override was reported. */
+  requestedModel: string | null;
+  requestedModelNote: string;
+  /** Distinct model labels recorded by worker evidence; never inferred from a request. */
+  usedModels: string[];
+  usedModelNote: string;
   dependsOn: string[];
   dependencyNote: string;
   durationSeconds: number | null;
@@ -172,6 +178,15 @@ export function swarmTaskRows(tasks: unknown): SwarmTaskRow[] {
     const state = typeof t.state === "string" && t.state.trim() ? t.state : null;
     const worker = typeof t.assigned_worker === "string" && t.assigned_worker.trim() ? t.assigned_worker : null;
     const workerType = typeof t.worker_type === "string" && t.worker_type.trim() ? t.worker_type : null;
+    const requestedModel = typeof t.model_override === "string" && t.model_override.trim()
+      ? t.model_override.trim()
+      : null;
+    const usedModels = Array.isArray(t.evidence)
+      ? [...new Set(t.evidence
+          .map((item) => objectOr(item).model)
+          .filter((model): model is string => typeof model === "string" && model.trim().length > 0)
+          .map((model) => model.trim()))]
+      : [];
 
     const depsRaw = t.dependencies;
     const dependsOn = Array.isArray(depsRaw)
@@ -242,6 +257,10 @@ export function swarmTaskRows(tasks: unknown): SwarmTaskRow[] {
             : "unassigned — no worker has claimed this task"
           : "",
       workerType,
+      requestedModel,
+      requestedModelNote: requestedModel === null ? "no per-task model override reported" : "",
+      usedModels,
+      usedModelNote: usedModels.length === 0 ? "model not reported in worker evidence" : "",
       dependsOn,
       dependencyNote:
         dependsOn.length === 0

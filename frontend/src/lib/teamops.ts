@@ -79,6 +79,22 @@ export interface Swarm {
   revision?: number;
 }
 
+/** Pre-run estimate returned by the Gateway alongside a newly created swarm. */
+export interface SwarmCostProjection {
+  projected_tasks: number;
+  projected_wall_seconds: number;
+  projected_serial_seconds: number;
+  estimated_speedup: number | null;
+  wall_budget_seconds: number | null;
+  wall_budget_exceeded: boolean | null;
+  tool_budget_calls: number | null;
+  projected_tokens: number | null;
+  projected_tool_calls: number | null;
+  max_concurrency: number;
+  estimate_method: string;
+  basis: string;
+}
+
 /** One counter of a swarm's task projection, with its absence made explicit. */
 export interface SwarmProgressView {
   /** The server's number, or `null` when the server did not report it. */
@@ -210,13 +226,17 @@ export async function listSwarms(): Promise<Swarm[]> {
   }));
 }
 
-export async function createSwarm(objective: string, options?: { mode?: string; maxConcurrency?: number; items?: string[] }): Promise<void> {
-  await send("/swarms", "POST", {
+export async function createSwarm(objective: string, options?: { mode?: string; maxConcurrency?: number; items?: string[] }): Promise<SwarmCostProjection | null> {
+  const response = await send<Record<string, unknown>>("/swarms", "POST", {
     goal: objective,
     mode: options?.mode ?? "auto",
     max_concurrency: options?.maxConcurrency ?? 4,
     items: options?.items,
   });
+  const projection = response?.cost_projection;
+  return projection && typeof projection === "object" && !Array.isArray(projection)
+    ? projection as SwarmCostProjection
+    : null;
 }
 
 /**

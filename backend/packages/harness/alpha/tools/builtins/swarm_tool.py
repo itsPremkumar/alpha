@@ -162,27 +162,11 @@ def swarm_tool(
             )
         except ValueError as exc:
             return f"Error: swarm could not be created: {exc}"
-        # Refuse BEFORE the first worker starts, not after the budget is gone.
-        # A plan whose own predicted makespan exceeds its own declared wall
-        # ceiling cannot honour that budget, so creating it would guarantee a
-        # run that ends in budget_exhausted. Arena refuses a tournament above
-        # require_confirmation_over_calls for the same reason; the swarm had no
-        # equivalent, so a swarm could be spawned that was already doomed.
+        # create_swarm enforces the estimate against its wall budget before it
+        # registers or persists the plan. Here the same pure projection is
+        # included with successful plan creation so the caller can decide
+        # whether to explicitly start execution.
         projection = SwarmTelemetry.cost_projection(plan)
-        if projection["wall_budget_exceeded"] is True:
-            return (
-                "Error: swarm refused before start - the decomposition predicts "
-                f"{projection['projected_wall_seconds']}s of critical-path work against a "
-                f"{projection['wall_budget_seconds']}s wall budget.\n\n"
-                f"- **Tasks**: {projection['projected_tasks']}\n"
-                f"- **Predicted serial**: {projection['projected_serial_seconds']}s\n"
-                f"- **Predicted parallel**: {projection['projected_wall_seconds']}s\n"
-                f"- **Estimate method**: `{projection['estimate_method']}`\n\n"
-                "Raise `max_wall_seconds`, reduce the goal, or split it into "
-                "independent swarms. Token and tool-call projections are "
-                "`null` because no per-task estimate exists - only wall-clock is "
-                "projected, so this check is a floor on risk, not a ceiling."
-            )
         tasks_summary = "\n".join(f"  - `[{task.task_id}]` {task.objective} (deps: {task.dependencies or 'none'})" for task in plan.tasks.values())
         return (
             "### Autonomous Swarm Successfully Spawned (plan created; execution is explicit)\n"

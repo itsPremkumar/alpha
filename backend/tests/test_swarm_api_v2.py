@@ -50,6 +50,9 @@ async def test_swarm_api_idempotency_and_owner_isolation():
         admin,
         idempotency_key="api-admission-1",
     )
+    assert first["cost_projection"]["projected_wall_seconds"] >= 0
+    assert first["cost_projection"]["projected_tokens"] is None
+    assert first["cost_projection"]["projected_tool_calls"] is None
     assert first["swarm_id"] == second["swarm_id"]
     assert first["revision"] == second["revision"]
 

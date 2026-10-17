@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.swarm.coordinator import get_swarm_coordinator
 from alpha.swarm.models import SwarmBudget, SwarmMode, is_terminal_swarm_status
+from alpha.swarm.telemetry import SwarmTelemetry
 from alpha.utils.time import coerce_iso
 from app.gateway.deps import require_admin_user
 
@@ -290,7 +291,9 @@ async def create_and_spawn_swarm(
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return _plan_to_wire(plan.to_dict())
+    result = _plan_to_wire(plan.to_dict())
+    result["cost_projection"] = SwarmTelemetry.cost_projection(plan)
+    return result
 
 
 @router.get("")
@@ -619,8 +622,9 @@ async def get_swarm_leader(swarm_id: str, request: Request = None):
 
 
 @router.get("/governor/status")
-async def get_resource_governor_status():
+async def get_resource_governor_status(swarm_id: str | None = None, request: Request = None):
     from alpha.swarm.governor import get_swarm_resource_governor
 
     governor = get_swarm_resource_governor()
-    return await asyncio.to_thread(governor.get_status)
+    plan = _ensure_visible(swarm_id, request)[1] if swarm_id else None
+    return await asyncio.to_thread(governor.get_status, plan)

@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import unittest
 
-from alpha.swarm.models import SwarmBudget, SwarmPlan, SwarmTaskNode
+from alpha.swarm.coordinator import SwarmCoordinator, SwarmTaskDecomposer
+from alpha.swarm.models import SwarmBudget, SwarmMode, SwarmPlan, SwarmTaskNode
 from alpha.swarm.telemetry import SwarmTelemetry
 
 
@@ -120,34 +121,60 @@ class TestRefusalRule(unittest.TestCase):
         self.assertIs(projection["wall_budget_exceeded"], True)
 
 
-class TestRefusalIsReachableFromTheTool(unittest.TestCase):
-    """The projection is only useful if the spawn path actually consults it.
+class TestRefusalAtAdmission(unittest.TestCase):
+    """The plan must be refused before registration or durable side effects."""
 
-    The module is loaded with ``importlib.import_module`` rather than
-    ``from alpha.tools.builtins import swarm_tool`` on purpose: that facade
-    re-exports the *tool* under the same name, so the plain import binds the
-    tool object and ``inspect.getsource`` fails with "is a built-in module".
-    """
+    def test_over_budget_plan_is_never_registered_or_persisted(self) -> None:
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
 
-    @staticmethod
-    def _source() -> str:
-        import importlib
-        import inspect
+        def decompose(**_kwargs: object) -> SwarmPlan:
+            plan = SwarmPlan(swarm_id="refused", goal="g", mode=SwarmMode.AUTO)
+            plan.critical_path_seconds = 120.0
+            plan.metrics.update(
+                {
+                    "estimated_parallel_seconds": 120.0,
+                    "estimated_serial_seconds": 180.0,
+                    "estimated_speedup": 1.5,
+                    "estimate_method": "test-estimate",
+                }
+            )
+            return plan
 
-        return inspect.getsource(importlib.import_module("alpha.tools.builtins.swarm_tool"))
+        with TemporaryDirectory() as storage:
+            coordinator = SwarmCoordinator(storage_dir=storage)
+            with patch.object(SwarmTaskDecomposer, "decompose", side_effect=decompose):
+                with self.assertRaisesRegex(ValueError, "refused before registration") as error:
+                    coordinator.create_swarm(
+                        goal="too long for its budget",
+                        budget=SwarmBudget(max_wall_seconds=60.0),
+                    )
 
-    def test_the_spawn_path_imports_the_projection(self) -> None:
-        source = self._source()
-        self.assertIn("SwarmTelemetry.cost_projection", source)
-        self.assertIn('projection["wall_budget_exceeded"] is True', source)
+            self.assertIn("120.000s", str(error.exception))
+            self.assertIn("60.000s", str(error.exception))
+            self.assertEqual(coordinator.list_swarms(), [])
+            self.assertEqual(list(Path(storage).glob("*.json")), [])
 
-    def test_the_refusal_message_names_the_numbers_and_the_remedy(self) -> None:
-        """A refusal that says "no" without saying why is not actionable."""
+    def test_a_plan_within_its_budget_still_registers_normally(self) -> None:
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
 
-        source = self._source()
-        self.assertIn("refused before start", source)
-        self.assertIn("projected_wall_seconds", source)
-        self.assertIn("wall_budget_seconds", source)
+        def decompose(**_kwargs: object) -> SwarmPlan:
+            plan = SwarmPlan(swarm_id="accepted", goal="g", mode=SwarmMode.AUTO)
+            plan.critical_path_seconds = 30.0
+            plan.metrics["estimated_parallel_seconds"] = 30.0
+            return plan
+
+        with TemporaryDirectory() as storage:
+            coordinator = SwarmCoordinator(storage_dir=storage)
+            with patch.object(SwarmTaskDecomposer, "decompose", side_effect=decompose):
+                created = coordinator.create_swarm(
+                    goal="within budget",
+                    budget=SwarmBudget(max_wall_seconds=60.0),
+                )
+            self.assertEqual(created.swarm_id, "accepted")
+            self.assertIsNotNone(coordinator.get_swarm("accepted"))
 
 
 class TestProjectionIsPure(unittest.TestCase):

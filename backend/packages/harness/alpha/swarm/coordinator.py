@@ -282,6 +282,15 @@ class SwarmCoordinator:
         )
         plan.owner_id = normalized_owner
         plan.budget = effective_budget
+        projection = SwarmTelemetry.cost_projection(plan)
+        if projection["wall_budget_exceeded"] is True:
+            raise SwarmPlanValidationError(
+                "swarm was refused before registration: decomposition predicts "
+                f"{projection['projected_wall_seconds']:.3f}s of critical-path work, "
+                f"above the declared {projection['wall_budget_seconds']:.3f}s wall budget. "
+                "Raise max_wall_seconds or reduce/split the goal. Token and tool-call "
+                "projections are unmeasured, so they cannot be used for admission."
+            )
         # Compose the team BEFORE leader election, so the election ranks
         # candidates by a declared capability instead of by worker kind, and
         # before `validate_graph`, so an assignment can never produce a plan
