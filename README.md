@@ -155,7 +155,7 @@ flowchart TB
         Harness["Continuous execution harness (goal engine, Ralph loop, checkpoints)"]
         Cognition["Cognitive plane (AVO, MoA, ToM, dreaming)"]
         CodeCore["Code agentic core (AST-grep, repo twin, auto-repair)"]
-        Tools["139 tools + 48 middlewares + MCP + 24 skills"]
+        Tools["139 tools + 49 middleware modules + MCP + 24 skills"]
     end
 
     subgraph Security ["Security & governance"]
@@ -1222,7 +1222,7 @@ scanning, while continuing to watch the project tree.
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 139 tools, 74 routers, 48 middlewares, and 13 supervisor loops. CI fails
+  pins all 139 tools, 74 routers, 49 middleware modules, and 13 supervisor loops. CI fails
   on drift **of that generated artifact** (`scripts/check_generated_drift.py`
   byte-compares it against a fresh regeneration), so the manifest cannot silently
   rot. The gate does not read Markdown: a prose count elsewhere is still checked

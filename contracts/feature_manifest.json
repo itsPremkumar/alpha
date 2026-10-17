@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-16T00:06:22Z",
+ "generated_at": "2026-10-17T02:05:00Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1861,6 +1861,13 @@
   {
    "id": "alpha.agents.middlewares.model_length_finish_reason_middleware",
    "module": "alpha.agents.middlewares.model_length_finish_reason_middleware",
+   "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "alpha.agents.middlewares.prospective_memory_middleware",
+   "module": "alpha.agents.middlewares.prospective_memory_middleware",
    "wiring_point": "alpha.agents.lead_agent.agent:middlewares | alpha.agents.middlewares.tool_error_handling_middleware:build_lead_runtime_middlewares | alpha.agents.factory",
    "wired": true,
    "state": "wired"

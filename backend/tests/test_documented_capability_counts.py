@@ -84,12 +84,18 @@ COUNTS = _counts()
 
 # `136 native tools`, `118 engine modules`, `pins 136 tools`. Bounded so a line
 # like "the 89 -> 97 -> 99 engines" (a history, not a claim) is not matched.
-_TOOL_CLAIM = re.compile(r"\b(\d{2,3})\s+(?:native\s+)?(?:tools|tool)\b", re.I)
+_TOOL_CLAIM = re.compile(r"\b(\d{2,3})\s+(?:native\s+)?tools?\b(?![-\w])(?!\s+calls?\b)", re.I)
 _ENGINE_CLAIM = re.compile(r"\b(\d{2,3})\s+(?:harness\s+)?(?:engine(?:\s+modules|\s+packages)?|harness engine packages)\b", re.I)
 
 
 def _claims(text: str, pattern: re.Pattern[str]) -> set[int]:
     return {int(m.group(1)) for m in pattern.finditer(text)}
+
+
+def test_tool_count_checker_ignores_tool_call_budgets() -> None:
+    """A tool-call ceiling is not a claim about the size of the tool catalog."""
+    assert _claims("100,000 tokens and 200 tool calls", _TOOL_CLAIM) == set()
+    assert _claims("139 native tools; 139 tool", _TOOL_CLAIM) == {139}
 
 
 @pytest.mark.parametrize("relative", CURRENT_CLAIM_FILES)

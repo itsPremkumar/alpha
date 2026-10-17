@@ -138,7 +138,7 @@ registries and enforced by CI:
 python backend/scripts/generate_feature_manifest.py   # -> contracts/feature_manifest.json
 ```
 
-`contracts/feature_manifest.json` pins 139 tools, 74 routers, 48 middlewares, and 13
+`contracts/feature_manifest.json` pins 139 tools, 74 routers, 49 middleware modules, and 13
 supervisor loops, and the generated-drift gate fails the build if the *generated
 artifact* and a fresh regeneration disagree. That gate byte-compares
 `contracts/feature_manifest.json` against its own generator's output
