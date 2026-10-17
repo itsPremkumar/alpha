@@ -107,7 +107,7 @@ test("a family with no readable value carries no facts at all", () => {
 
 test("an unreadable family says so instead of showing a number", () => {
   const families = buildModeFamilies({ config: null, catalogue: null });
-  for (const f of families.filter((x) => x.readiness === "config-only")) {
+  for (const f of families.filter((x) => x.readiness === "not-exposed")) {
     // The property is that the absence is explained, not that the sentence
     // contains a particular word.
     assert.ok(f.readinessNote.trim().length > 0, `${f.id} gives no reason for being unreadable`);
@@ -116,12 +116,29 @@ test("an unreadable family says so instead of showing a number", () => {
   }
 });
 
+test("a family badged live must actually show something measured", () => {
+  // A green "Live from Gateway" chip above zero facts is a claim with nothing
+  // behind it. Staged deliberation is a fully working view that this catalogue
+  // simply has no read for, so it must not be badged live.
+  for (const f of buildModeFamilies({ config: null, catalogue: null })) {
+    if (f.readiness !== "live") continue;
+    assert.ok(f.facts.length > 0, `${f.id} is badged live but reports nothing`);
+  }
+});
+
+test("staged deliberation is reachable but not claimed as measured", () => {
+  const d = byId(buildModeFamilies({ config: null, catalogue: null }), "deliberation");
+  assert.equal(d.readiness, "not-exposed");
+  assert.equal(d.view, "deliberation");
+  assert.deepEqual(d.facts, []);
+});
+
 test("the subagent ceilings are never stated as measured values", () => {
   // `config.example.yaml` does set max_total_per_run=6 and max_running=3, but
   // no route reads them, so this panel must not print them as if it had.
   const families = buildModeFamilies({ config: null, catalogue: null });
   const delegation = byId(families, "delegation");
-  assert.equal(delegation.readiness, "config-only");
+  assert.equal(delegation.readiness, "not-exposed");
   const serialised = JSON.stringify(delegation);
   assert.ok(!/max_total_per_run|max_running|\b6 total\b/.test(serialised), serialised);
 });
@@ -130,7 +147,7 @@ test("the council strategy members are not listed as though read from the Gatewa
   // They are a client-side union in `lib/deliberation.ts`; naming them here
   // would present a source constant as a server reading.
   const council = byId(buildModeFamilies({ config: null, catalogue: null }), "council");
-  assert.equal(council.readiness, "config-only");
+  assert.equal(council.readiness, "not-exposed");
   const text = JSON.stringify(council);
   for (const strategy of ["ensemble", "round_robin", "debate"]) {
     assert.ok(!text.includes(`"${strategy}"`), `council listed ${strategy} as if measured`);
@@ -196,7 +213,7 @@ test("a failed arena read is disclosed and does not render as a live empty block
     "arena",
   );
   // "No Arena configured" and "the read failed" are opposite answers.
-  assert.equal(arena.readiness, "config-only");
+  assert.equal(arena.readiness, "not-exposed");
   assert.match(arena.readinessNote, /503 backend unavailable/);
 });
 
@@ -212,15 +229,18 @@ test("a partial arena read keeps the half it got", () => {
 
 test("the summary counts what is actually measured", () => {
   const families = buildModeFamilies({ config: liveConfig, catalogue: liveCatalogue });
-  // Arena + staged deliberation are live with a config in hand.
-  assert.equal(liveFamilyCount(families), 2);
+  // Arena is the only family this catalogue measures, so one - not two.
+  assert.equal(liveFamilyCount(families), 1);
   const sentence = summarySentence(families);
-  assert.match(sentence, /2 of 6/);
+  assert.match(sentence, /1 of 6/);
   assert.match(sentence, /measured/);
 });
 
-test("with no reads at all the summary does not claim a measured count of zero hides nothing", () => {
+test("with no reads at all nothing is claimed to be measured", () => {
   const families = buildModeFamilies({ config: null, catalogue: null });
-  assert.equal(liveFamilyCount(families), 1); // staged deliberation only
-  assert.match(summarySentence(families), /1 of 6/);
+  // Arena is the only family this catalogue can measure at all. Reporting 0
+  // here is the honest answer: "nothing measured", not "nothing exists".
+  assert.equal(liveFamilyCount(families), 0);
+  assert.match(summarySentence(families), /0 of 6/);
+  assert.match(summarySentence(families), /measured/);
 });

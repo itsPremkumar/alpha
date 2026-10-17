@@ -16,10 +16,10 @@
 //   `live`         the Gateway answered a read; the numbers are measured.
 //   `auto-routed`  the engine decides per prompt; the value is observable only
 //                  on the run it chose.
-//   `config-only`  the setting exists in `config.yaml` and the Gateway has NO
-//                  read route for it.
+//   `not-exposed`  reachable, but the Gateway exposes no read route this
+//                  catalogue could use.
 //
-// WHY `config-only` IS ITS OWN STATE AND NOT A ROW OF NUMBERS
+// WHY `not-exposed` IS ITS OWN STATE AND NOT A ROW OF NUMBERS
 // -----------------------------------------------------------
 // Measured against the Gateway while building this: there is no PUT/PATCH for
 // subagent settings, arena config, or global orchestration mode, and no GET
@@ -39,8 +39,15 @@
 
 import type { ArenaCatalogue, ArenaCeiling } from "./arena";
 
-/** Whether a row's value is measured, engine-decided, or unreadable. */
-export type ModeReadiness = "live" | "auto-routed" | "config-only";
+/**
+ * What THIS CATALOGUE can tell you about a mode.
+ *
+ * These states describe this panel's reads, not whether a feature works. That
+ * distinction matters: the Deliberation view is a fully working surface, but
+ * this catalogue has no read route for it, so it must not be badged `live`.
+ * A green "live" chip above zero facts is a claim with nothing behind it.
+ */
+export type ModeReadiness = "live" | "auto-routed" | "not-exposed";
 
 export interface ModeFact {
   label: string;
@@ -129,7 +136,7 @@ export function buildModeFamilies(input: {
       id: "arena",
       name: "Arena",
       blurb: "Competitive sub-agents race one task against each other, then a judge picks the winner.",
-      readiness: arenaLive ? "live" : "config-only",
+      readiness: arenaLive ? "live" : "not-exposed",
       readinessNote: arenaLive
         ? ""
         : input.arenaError
@@ -145,7 +152,7 @@ export function buildModeFamilies(input: {
       blurb: "Several models settle one disagreement: a single pass, an ensemble, a council or a debate.",
       // The strategy list is a client-side union and the only route is POST, so
       // naming the members here would present a source constant as a reading.
-      readiness: "config-only",
+      readiness: "not-exposed",
       readinessNote: "The Gateway exposes no read route for the strategy list, so it is not listed here.",
       view: "messages",
       action: "Messages - pick the strategy when a disagreement needs settling",
@@ -155,8 +162,11 @@ export function buildModeFamilies(input: {
       id: "deliberation",
       name: "Staged deliberation",
       blurb: "A group works a question in ordered stages with quorum, recorded dissent and taint.",
-      readiness: "live",
-      readinessNote: "",
+      // The view is fully functional and reads real data of its own; this
+      // catalogue simply has no read for it. Badging it `live` here would put a
+      // "measured" chip above zero measured facts.
+      readiness: "not-exposed",
+      readinessNote: "This catalogue has no read for staged deliberation; open the view for its live state.",
       view: "deliberation",
       action: "Deliberation - stage the question and read the quorum outcome",
       facts: [],
@@ -178,9 +188,9 @@ export function buildModeFamilies(input: {
       name: "Orchestration mode",
       blurb: "How a project's crew coordinates: parallel, moderated, quorum or round_robin.",
       // Readable per PROJECT, through that project's collaboration read. There
-      // is no global read, so the global value stays config-only.
-      readiness: "config-only",
-      readinessNote: "Per project this is readable in Projects; the global default is config-only.",
+      // is no global read, so this row links rather than restating one.
+      readiness: "not-exposed",
+      readinessNote: "Readable per project in Projects; there is no global read for the default.",
       view: "projects",
       action: "Projects - read and set a project's collaboration mode",
       facts: [],
@@ -191,8 +201,8 @@ export function buildModeFamilies(input: {
       blurb: "The composer's picker: off, auto, an intent preset, or one named worker from the catalog.",
       // The worker catalog IS readable (it backs the picker), but the process
       // ceilings are not, so this row links rather than restates them.
-      readiness: "config-only",
-      readinessNote: "The worker catalog is live in the composer; the process-wide ceilings are config-only.",
+      readiness: "not-exposed",
+      readinessNote: "The worker catalog is live in the composer; the process-wide ceilings have no read route.",
       view: "subagents",
       action: "Subagents - the catalog, live workers and per-run delegation progress",
       facts: [],

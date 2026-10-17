@@ -19,7 +19,8 @@
 // `ModeReadiness` is the whole contract:
 //   live         the Gateway answered; these numbers are measured
 //   auto-routed  the engine decides per prompt; observable on the run it chose
-//   config-only  real, set in config.yaml, unreadable through the API
+//   not-exposed  reachable, but the Gateway has no read route this catalogue
+//                could use - so the row links instead of inventing a value
 
 import React, { useCallback, useEffect, useState } from "react";
 import { Badge, Btn, ErrorBox } from "@/components/ui";
@@ -36,7 +37,7 @@ import { ArrowUpRight, RefreshCw } from "lucide-react";
 const READINESS_META: Record<ModeReadiness, { label: string; tone: "green" | "blue" | "gray" }> = {
   live: { label: "Live from Gateway", tone: "green" },
   "auto-routed": { label: "Auto-routed", tone: "blue" },
-  "config-only": { label: "Config only", tone: "gray" },
+  "not-exposed": { label: "No read route", tone: "gray" },
 };
 
 /**
