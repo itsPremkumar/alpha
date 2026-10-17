@@ -14,14 +14,18 @@ def clamp_auto_promote_top_k(value: int) -> int:
 class ToolSearchConfig(BaseModel):
     """Configuration for deferred tool loading via tool_search.
 
-    When enabled, MCP tools are not loaded into the agent's context directly.
-    Instead, they are listed by name in the system prompt and discoverable
-    via the tool_search tool at runtime.
+    When enabled, configured tool schemas can be listed by name and discovered
+    via tool_search at runtime. MCP schemas are always deferred; first-party
+    schemas are deferred when ``defer_builtin_tools`` is enabled.
     """
 
     enabled: bool = Field(
-        default=False,
-        description="Defer tools and enable tool_search",
+        default=True,
+        description="Defer broad tool catalogs and enable tool_search",
+    )
+    defer_builtin_tools: bool = Field(
+        default=True,
+        description="With tool_search enabled, defer first-party tool schemas until discovered; tool execution still uses the authorized candidate set",
     )
     auto_promote_top_k: int = Field(
         default=3,

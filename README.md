@@ -124,6 +124,7 @@ In one sentence:
 | **Persistence** | SQLite or PostgreSQL, vector memory, AES-GCM-encrypted checkpoints |
 | **Sandboxing** | Local subprocess, Docker container, or Kubernetes provisioner |
 | **Native tools** | 139 (`contracts/feature_manifest.json`, generated) |
+| **Tool schema loading** | Relevant schemas load on demand from authorized tool catalogs to reduce prompt size. |
 | **Middleware layers** | 46 |
 | **Background supervisor loops** | 13 |
 | **Public skills** | 24 in `skills/public/` |

@@ -1,6 +1,6 @@
 """Middleware to filter deferred tool schemas from model binding.
 
-When tool_search is enabled, MCP tools are still passed to ToolNode for
+When tool_search is enabled, deferred tools are still passed to ToolNode for
 execution, but their schemas must NOT be sent to the LLM via bind_tools until
 the model has discovered them via tool_search. This middleware removes the
 still-deferred tools from request.tools before model binding, and blocks tool

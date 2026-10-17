@@ -546,6 +546,9 @@ def test_make_lead_agent_reads_runtime_options_from_context(monkeypatch):
 
 def test_make_lead_agent_filters_clarification_tool_for_non_interactive_runs(monkeypatch):
     app_config = _make_app_config([_make_model("safe-model", supports_thinking=False)])
+    # This test isolates non-interactive tool filtering and uses MagicMock tool
+    # objects without schemas, so keep deferred schema discovery out of its setup.
+    app_config.tool_search.enabled = False
 
     import alpha.tools as tools_module
 

@@ -387,5 +387,5 @@ def test_lead_agent_filters_all_model_visible_tools_and_reuses_provider(monkeypa
         runtime_context["is_bootstrap"] = True
     result = lead_agent_module._make_lead_agent({"context": runtime_context}, app_config=config)
 
-    assert [tool.name for tool in result["tools"]] == ["safe_tool", "history_read"]
+    assert [tool.name for tool in result["tools"]] == ["safe_tool", "tool_search", "history_read"]
     assert captured["authorization_provider"] is not None

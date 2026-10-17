@@ -1,4 +1,4 @@
-"""Hermetic provider-payload regression for Alpha's deferred MCP discovery.
+"""Hermetic provider-payload regression for Alpha's deferred tool discovery.
 
 The synthetic graph uses the production ``create_agent`` + ``DeferredToolFilterMiddleware``
 path, captures the exact tools passed to ``bind_tools``, and serializes the same
@@ -42,7 +42,7 @@ class PayloadMeasurement:
     tool_count: int
 
 
-def _synthetic_tool(index: int) -> StructuredTool:
+def _synthetic_tool(index: int, *, mcp: bool = True) -> StructuredTool:
     def run(resource: str, mode: str = "standard", limit: int = 25) -> str:
         return f"{resource}:{mode}:{limit}"
 
@@ -51,17 +51,25 @@ def _synthetic_tool(index: int) -> StructuredTool:
         "with an explicit operating mode, bounded result limit, and a stable machine-readable response. "
         "This description intentionally carries realistic provider-schema payload weight."
     )
-    return tag_mcp_tool(
-        StructuredTool.from_function(
-            func=run,
-            name=f"mcp_synthetic_{index:03d}",
-            description=description,
-        )
+    candidate = StructuredTool.from_function(
+        func=run,
+        name=f"{'mcp_' if mcp else ''}synthetic_{index:03d}",
+        description=description,
     )
+    return tag_mcp_tool(candidate) if mcp else candidate
 
 
-def _capture_runtime_bound_tools(*, deferred: bool, tools: list[StructuredTool]) -> tuple[list[object], str]:
-    final_tools, setup = assemble_deferred_tools(tools, enabled=deferred)
+def _capture_runtime_bound_tools(
+    *,
+    deferred: bool,
+    tools: list[StructuredTool],
+    defer_builtin_tools: bool = False,
+) -> tuple[list[object], str]:
+    final_tools, setup = assemble_deferred_tools(
+        tools,
+        enabled=deferred,
+        defer_builtin_tools=defer_builtin_tools,
+    )
     bound_tools: list[object] = []
 
     class RecordingModel(GenericFakeChatModel):
@@ -128,3 +136,19 @@ def test_large_catalog_defers_payload_but_small_catalog_costs_more() -> None:
     assert small_deferred.bytes > small_direct.bytes
     assert small_deferred.tokens > small_direct.tokens
     assert small_delta > 0
+
+
+def test_large_first_party_catalog_defers_payload_when_enabled() -> None:
+    """First-party schemas use the same promotion gate without MCP metadata."""
+    candidates = [_synthetic_tool(index, mcp=False) for index in range(_LARGE_CATALOG_SIZE)]
+    direct_tools, _ = _capture_runtime_bound_tools(deferred=False, tools=candidates)
+    deferred_tools, deferred_prompt = _capture_runtime_bound_tools(
+        deferred=True,
+        tools=candidates,
+        defer_builtin_tools=True,
+    )
+
+    assert len(direct_tools) == _LARGE_CATALOG_SIZE
+    assert len(deferred_tools) == 1
+    assert deferred_tools[0].name == "tool_search"
+    assert "synthetic_000" in deferred_prompt

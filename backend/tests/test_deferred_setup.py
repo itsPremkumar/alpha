@@ -35,6 +35,13 @@ def test_setup_no_mcp_returns_empty():
     assert setup.deferred_names == frozenset()
 
 
+def test_setup_can_defer_first_party_tools_without_mcp_metadata():
+    setup = build_deferred_tool_setup([local_echo], enabled=True, defer_builtin_tools=True)
+    assert setup.deferred_names == frozenset({"local_echo"})
+    assert setup.tool_search_tool is not None
+    assert setup.tool_search_tool.name == "tool_search"
+
+
 def test_setup_builds_from_mcp_survivors():
     setup = build_deferred_tool_setup([tag_mcp_tool(mcp_calc), local_echo], enabled=True)
     assert setup.deferred_names == frozenset({"mcp_calc"})

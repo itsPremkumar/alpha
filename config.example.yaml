@@ -2266,12 +2266,15 @@ tools:
 # ============================================================================
 # When enabled, MCP tools are not loaded into the agent's context directly.
 # Instead, they are listed by name in the system prompt and discoverable
-# via the tool_search tool at runtime.
-# This reduces context usage and improves tool selection accuracy when
-# multiple MCP servers expose a large number of tools.
+# via the tool_search tool at runtime. First-party schemas can also be deferred.
+# This reduces context usage and improves tool selection accuracy for large
+# catalogs while retaining the same authorized tools for execution.
 
 tool_search:
-  enabled: false
+  enabled: true
+  # Keep large first-party catalogs out of every model request; the agent loads
+  # only the schemas it discovers, while execution remains authorization-gated.
+  defer_builtin_tools: true
   # When tool_search is enabled, PR1 MCP routing metadata can auto-promote
   # matching deferred MCP tool schemas before a model call. This is the maximum
   # number of matched schemas promoted per model call. Valid range: 1..5.

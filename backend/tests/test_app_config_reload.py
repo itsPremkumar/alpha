@@ -587,6 +587,7 @@ def test_get_app_config_resets_singleton_configs_when_sections_removed(tmp_path,
         assert get_memory_config().enabled is False
         assert get_subagents_app_config().timeout_seconds == 42
         assert get_tool_search_config().enabled is True
+        assert get_tool_search_config().defer_builtin_tools is True
         assert get_guardrails_config().enabled is True
         assert get_checkpointer_config() is not None
         assert get_stream_bridge_config() is not None
@@ -600,7 +601,8 @@ def test_get_app_config_resets_singleton_configs_when_sections_removed(tmp_path,
         assert get_summarization_config().enabled is False
         assert get_memory_config().enabled is True
         assert get_subagents_app_config().timeout_seconds == 1800
-        assert get_tool_search_config().enabled is False
+        assert get_tool_search_config().enabled is True
+        assert get_tool_search_config().defer_builtin_tools is True
         assert get_guardrails_config().enabled is False
         assert get_checkpointer_config() is None
         assert get_stream_bridge_config() is None

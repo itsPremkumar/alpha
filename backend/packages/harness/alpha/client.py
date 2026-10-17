@@ -588,7 +588,11 @@ class AlphaClient:
         )
         tools = [tool for tool in authorized_tools if id(tool) in configured_tool_ids]
         late_tools = [tool for tool in authorized_tools if id(tool) not in configured_tool_ids]
-        final_tools, deferred_setup = assemble_deferred_tools(tools, enabled=self._app_config.tool_search.enabled)
+        final_tools, deferred_setup = assemble_deferred_tools(
+            tools,
+            enabled=self._app_config.tool_search.enabled,
+            defer_builtin_tools=getattr(self._app_config.tool_search, "defer_builtin_tools", False) is True,
+        )
         final_tools.extend(late_tools)
         mcp_routing_middleware = build_mcp_routing_middleware(
             final_tools,

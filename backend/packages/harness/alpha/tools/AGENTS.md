@@ -27,6 +27,14 @@ a malformed declaration fails agent assembly. Tests:
 `tests/test_tool_governance.py`,
 `tests/test_governance_guardrail.py`.
 
+**Deferred schema discovery** (`builtins/tool_search.py`) applies after
+authorization. MCP tools are deferred by default when `tool_search.enabled`;
+first-party schemas are also deferred when `tool_search.defer_builtin_tools` is
+true. `ToolNode` retains the same authorized execution set, while
+`DeferredToolFilterMiddleware` withholds schemas and refuses unpromoted calls.
+Never build the discovery catalog from tools that have not passed the caller's
+authorization and agent allow/deny filters.
+
 **The registries are lazy, and that is a measured constraint, not a style.**
 `BUILTIN_TOOLS` and `SUBAGENT_TOOLS` are built by `_build_registries()` on first
 attribute access (PEP 562 `__getattr__` in `tools/tools.py`), not at import time:

@@ -52,6 +52,12 @@ def mcp_other(x: str) -> str:
     return x
 
 
+@as_tool
+def local_lookup(path: str) -> str:
+    "Read a local resource."
+    return f"read:{path}"
+
+
 def test_subagent_deferral_recipe_hides_then_promotes():
     bound: list[list[str]] = []
 
@@ -172,3 +178,49 @@ def test_subagent_builder_emits_working_deferred_filter():
     assert "mcp_calc" in bound[1]
     assert "mcp_other" not in bound[1]
     assert result["promoted"] == {"catalog_hash": setup.catalog_hash, "names": ["mcp_calc"]}
+
+
+def test_subagent_can_discover_and_execute_deferred_first_party_tool():
+    """First-party tools follow the same hide, promote, execute lifecycle."""
+    bound: list[list[str]] = []
+
+    class RecordingModel(GenericFakeChatModel):
+        def bind_tools(self, tools, **kwargs):
+            bound.append([getattr(tool, "name", None) for tool in tools])
+            return self
+
+    final_tools, setup = assemble_deferred_tools(
+        [local_lookup],
+        enabled=True,
+        defer_builtin_tools=True,
+    )
+    section = get_deferred_tools_prompt_section(deferred_names=setup.deferred_names)
+    model = RecordingModel(
+        messages=iter(
+            [
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "tool_search", "args": {"query": "select:local_lookup"}, "id": "search", "type": "tool_call"}],
+                ),
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "local_lookup", "args": {"path": "notes.txt"}, "id": "lookup", "type": "tool_call"}],
+                ),
+                AIMessage(content="done"),
+            ]
+        )
+    )
+    graph = create_agent(
+        model=model,
+        tools=final_tools,
+        middleware=[DeferredToolFilterMiddleware(setup.deferred_names, setup.catalog_hash)],
+        system_prompt=None,
+        state_schema=ThreadState,
+    )
+
+    result = asyncio.run(graph.ainvoke({"messages": [SystemMessage(content=section), HumanMessage(content="read notes.txt")]}))
+
+    assert bound[0] == ["tool_search"]
+    assert "local_lookup" in bound[1]
+    assert result["promoted"] == {"catalog_hash": setup.catalog_hash, "names": ["local_lookup"]}
+    assert any(getattr(message, "content", None) == "read:notes.txt" for message in result["messages"])

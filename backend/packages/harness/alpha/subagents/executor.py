@@ -1398,6 +1398,7 @@ class SubagentExecutor:
         final_tools, deferred_setup = assemble_deferred_tools(
             configured_tools,
             enabled=resolved_app_config.tool_search.enabled,
+            defer_builtin_tools=getattr(resolved_app_config.tool_search, "defer_builtin_tools", False) is True,
         )
         final_tools.extend(late_tools)
 

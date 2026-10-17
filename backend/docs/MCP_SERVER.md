@@ -123,10 +123,13 @@ Use `routing` when an MCP server should be preferred for specific requests, such
 as internal database questions that should use a PostgreSQL MCP tool before web
 search. Routing hints are soft model guidance: they add a
 `<mcp_routing_hints>` prompt section, but they do not forbid other tools. Use
-agent-level allow/deny policy for hard restrictions. If `tool_search.enabled`
-defers MCP tool schemas, matching routing metadata can also auto-promote the
-deferred schema before the model call. Auto-promotion is controlled by the
-top-level `config.yaml -> tool_search.auto_promote_top_k` setting.
+agent-level allow/deny policy for hard restrictions. With `tool_search.enabled`,
+MCP schemas are deferred; `tool_search.defer_builtin_tools` (default `true`)
+also defers first-party schemas. The agent discovers schemas on demand, while
+execution remains restricted to the already-authorized tool set. Matching MCP
+routing metadata can auto-promote a deferred MCP schema before the model call.
+Auto-promotion is controlled by the top-level
+`config.yaml -> tool_search.auto_promote_top_k` setting.
 
 ```json
 {

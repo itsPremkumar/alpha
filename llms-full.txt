@@ -88,6 +88,7 @@ cd frontend && pnpm test              # unit tests only
 
 - Reference secrets as `$ENV_VAR`, never as literals in `config.yaml`.
 - At least one entry under `models:` is required or the runtime will not start.
+- `tool_search.enabled` and `tool_search.defer_builtin_tools` defer authorized tool schemas until discovery; MCP schemas are deferred, and first-party schemas are deferred by default. Tool execution still uses the same authorized tool set, and unpromoted calls are blocked.
 - The shipped baseline model is `union-alpha`: `langchain_openai:ChatOpenAI`,
   OpenRouter API slug `unbiased/pareto`, key `$OPENROUTER_API_KEY`. The
   CLI-qualified form `openrouter/unbiased/pareto` is **not** a valid
@@ -179,6 +180,9 @@ generation; AST-grep structural search and rewrite across TypeScript, Python, Go
 Rust, and C++; a repo twin sandbox that previews changes; hashline line-level
 precision editing; sandboxed Python and Bash REPLs; and visual artifact and UI
 verification.
+
+Large tool catalogs use deferred schema discovery: the agent sees a compact list
+of names and loads only a relevant, already-authorized schema when needed.
 
 ### 5.6 Security and governance
 Astra security enclave with a scoped credential vault; a risk-scoring command

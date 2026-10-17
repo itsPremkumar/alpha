@@ -39,6 +39,7 @@ APEX session, mode, and goal snapshots use same-host local file locking; goal de
 - [Alpha Mod Kernel](https://github.com/itsPremkumar/alpha/blob/main/docs/ALPHA_MOD_KERNEL_MASTER_SPECIFICATION.md): ordered lead-agent lifecycle middleware, explicit capability grants, fail-closed emergency stop and risk gates; held actions are durable single-process JSON with an admin approve/reject route, while the kernel journal, storage, and timers remain process-local.
 Operator console: the Mods workspace view renders the ordered chain and each mod's describe, runs contributed mod commands, and (admin-gated) the audit ledger plus hold queue; POST /api/mods/preview bounds what a tool call would touch and never executes it, and an absent list is reported as absent rather than as empty.
 - [Extensions](EXTENSIONS.md): MCP over stdio/HTTP/SSE plus the Python extension contribution contract.
+- [MCP Server](https://github.com/itsPremkumar/alpha/blob/main/backend/docs/MCP_SERVER.md): setup, policy, routing hints, and deferred schema discovery for MCP and first-party tools.
 - [Skills](SKILLS.md): skill packages, the curator lifecycle, quarantine trust tiers, and the 24 public skills.
 - [Voice conversation](VOICE_CONVERSATION.md): the real-time local voice loop (Whisper + Piper, no paid speech API).
 - [Workforce](WORKFORCE.md): bot roster, SOUL protocol, DMs, swarm DAG runtime, projects with owner-scoped per-run project instructions, Kanban, Bot Forge, and UI guidance for choosing subagent limits, swarm topologies, Arena competitor counts, and when each fits.
