@@ -60,8 +60,13 @@ import {
 import { GroupActivityPanel } from "@/components/sections/GroupActivityPanel";
 import { GroupProfilePanel } from "@/components/sections/GroupProfilePanel";
 import { Composer } from "@/components/Composer";
+import {
+  groupAvatarEmoji,
+  GROUP_AVATAR_GENERATED_TITLE,
+} from "@/lib/group-avatar";
 import { fetchRoster } from "@/lib/inbox";
 import { sendAgentMessage } from "@/lib/inbox";
+import { fetchBots } from "@/lib/bots";
 import {
   type MentionAgent,
   type MentionRow,
@@ -238,6 +243,8 @@ function initials(name: string): string {
 function Avatar(props: {
   name: string;
   group?: boolean;
+  avatar?: string | null;
+  title?: string;
   size?: "sm" | "md" | "lg";
   className?: string;
   children?: React.ReactNode;
@@ -247,16 +254,47 @@ function Avatar(props: {
     md: "size-8 text-[10px]",
     lg: "size-10 text-[12px]",
   }[props.size ?? "md"];
+  const avatar = props.avatar ?? "";
+  // A picture is either a real image URL or a glyph; the two are drawn on
+  // different grounds. Painting an emoji on the saturated sender colour makes
+  // it muddy, so a glyph sits on a neutral surface instead.
+  const isImage =
+    avatar.startsWith("http") ||
+    avatar.startsWith("data:") ||
+    avatar.startsWith("/");
+  const background = isImage
+    ? "transparent"
+    : avatar
+      ? "bg-muted"
+      : props.group
+        ? "#5566ff"
+        : senderColor(props.name);
   return (
     <span className={`relative inline-flex shrink-0 ${props.className ?? ""}`}>
       <span
-        className={`${sizing} rounded-full inline-flex items-center justify-center font-bold text-white ring-1 ring-black/10 dark:ring-white/10`}
-        style={{
-          backgroundColor: props.group ? "#5566ff" : senderColor(props.name),
-        }}
+        className={`${sizing} rounded-full inline-flex items-center justify-center font-bold ring-1 ring-black/10 dark:ring-white/10 ${isImage ? "overflow-hidden" : ""} ${background.startsWith("bg-") ? background : background.startsWith("#") ? "text-white" : ""}`}
+        style={
+          background.startsWith("bg-") ? undefined : { backgroundColor: background }
+        }
+        title={props.title}
         aria-hidden="true"
       >
-        {props.group ? <Users className="size-4" /> : initials(props.name)}
+        {avatar ? (
+          isImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={avatar}
+              alt=""
+              className="h-full w-full object-cover rounded-full"
+            />
+          ) : (
+            <span className="leading-none">{avatar}</span>
+          )
+        ) : props.group ? (
+          <Users className="size-4" />
+        ) : (
+          initials(props.name)
+        )}
       </span>
       {props.children}
     </span>
@@ -469,6 +507,58 @@ export function MessagesSection(props: {
    * that actually decided what is on screen.
    */
   const convListRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Profile pictures, read from `/bots` — NOT from the thread roster.
+   *
+   * The two roster reads disagree about scope: `/threads/{id}/agent-messages/
+   * roster` lists only the agents registered inside THIS conversation (after a
+   * restart it is a single `lead_agent`) and carries no `avatar` field at all,
+   * while the profile picture lives on the bot profile. Reading avatars from
+   * the thread roster is therefore how a bot with a real avatar rendered as
+   * bare initials: the answer existed, just in the other endpoint.
+   *
+   * `null` means "not read yet" and a failed read keeps the map empty, which
+   * renders initials — the honest fallback, never a placeholder portrait.
+   */
+  const [botAvatars, setBotAvatars] = useState<Record<string, string> | null>(
+    null,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    fetchBots()
+      .then((bots) => {
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        bots.forEach((b) => {
+          const a = typeof b.avatar === "string" ? b.avatar.trim() : "";
+          if (a) map[b.name] = a;
+        });
+        setBotAvatars(map);
+      })
+      .catch(() => {
+        // A failed avatar read must not blank the conversations: the initials
+        // fallback is the honest answer, so the failure is simply not applied.
+        if (!cancelled) setBotAvatars({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const avatarByName = useMemo(() => {
+    const map: Record<string, string> = {};
+    Object.entries(botAvatars ?? {}).forEach(([k, v]) => {
+      if (v) map[k] = v;
+    });
+    // The thread roster may also carry an avatar; it only fills gaps the bot
+    // profiles left, so a bot profile is never overridden by a thinner read.
+    roster.forEach((r) => {
+      const a = r.avatar ? String(r.avatar) : "";
+      if (a && !map[r.name]) map[r.name] = a;
+    });
+    return map;
+  }, [botAvatars, roster]);
 
   const load = async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -1728,6 +1818,10 @@ export function MessagesSection(props: {
         )}
         <Avatar
           name={c.title}
+          avatar={
+            c.kind === "group" ? groupAvatarEmoji(c.title.slice(2)) : null
+          }
+          title={c.kind === "group" ? GROUP_AVATAR_GENERATED_TITLE : undefined}
           group={c.kind === "group"}
           size="lg"
         >
@@ -1793,7 +1887,7 @@ export function MessagesSection(props: {
                         : `${m} — presence not read`
                     }
                   >
-                    <Avatar name={m} size="sm" />
+                    <Avatar name={m} avatar={avatarByName[m] ?? null} size="sm" />
                     <span
                       className={`absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-1 ring-background ${
                         read
@@ -2233,6 +2327,16 @@ export function MessagesSection(props: {
                 </button>
                 <Avatar
                   name={activeTitle}
+                  avatar={
+                    sel.kind === "group"
+                      ? groupAvatarEmoji(sel.name)
+                      : (avatarByName[activeTitle] ?? null)
+                  }
+                  title={
+                    sel.kind === "group"
+                      ? GROUP_AVATAR_GENERATED_TITLE
+                      : undefined
+                  }
                   group={sel.kind === "group"}
                   size="lg"
                 />
@@ -2348,6 +2452,7 @@ export function MessagesSection(props: {
                             {run.items[0] && run.items[0].sender !== OPERATOR ? (
                               <Avatar
                                 name={run.items[0].sender}
+                                 avatar={avatarByName[run.items[0].sender] ?? null}
                                 size="sm"
                                 className="mt-1"
                               />
@@ -3161,6 +3266,8 @@ function MemberRow(props: {
   detail: string;
   title: string;
   muted?: boolean;
+  /** Profile pictures, keyed by agent name; absent one renders initials. */
+  avatars?: Record<string, string>;
 }) {
   const mine = props.name === OPERATOR;
   return (
@@ -3168,7 +3275,11 @@ function MemberRow(props: {
       className={`flex items-center gap-2.5 text-[11px] rounded-lg px-1.5 py-1.5 hover:bg-muted/40 transition-colors dur-fast ${props.muted ? "opacity-80" : ""}`}
       title={props.title}
     >
-      <Avatar name={props.name} size="sm">
+      <Avatar
+        name={props.name}
+        avatar={props.avatars?.[props.name] ?? null}
+        size="sm"
+      >
         <span
           className={`absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-background ${props.dotClass}`}
           aria-hidden="true"
@@ -3251,6 +3362,14 @@ function DetailsPane(props: {
   members: string[];
   /** Measured per-member presence; empty when the roster has not been read. */
   presence: MemberPresence[];
+  /**
+   * Profile pictures keyed by agent name, read from the bot profiles.
+   *
+   * The details pane lists people, so it must draw the same picture the
+   * conversation rows do: a roster read that carries no avatar would render
+   * every member here as bare initials and read as "no picture exists".
+   */
+  avatars?: Record<string, string>;
   /** Why the roster could not be read, or null. Never conflated with empty. */
   presenceError: string | null;
   /**

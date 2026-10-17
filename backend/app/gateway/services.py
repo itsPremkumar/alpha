@@ -111,11 +111,12 @@ def _resolve_run_owner_user_id(request: Request) -> str | None:
     Internal service calls remain ownerless unless they carry the validated
     owner header; client request bodies are never consulted here.
     """
-    owner_user_id = get_trusted_internal_owner_user_id(request)
-    if owner_user_id is not None:
-        return owner_user_id
-
     state = getattr(request, "state", None)
+    owner_user_id = get_trusted_internal_owner_user_id(request) if request is not None else None
+    if isinstance(owner_user_id, str) and owner_user_id.strip():
+        return owner_user_id.strip()
+    # An empty trusted header means no explicit owner; resolve the authenticated
+    # principal below instead of returning an invalid empty-string owner.
     if getattr(state, "auth_source", None) == AUTH_SOURCE_INTERNAL:
         return None
 

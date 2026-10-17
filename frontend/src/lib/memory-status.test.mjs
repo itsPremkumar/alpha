@@ -191,6 +191,6 @@ test("MemorySection renders the extraction row honestly", () => {
   // sent and may only render after a successful read.
   assert.match(src, /status && !statusError \? extractionHealthBadge\(status\.health\) : null/);
   assert.match(src, /extraction health: checking/);
-  // The card itself also only renders after a successful status read.
-  assert.match(src, /status && !statusError \? \(\s*$[\s\S]*?<MemoryHealthCard/m);
+  // The compact health badge itself only renders after a successful status read.
+  assert.match(src, /status && !statusError \? extractionHealthBadge\(status\.health\) : null/);
 });

@@ -2577,6 +2577,17 @@ def test_run_owner_resolution_uses_server_principal_but_not_unowned_internal_ide
     assert _resolve_run_owner_user_id(SimpleNamespace(state=SimpleNamespace(auth_source=AUTH_SOURCE_INTERNAL, user=SimpleNamespace(id="default")))) is None
 
 
+def test_run_owner_resolution_ignores_empty_trusted_owner_header(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.gateway import services
+
+    monkeypatch.setattr(services, "get_trusted_internal_owner_user_id", lambda _request: "   ")
+    request = SimpleNamespace(state=SimpleNamespace(auth_source="session", user=SimpleNamespace(id="user-1")))
+
+    assert services._resolve_run_owner_user_id(request) == "user-1"
+
+
 def test_launch_scheduled_thread_run_marks_context_non_interactive(_stub_app_config):
     import asyncio
     from types import SimpleNamespace

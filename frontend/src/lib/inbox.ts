@@ -6,6 +6,7 @@ export interface RosterAgent {
   name: string;
   role: string;
   status: string;
+  avatar?: string | null;
 }
 
 export async function fetchRoster(threadId: string): Promise<RosterAgent[]> {
@@ -15,6 +16,7 @@ export async function fetchRoster(threadId: string): Promise<RosterAgent[]> {
     name: String(pick(a, ["name"], "")),
     role: String(pick(a, ["role"], "worker")),
     status: String(pick(a, ["status"], "idle")),
+    avatar: String(pick(a, ["avatar"], "")) || null,
   }));
 }
 
