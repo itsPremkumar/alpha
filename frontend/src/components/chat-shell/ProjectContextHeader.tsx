@@ -205,10 +205,12 @@ export function ProjectContextHeader(props: ProjectContextHeaderProps) {
       </div>
 
       {/* ── Breadcrumb invariant row (Strict adherence to chat-shell-breadcrumb test) ── */}
+      {/* No "ALPHA" wordmark leads this row. The product name is already in the
+          browser tab, the favicon and the sidebar rail, so it was a fourth
+          spelling of a name the reader could not act on — while costing the
+          breadcrumb its first segment and a separator. The row now opens on the
+          thing it is actually for: which agent, which project, which thread. */}
       <div className="px-4 pb-1 text-[10px] text-muted-foreground flex items-center gap-1.5 overflow-hidden">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">Alpha</span>
-        <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" aria-hidden="true" />
-
         {/* bot segment */}
         {bot ? (
           <span className="flex items-center gap-1.5 min-w-0">
