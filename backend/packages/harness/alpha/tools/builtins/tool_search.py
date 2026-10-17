@@ -277,6 +277,43 @@ class DeferredToolSetup:
     catalog_hash: str | None
 
 
+#: Tools that are **never** deferred, whatever ``defer_builtin_tools`` says.
+#:
+#: Deferral is a token optimisation: it trades a schema the model can see for a
+#: search round-trip it must perform before the tool is callable. That trade is
+#: sound for a wide, rarely-used surface (MCP servers, niche builtins). It is
+#: *not* sound for delegation, which is the primary mechanism of a super-agent
+#: and the one capability the operator explicitly opted into.
+#:
+#: Measured on this deployment (2026-10-17): with ``tool_search.enabled: true``
+#: and ``defer_builtin_tools: true``, a live delegation attempt failed. The lead
+#: bound ``task``, the model tried to call it, and the unpromoted-call refusal
+#: came back instead - and the model's explanation of *why* cited a
+#: ``tool_search`` failure string that exists nowhere in this codebase, so the
+#: operator was told a fabricated reason for a real outage.
+#:
+#: Deferring ``task`` also makes delegation depend on the discovery tool being
+#: reachable and the promotion round-trip succeeding. That is a second failure
+#: mode on the primary path, in exchange for schema bytes.
+#:
+#: The discovery tool itself is excluded structurally rather than here: it is
+#: built *from* the catalog after this selection, so it is never a candidate.
+NEVER_DEFERRED_TOOL_NAMES: frozenset[str] = frozenset({"task"})
+
+
+def is_deferrable(tool: BaseTool, *, defer_builtin_tools: bool) -> bool:
+    """Whether this tool may be withheld from model binding until promoted.
+
+    MCP tools are deferrable whenever discovery is enabled. A first-party tool
+    is deferrable only when the operator opted in, and never when it is named in
+    :data:`NEVER_DEFERRED_TOOL_NAMES`.
+    """
+
+    if tool.name in NEVER_DEFERRED_TOOL_NAMES:
+        return False
+    return is_mcp_tool(tool) or defer_builtin_tools
+
+
 def build_tool_search_tool(catalog: DeferredToolCatalog) -> BaseTool:
     catalog_hash = catalog.hash
 
@@ -333,7 +370,8 @@ def build_deferred_tool_setup(
     skills are loaded at startup. The downstream deferred-schema middleware still
     hides unpromoted deferred schemas in either case. First-party tools remain
     eager for direct callers unless ``defer_builtin_tools`` is enabled; when it
-    is, the same policy-filtered catalog and promotion gate applies to them.
+    is, the same policy-filtered catalog and promotion gate applies to them -
+    except for :data:`NEVER_DEFERRED_TOOL_NAMES`, below.
 
     Returns an empty setup when deferral is disabled or no candidate survived
     the caller's build-time selection.
@@ -341,7 +379,7 @@ def build_deferred_tool_setup(
     if not enabled:
         # Deferral disabled: defer nothing; the model binds every tool as before.
         return DeferredToolSetup(None, frozenset(), None)
-    deferred = [t for t in candidate_tools if is_mcp_tool(t) or defer_builtin_tools]
+    deferred = [t for t in candidate_tools if is_deferrable(t, defer_builtin_tools=defer_builtin_tools)]
     if not deferred:
         # Enabled, but no candidate to defer.
         return DeferredToolSetup(None, frozenset(), None)
@@ -371,7 +409,12 @@ def assemble_deferred_tools(
         enabled=enabled,
         defer_builtin_tools=defer_builtin_tools,
     )
-    expected_deferred = any(is_mcp_tool(tool) for tool in candidate_tools) or (defer_builtin_tools and bool(candidate_tools))
+    # Must use the SAME predicate that built the catalog. Deriving this from the
+    # old `is_mcp_tool(...) or defer_builtin_tools` expression would claim a
+    # deferrable set exists whenever any candidate was passed, so a build whose
+    # only candidate is a never-deferred tool (a `task`-only subagent) would trip
+    # the fail-closed guard below for deferral that was never requested.
+    expected_deferred = any(is_deferrable(tool, defer_builtin_tools=defer_builtin_tools) for tool in candidate_tools)
     if enabled and expected_deferred and not deferred_setup.deferred_names:
         raise RuntimeError("tool_search is enabled and deferrable candidates exist, but no deferred set was recovered - refusing to bind their full schemas (fail-closed).")
     final_tools = list(candidate_tools)

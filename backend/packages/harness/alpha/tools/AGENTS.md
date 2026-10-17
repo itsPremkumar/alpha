@@ -30,10 +30,24 @@ a malformed declaration fails agent assembly. Tests:
 **Deferred schema discovery** (`builtins/tool_search.py`) applies after
 authorization. MCP tools are deferred by default when `tool_search.enabled`;
 first-party schemas are also deferred when `tool_search.defer_builtin_tools` is
-true. `ToolNode` retains the same authorized execution set, while
-`DeferredToolFilterMiddleware` withholds schemas and refuses unpromoted calls.
-Never build the discovery catalog from tools that have not passed the caller's
-authorization and agent allow/deny filters.
+true — **except `task`**, which `NEVER_DEFERRED_TOOL_NAMES` exempts. Deferral is
+a token optimisation that trades a visible schema for a search round-trip; that
+trade is wrong for delegation, the primary mechanism of a super-agent and the one
+capability an operator explicitly opted into. Measured on this deployment
+(2026-10-17) with `defer_builtin_tools: true`: a live delegation attempt failed
+because `task` sat unpromoted behind a discovery call, and the model explained the
+refusal with a `tool_search` error string that exists nowhere in the codebase, so
+the operator received a fabricated reason for a real outage. Same live check after
+the exemption: `Used 1 tool / task` → `1 subagent · completed · PONG · 1/1 steps`.
+The discovery tool itself is never a candidate — it is built *from* the catalog
+after selection — so it cannot be blacked out by its own deferral set.
+`assemble_deferred_tools`'s fail-closed guard must derive its "expected deferred"
+from the same `is_deferrable` predicate, or a `task`-only build would raise for
+deferral that was never requested. `ToolNode` retains the same authorized
+execution set, while `DeferredToolFilterMiddleware` withholds schemas and refuses
+unpromoted calls. Never build the discovery catalog from tools that have not
+passed the caller's authorization and agent allow/deny filters. Tests:
+`tests/test_delegation_tool_never_deferred.py`, `tests/test_tool_search.py`.
 
 **The registries are lazy, and that is a measured constraint, not a style.**
 `BUILTIN_TOOLS` and `SUBAGENT_TOOLS` are built by `_build_registries()` on first
