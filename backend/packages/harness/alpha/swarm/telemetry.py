@@ -14,6 +14,7 @@ reports ``unknown``/``None`` instead of a reassuring number.
 
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -37,6 +38,16 @@ _COMPLETED = frozenset({TaskNodeState.COMPLETED})
 # limit set" and "nothing used" are different facts.
 PRESSURE_WARNING = 0.70
 PRESSURE_CRITICAL = 0.90
+
+
+def _as_float(value: Any, default: float = 0.0) -> float:
+    """Best-effort float, falling back rather than raising on a bad estimate."""
+
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return default
+    return result if math.isfinite(result) else default
 
 
 def normalized_signature(text: str) -> str:
@@ -226,6 +237,59 @@ class SwarmTelemetry:
             "completed_tasks": completed,
             "messages_per_completed_task": round(messages / completed, 4) if completed else None,
             "basis": "bounded blackboard message count over completed tasks; None before any task completes",
+        }
+
+    @staticmethod
+    def cost_projection(plan: SwarmPlan) -> dict[str, Any]:
+        """What a not-yet-run plan is predicted to cost, before it spends anything.
+
+        **Why this exists.** ``SwarmBudget`` bounds a run *while* it runs, and
+        ``budget_pressure`` reports the ratio *after* spend.  Neither answers the
+        only question that decides whether to start: given this decomposition,
+        will it fit the ceiling I already declared?  Arena refuses a tournament
+        above ``require_confirmation_over_calls`` for exactly this reason; the
+        swarm had no equivalent.
+
+        **Only wall-clock is projected, and that is a limitation, not an
+        omission.**  The decomposer computes a seconds-weighted critical path
+        (``critical_path_seconds``) from per-task ``estimated_seconds``.  There
+        is no per-task token or tool-call estimate anywhere in the plan, so
+        ``projected_tokens`` and ``projected_tool_calls`` are ``None`` —
+        "unmeasured", never ``0`` and never a invented figure.  A projection that
+        quietly guessed would be worse than no projection.
+
+        The refusal rule is deliberately self-consistent rather than
+        configurable: a plan whose own predicted makespan exceeds its own
+        declared ``max_wall_seconds`` cannot honour that budget, so it is refused
+        before the first worker starts.  No new config key is needed, and the
+        check cannot drift from the budget it is checking.
+        """
+
+        metrics = plan.metrics if isinstance(plan.metrics, Mapping) else {}
+        projected_wall = max(0.0, _as_float(metrics.get("estimated_parallel_seconds"), plan.critical_path_seconds))
+        projected_serial = max(0.0, _as_float(metrics.get("estimated_serial_seconds")))
+        speedup = _as_float(metrics.get("estimated_speedup"), plan.estimated_speedup)
+        wall_budget = plan.budget.max_wall_seconds
+        tool_budget = plan.budget.max_tool_calls
+
+        wall_exceeded = None
+        if wall_budget is not None:
+            wall_exceeded = projected_wall > float(wall_budget)
+
+        return {
+            "projected_tasks": len(plan.tasks),
+            "projected_wall_seconds": round(projected_wall, 3),
+            "projected_serial_seconds": round(projected_serial, 3),
+            "estimated_speedup": round(speedup, 4) if speedup else None,
+            "wall_budget_seconds": wall_budget,
+            "wall_budget_exceeded": wall_exceeded,
+            "tool_budget_calls": tool_budget,
+            # Unmeasured, not zero: no per-task token/tool estimate exists.
+            "projected_tokens": None,
+            "projected_tool_calls": None,
+            "max_concurrency": plan.max_concurrency,
+            "estimate_method": str(metrics.get("estimate_method") or "not_computed"),
+            "basis": "decomposer critical-path estimate; token and tool projections are None because no per-task estimate exists",
         }
 
     @classmethod

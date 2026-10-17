@@ -15,6 +15,7 @@ from alpha.swarm.coordinator import get_swarm_coordinator
 from alpha.swarm.governor import get_swarm_resource_governor
 from alpha.swarm.incidents import get_swarm_incident_manager
 from alpha.swarm.models import SwarmBudget, SwarmMode, TaskNodeState
+from alpha.swarm.telemetry import SwarmTelemetry
 from alpha.utils.assembly_io import run_assembly
 
 
@@ -80,8 +81,10 @@ def swarm_tool(
         goal: High-level mission for evaluation, swarm creation, or a GRO
             `compete` run.
         swarm_id: Existing swarm id for operations other than evaluate/spawn;
-            for `compete_status` it is the GRO run id (omit it to list your
-            GRO runs, newest first). Not required by `compete`.
+            optional for `governor` to include that swarm's requested and
+            evidence-measured models. For `compete_status` it is the GRO run id
+            (omit it to list your GRO runs, newest first). Not required by
+            `compete` or a global `governor` read.
         mode: Swarm strategy: auto, parallel, map_reduce, scatter_gather,
             hierarchical, debate, ensemble, or coding_worktree.
         items_json: JSON array of independent work items; for `compete` each
@@ -159,6 +162,27 @@ def swarm_tool(
             )
         except ValueError as exc:
             return f"Error: swarm could not be created: {exc}"
+        # Refuse BEFORE the first worker starts, not after the budget is gone.
+        # A plan whose own predicted makespan exceeds its own declared wall
+        # ceiling cannot honour that budget, so creating it would guarantee a
+        # run that ends in budget_exhausted. Arena refuses a tournament above
+        # require_confirmation_over_calls for the same reason; the swarm had no
+        # equivalent, so a swarm could be spawned that was already doomed.
+        projection = SwarmTelemetry.cost_projection(plan)
+        if projection["wall_budget_exceeded"] is True:
+            return (
+                "Error: swarm refused before start - the decomposition predicts "
+                f"{projection['projected_wall_seconds']}s of critical-path work against a "
+                f"{projection['wall_budget_seconds']}s wall budget.\n\n"
+                f"- **Tasks**: {projection['projected_tasks']}\n"
+                f"- **Predicted serial**: {projection['projected_serial_seconds']}s\n"
+                f"- **Predicted parallel**: {projection['projected_wall_seconds']}s\n"
+                f"- **Estimate method**: `{projection['estimate_method']}`\n\n"
+                "Raise `max_wall_seconds`, reduce the goal, or split it into "
+                "independent swarms. Token and tool-call projections are "
+                "`null` because no per-task estimate exists - only wall-clock is "
+                "projected, so this check is a floor on risk, not a ceiling."
+            )
         tasks_summary = "\n".join(f"  - `[{task.task_id}]` {task.objective} (deps: {task.dependencies or 'none'})" for task in plan.tasks.values())
         return (
             "### Autonomous Swarm Successfully Spawned (plan created; execution is explicit)\n"
@@ -166,7 +190,8 @@ def swarm_tool(
             f"- **Goal**: {plan.goal}\n"
             f"- **Mode**: `{plan.mode.value}`\n"
             f"- **Tasks**: {len(plan.tasks)}\n"
-            f"- **Task DAG**:\n{tasks_summary}\n\n"
+            f"- **Task DAG**:\n{tasks_summary}\n"
+            f"- **Projected cost**: `{json.dumps(projection, sort_keys=True)}`\n\n"
             f"Run it with `swarm(action='run_async', swarm_id='{plan.swarm_id}')`; `step` only dispatches work."
         )
 
@@ -312,7 +337,12 @@ def swarm_tool(
         return json.dumps([incident.to_dict() for incident in incidents], indent=2, ensure_ascii=False)
 
     if action == "governor":
-        return f"### Swarm Resource Governor Status\n```json\n{json.dumps(get_swarm_resource_governor().get_status(), indent=2)}\n```"
+        plan = None
+        if swarm_id.strip():
+            plan = coordinator.get_swarm(swarm_id.strip(), owner_id=owner_id)
+            if plan is None:
+                return f"Error: Swarm '{swarm_id.strip()}' not found or is not visible to this owner."
+        return f"### Swarm Resource Governor Status\n```json\n{json.dumps(get_swarm_resource_governor().get_status(plan), indent=2)}\n```"
 
     if action == "pause":
         return f"Swarm '{swarm_id}' paused: {coordinator.pause_swarm(swarm_id)}"

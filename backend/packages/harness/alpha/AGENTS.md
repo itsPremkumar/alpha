@@ -293,6 +293,35 @@ deterministic repair-task expansion redirecting blocked dependents — it never
 converts a failed task into success. The synchronous model tool may use the
 runner's daemon-thread fallback when no event loop is available.
 
+**Pre-launch cost projection.** `SwarmTelemetry.cost_projection(plan)` answers
+the only question that decides whether to start: given this decomposition, will
+it fit the ceiling already declared? The `swarm` tool's `spawn` action refuses a
+plan whose own predicted makespan exceeds its own `max_wall_seconds`, before the
+first worker starts — a plan that cannot honour its budget would otherwise be
+guaranteed to end in `budget_exhausted` however well it ran. The rule is
+self-consistent rather than configurable, so it cannot drift from the budget it
+checks. **Only wall-clock is projected.** There is no per-task token or tool-call
+estimate anywhere in the plan, so `projected_tokens` and `projected_tool_calls`
+are `None` — "unmeasured", never `0` and never an invented figure. A projection
+that quietly guessed would be worse than no projection. `SwarmBudget` still bounds
+the run while it runs and `budget_pressure` still reports the ratio after spend;
+the projection is the third, earlier answer.
+
+**The governor does not route models.** `SwarmResourceGovernor` adapts concurrency
+after 429s and reports which models a swarm used. It used to carry a `MODEL_TIERS`
+table of four hardcoded names plus a `resolve_model_for_role` substring matcher;
+neither was called, because the runner resolves models through
+`resolve_subagent_model_name(..., app_config=...)` and `task_node.model_override`.
+The defect was that `get_status()` still *published* those names, and it is served
+by `GET /api/swarms/governor/status` and by the swarm tool's own `governor` action
+— so an operator surface, and the model itself, were told the swarm routes to
+models Alpha does not use, which also breaks the root rule that every model name
+lives in `config.yaml`, never in code. `get_status(plan)` now reports two measured
+lists: `models_requested` (distinct non-`None` `model_override`) and `models_used`
+(the `model` field each worker stamps into its evidence via `_model_label`). A
+requested model that was never reached is therefore never reported as used. With no
+plan both are `None` — "not measured yet", not a fallback name.
+
 `SwarmCoordinator` serializes state transitions and restores interrupted plans as
 paused with fresh-lease requirements; `SwarmScheduler` validates DAGs before
 mutation, assigns lease ids, renews live attempts, applies backoff and fences stale
