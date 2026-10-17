@@ -361,6 +361,47 @@ export interface SwarmEventRow {
   worker: string | null;
 }
 
+/**
+ * One topology badge row for the structure panel. The label/note copy mirrors
+ * what the composer and Team Ops selectors say about each mode (`TeamOpsSection`
+ * and `SwarmModeControl`); an unknown or missing mode is disclosed rather than
+ * substituted.
+ */
+export interface SwarmModeBadge {
+  /** The Gateway-reported topology, verbatim; `null` when not reported. */
+  mode: string | null;
+  label: string;
+  note: string;
+  tone: Tone;
+}
+
+const SWARM_MODE_BADGES: Record<string, { label: string; note: string }> = {
+  auto: { label: "Auto", note: "topology routed from the goal and the measured task graph" },
+  parallel: { label: "Parallel", note: "independent tasks run concurrently" },
+  map_reduce: { label: "Map–Reduce", note: "independent work items, then one gather task combines them" },
+  scatter_gather: { label: "Scatter–Gather", note: "broad exploration first, then a collection phase" },
+  hierarchical: { label: "Hierarchical", note: "levels coordinate through parent tasks" },
+  debate: { label: "Debate", note: "independent positions challenge one another" },
+  ensemble: { label: "Ensemble", note: "independent solutions feed a synthesis" },
+  coding_worktree: { label: "Coding Worktree", note: "coding workers run in isolated worktrees" },
+  read_fanout: { label: "Read Fanout", note: "read-only workers, no isolation cost — safe to scale wide" },
+  critical_path_split: { label: "Critical Path Split", note: "the longest dependency chain is shortened" },
+};
+
+export function swarmModeBadge(mode: unknown): SwarmModeBadge {
+  if (typeof mode !== "string" || !mode.trim()) {
+    return { mode: null, label: "Topology not reported", note: "the Gateway did not report this swarm's topology", tone: "gray" };
+  }
+  const reported = mode.trim();
+  const known = SWARM_MODE_BADGES[reported];
+  if (!known) {
+    // A topology this frontend does not know is preserved verbatim: an older
+    // client ahead of a newer Gateway must never silently re-label a mode.
+    return { mode: reported, label: reported, note: "topology reported verbatim; this frontend has no description for it", tone: "amber" };
+  }
+  return { mode: reported, label: known.label, note: known.note, tone: "blue" };
+}
+
 export interface SwarmTelemetryView {
   parallelism: string;
   completion: string;

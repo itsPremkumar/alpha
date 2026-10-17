@@ -10,7 +10,9 @@ import {
   companyStatus, executiveDigest, companyKpis,
 } from "@/lib/teamops";
 import {
-  swarmStructureView, swarmTelemetryView,
+  swarmStructureView,
+  swarmTelemetryView,
+  swarmModeBadge,
   type SwarmStructureView,
 } from "@/lib/swarm-structure-view";
 import {
@@ -765,6 +767,7 @@ function SwarmStructurePanel(props: { swarmId: string }) {
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [telemetry, setTelemetry] = useState<ReturnType<typeof swarmTelemetryView> | null>(null);
+  const [modeBadge, setModeBadge] = useState<ReturnType<typeof swarmModeBadge> | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -781,6 +784,14 @@ function SwarmStructurePanel(props: { swarmId: string }) {
     setEventsError(events.status === "rejected" ? errMsg(events.reason) : null);
     setMetricsError(metrics.status === "rejected" ? errMsg(metrics.reason) : null);
     setTelemetry(metrics.status === "fulfilled" ? swarmTelemetryView(metrics.value) : null);
+    if (detail.status === "fulfilled") {
+      // The detail read succeeded; whether the Gateway reported a topology is
+      // the badge's own disclosure ("not reported" is the honest gray). On a
+      // rejected refresh the previously measured badge stays visible, like the
+      // other reads.
+      const root = (detail.value ?? {}) as Record<string, unknown>;
+      setModeBadge(swarmModeBadge(root.mode));
+    }
     setView(
       swarmStructureView(
         detail.status === "fulfilled" ? detail.value : undefined,
@@ -824,6 +835,21 @@ function SwarmStructurePanel(props: { swarmId: string }) {
           message={`This swarm's measured telemetry could not be read. (${metricsError})`}
           onRetry={load}
         />
+      )}
+
+      {modeBadge && (
+        <div className="rounded-lg border border-border/50 px-2.5 py-2" aria-live="polite">
+          <p className="text-[11px] font-semibold">
+            {modeBadge.mode ? (
+              <>
+                Topology: <span className="font-mono">{modeBadge.mode}</span> · {modeBadge.label}
+              </>
+            ) : (
+              modeBadge.label
+            )}
+          </p>
+          <p className="text-[10px] text-muted-foreground">{modeBadge.note}</p>
+        </div>
       )}
 
       {telemetry && (

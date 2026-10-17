@@ -28,7 +28,7 @@ const code = ts.transpileModule(read("./swarm-structure-view.ts"), {
 }).outputText;
 
 // This module imports nothing, so the transpiled output is self-contained.
-const { swarmTaskRows, swarmLeaderView, swarmTeamView, swarmEventRows, swarmStructureView, swarmTelemetryView, measuredCount, isDisplayableSummary } =
+const { swarmTaskRows, swarmLeaderView, swarmTeamView, swarmEventRows, swarmStructureView, swarmTelemetryView, swarmModeBadge, measuredCount, isDisplayableSummary } =
   await import(toDataUrl(code));
 
 // ---------------------------------------------------------------------------
@@ -568,4 +568,50 @@ test("a tasks field sent as a list is read as tasks, not discarded", () => {
 test("a task with no task_id falls back to its key, not 'undefined'", () => {
   const rows = swarmTaskRows({ "task-map-9": { objective: "x" } });
   assert.equal(rows[0].taskId, "task-map-9");
+});
+
+// ---------------------------------------------------------------------------
+// Topology badge (mode badges for the structure panel)
+// ---------------------------------------------------------------------------
+
+test("every known topology gets its own honest badge copy", () => {
+  const expect = {
+    auto: "topology routed from the goal and the measured task graph",
+    parallel: "independent tasks run concurrently",
+    map_reduce: "independent work items, then one gather task combines them",
+    scatter_gather: "broad exploration first, then a collection phase",
+    hierarchical: "levels coordinate through parent tasks",
+    debate: "independent positions challenge one another",
+    ensemble: "independent solutions feed a synthesis",
+    coding_worktree: "coding workers run in isolated worktrees",
+    read_fanout: "read-only workers, no isolation cost — safe to scale wide",
+    critical_path_split: "the longest dependency chain is shortened",
+  };
+  for (const [mode, note] of Object.entries(expect)) {
+    const badge = swarmModeBadge(mode);
+    assert.equal(badge.mode, mode, mode);
+    assert.equal(badge.tone, "blue", mode);
+    assert.equal(badge.note, note, mode);
+    assert.ok(badge.label.length > 0, mode);
+    // The badge describes what the topology promises, never what a run
+    // achieved: a topology cannot verify anything.
+    assert.doesNotMatch(badge.note, /verified|proved/, mode);
+  }
+});
+
+test("an unknown topology is preserved verbatim with its own disclosure", () => {
+  const badge = swarmModeBadge("galaxy_brain");
+  assert.equal(badge.mode, "galaxy_brain");
+  assert.equal(badge.label, "galaxy_brain");
+  assert.equal(badge.tone, "amber");
+  assert.match(badge.note, /verbatim/);
+});
+
+test("an unreported mode is gray and named, never substituted", () => {
+  for (const missing of [undefined, null, "", "   ", 42]) {
+    const badge = swarmModeBadge(missing);
+    assert.equal(badge.mode, null, String(missing));
+    assert.equal(badge.tone, "gray", String(missing));
+    assert.match(badge.note, /did not report/, String(missing));
+  }
 });
