@@ -10,6 +10,8 @@ from alpha.bots.quality_gate import evaluate_quality_gate
 from alpha.runtime.runs.verification import verify_acceptance_criteria
 from alpha.swarm.consensus import ConsensusPolicy, evaluate_consensus, votes_from_evidence
 from alpha.swarm.deliberation import DeliberationPolicy, rounds_from_evidence, run_deliberation
+from alpha.swarm.diversity import panel_decorrelation, panel_voters, suspicious_unanimity
+from alpha.swarm.grounding import grounding_unresolved
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode, TaskNodeState
 
 
@@ -54,9 +56,31 @@ class SwarmAggregator:
             ],
         }
         task.acceptance_status = "passed" if verification.verified else "failed"
+        if verification.verified:
+            # Claim grounding (S2): a task that explicitly asked for acceptance
+            # is not accepted while its summary cites paths that contradict the
+            # workspace.  The ``unverifiable`` class (absolute / virtual-sandbox
+            # paths) deliberately does NOT fail the task -- a claim this module
+            # cannot check must not read as a failed one -- and the verdicts
+            # stay visible beside the downgrade.
+            unresolved_claims = grounding_unresolved(task)
+            if unresolved_claims:
+                task.acceptance_status = "failed"
+                task.verification = {
+                    **task.verification,
+                    "verified": False,
+                    "grounding_unresolved": unresolved_claims,
+                    "error": (f"{unresolved_claims} claim(s) in the accepted result did not resolve against the workspace; a cited path that cannot be corroborated must not read as accepted"),
+                }
 
     @classmethod
-    def _apply_deliberation(cls, consensus_result: dict[str, Any], evidence: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    def _apply_deliberation(
+        cls,
+        consensus_result: dict[str, Any],
+        evidence: Sequence[Mapping[str, Any]],
+        *,
+        decorrelation: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Run sequential deliberation over the same evidence, guards can only block.
 
         Deliberation is strictly a *downgrade* channel: it may turn a clean
@@ -65,6 +89,13 @@ class SwarmAggregator:
         attaches its full report either way.  It can never raise ``rejected``
         to ``approved`` — an approval the explicit policy already refused is
         not up for a second opinion.
+
+        ``decorrelation`` is the measured panel similarity from
+        :func:`alpha.swarm.diversity.panel_decorrelation`.  A unanimous approval
+        from a near-identical panel is the copy-cat signature
+        (``suspicious_unanimity``) and joins the blocking guards; an
+        unmeasurable panel changes nothing, because a guard that never fires is
+        not evidence that it passed.
         """
 
         try:
@@ -77,19 +108,23 @@ class SwarmAggregator:
             # disclose the failure and leave the explicit verdict untouched.
             return {**consensus_result, "deliberation": {"status": "error", "reason": str(exc)}}
         payload = report.to_dict()
+        panel = {"panel_decorrelation": dict(decorrelation)} if isinstance(decorrelation, Mapping) else {}
         blocking = sorted(set(report.guards))
         if report.status == "rejected" and consensus_result.get("approved"):
             blocking = sorted(set(blocking) | {"sequential_test_disagreement"})
+        if consensus_result.get("approved") and suspicious_unanimity(consensus_result, decorrelation):
+            blocking = sorted(set(blocking) | {"suspicious_unanimity"})
         if blocking and consensus_result.get("approved"):
             return {
                 **consensus_result,
+                **panel,
                 "approved": False,
                 "status": "manual_review",
                 "reason": f"explicit consensus approved, but deliberation blocked it: {', '.join(blocking)}",
                 "blocked_by": blocking,
                 "deliberation": payload,
             }
-        return {**consensus_result, "deliberation": payload}
+        return {**consensus_result, **panel, "deliberation": payload}
 
     @classmethod
     def compose_team(cls, plan: SwarmPlan, *, conflicts: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
@@ -137,6 +172,13 @@ class SwarmAggregator:
         # The team report is composed from the SAME `conflicts` and the same
         # plan this aggregation is about, so the operator-facing team section
         # and the aggregate result cannot describe two different runs.
+        # Measured panel decorrelation (S4): lexical similarity of the voter
+        # outputs, recorded on the plan beside the consensus gate it informs.
+        # Not a panel mode or fewer than two usable outputs stays `None`
+        # ("unmeasurable"), which never fires the suspicious-unanimity guard.
+        panel = panel_decorrelation([task.result_summary for task in panel_voters(plan)])
+        if panel is not None:
+            plan.metrics["panel_decorrelation"] = panel
         consensus_result: dict[str, Any] | None = None
         if plan.requires_consensus:
             evidence: list[Mapping[str, Any]] = []
@@ -146,7 +188,7 @@ class SwarmAggregator:
                     evidence.append(task.result_payload)
             votes = votes_from_evidence(evidence)
             consensus_result = evaluate_consensus(votes, ConsensusPolicy(min_voters=2, quorum=0.5, threshold=0.75, require_evidence=True)).to_dict()
-            consensus_result = cls._apply_deliberation(consensus_result, evidence)
+            consensus_result = cls._apply_deliberation(consensus_result, evidence, decorrelation=panel)
             plan.consensus = consensus_result
 
         report_lines = [
@@ -190,6 +232,12 @@ class SwarmAggregator:
                     report_lines.append(f"- **Deliberation Guards**: {', '.join(str(guard) for guard in guards)}")
                 if deliberation.get("stopped_early"):
                     report_lines.append(f"- **Early Stop**: test crossed a boundary after {deliberation.get('rounds_used')} of {deliberation.get('policy', {}).get('max_rounds')} round(s)")
+            panel_row = consensus_result.get("panel_decorrelation")
+            if isinstance(panel_row, Mapping):
+                report_lines.append(
+                    f"- **Panel Decorrelation**: similarity {panel_row.get('similarity')} across {panel_row.get('pairs')} pair(s) "
+                    f"(decorrelation {panel_row.get('decorrelation')}, {panel_row.get('identical_pairs')} identical pair(s); lexical measure, not semantic)"
+                )
         if artifacts:
             report_lines.extend(["", "## Generated Artifacts"])
             for artifact in artifacts:

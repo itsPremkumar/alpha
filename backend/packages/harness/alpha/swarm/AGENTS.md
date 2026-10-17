@@ -31,6 +31,9 @@ tool-call estimate anywhere in the plan, so `projected_tokens` and
 invented figure. A projection that quietly guessed would be worse than no
 projection. `SwarmBudget` still bounds the run while it runs and `budget_pressure`
 still reports the ratio after spend; the projection is the third, earlier answer.
+Token and tool-call admission is governed by the separate **calibrated history
+projection** (below) when recorded history exists, never by this wall-clock
+estimate.
 
 **Plan-time admission advisory (disclosure, never a gate).**
 `swarm/admission.py` writes `plan.metrics["admission_advisory"]` at
@@ -57,6 +60,145 @@ disclosure must never re-arm the process), not the live busy/queued count and
 not a hot-reloadable config read. The projection keys are unchanged: the
 projection answers the declared budget; the advisory answers the process.
 Tests: `tests/test_swarm_admission_advisory.py`.
+
+**Specification lint (refusal before registration).** `swarm/spec_lint.py` runs
+inside `SwarmCoordinator.create_swarm` after the wall-budget refusal and before
+the plan is registered, checkpointed or published — a refused specification must
+never remain visible as a running swarm. The rules are deterministic and
+model-free; the report is ordered refusals-then-warnings with tasks in `task_id`
+order, and a report truncated at the bound discloses the truncation rather than
+shortening itself silently:
+
+- `empty_objective` — **refuse**.
+- `acceptance_missing` — **refuse** when the task declares `output_artifacts`
+  and no acceptance criteria: an artifact nobody checks is the shape of a
+  fabricated delivery. It is a **warn** when the task declares no artifact —
+  such a task can be executed but never accepted (`acceptance_status` stays
+  `not_required`), and a blanket refusal there would refuse every ordinary
+  plan, because the decomposer itself sets neither criteria nor artifacts.
+- `acceptance_waived` — **warn**: the explicit waiver
+  (`create_swarm(..., acceptance_waiver=True)`, passed through by the `swarm`
+  tool) is recorded on the plan (`metrics["spec_lint"]`), so a waivered plan is
+  never indistinguishable from a compliant one.
+- `vague_directive` — **warn** on a fixed vocabulary, suppressed when the task
+  declares an artifact or criteria (the done-state is defined elsewhere).
+- `duplicate_directive` — **warn**: two tasks with one directive is step
+  repetition, not parallelism.
+- `dangling_reference` — **warn** on a cited path that does not resolve under
+  the project or repository root (a planned file may be fine; a stale citation
+  is not). It reuses `grounding.ground_claims`, so the two surfaces cannot
+  disagree.
+- `no_declared_write_scope` — **warn** when *declared* (never inferred)
+  capability tags are not all read-only and the task names no output artifact
+  or worktree path.
+- `findings_truncated` — **warn**.
+
+A refusal raises `SwarmPlanValidationError` with the stable prefix
+`swarm was refused before registration: specification lint found N
+refuse-severity finding(s)`. The `swarm` tool's `lint` action dry-runs the same
+rules against a decomposition without registering anything (or re-lints a
+registered plan, honoring a recorded waiver). Tests:
+`tests/test_swarm_spec_lint.py`.
+
+**Claim grounding (deterministic provenance for worker claims).**
+`swarm/grounding.py` re-resolves the file-shaped claims inside a worker's own
+result summary — workspace-relative tokens with a recognized source extension,
+optionally `:LINE` / `:LINE-END` or `::test_ref`, plus absolute extension paths
+— against the real workspace with no model call. It is bounded throughout (64
+claims, a 200k-character summary head, 240-character tokens; line claims above
+4MB and symbol scans above 512KB are `unverifiable`) and deliberately
+conservative, so prose like `client/server` never becomes a citation.
+`resolved` proves existence (the path exists, the line is inside the file, the
+test symbol is defined), never correctness; `missing` / `out_of_range` /
+`absent` are claim contradictions and gate; `unverifiable` and virtual-sandbox
+paths stay visible but never count as failures; no extractable claims is
+`not_checked` — never a vacuous pass. The payload carries `GROUNDING_BASIS`
+(`deterministic_workspace_resolution_v1`), and every consumer renders a verdict
+only for the current basis. `SwarmAggregator`'s acceptance overlay turns an
+unresolved claim into `acceptance_status="failed"` with the
+`grounding_unresolved` count and reason (the overlay only runs when the task
+declared acceptance criteria — grounding never invents a criterion); the team
+report renders the row and counts unresolved claims as an unknown. The runner
+computes grounding from the internal worker outcome only, after the completion
+commit and off the event loop, and writes it under a following state lock —
+running it while the node still read `RUNNING` widened the watchdog's straggler
+window (a healthy worker could be classified as slow and a duplicate provider
+attempt launched), so it must not precede the commit again. Same discipline as
+the citation audit: never external `complete_task` (there is no request field)
+and never before lease acceptance. Tests:
+`tests/test_swarm_claim_grounding.py`.
+
+**Panel decorrelation (refusal at composition, measurement after the fact).**
+`swarm/diversity.py` answers the clone-panel failure: a panel of near-identical
+voters agrees with itself for reasons that have nothing to do with being right.
+The audit runs in `create_swarm` after the specification lint and before
+registration, only for the panel modes (`ENSEMBLE`, `DEBATE`, `SCATTER_GATHER`).
+
+- **The declared axes are the only axes.** `composition_audit(plan)` observes
+  exactly what the runtime can produce: `model_family` (the declared
+  `model_override`) and `framing` (the normalized directive). `temperature` and
+  `seed` are named under `unsupported_axes` — no per-task sampling field exists
+  and every worker makes one `model.invoke` per task, so an "axis" there would
+  be decorative. Voters are the dependency-free leaf tasks in `task_id` order;
+  a synthesizer/judge depends on the panel and is never a voter.
+- **Only a total collision refuses.** `identical_tuples` raises
+  `SwarmPlanValidationError` naming the colliding axes. The shipped decomposer
+  varies solver framings by construction, so a decomposer ensemble is never
+  refused — this guard exists for crafted/other-origin plans. A partial
+  collision (shared model, distinct framings) is recorded as advisory in
+  `plan.metrics["diversity"]`, never refused; refusing it would refuse every
+  healthy ensemble.
+- **Measurement never fabricates agreement.** `panel_decorrelation(outputs)` is
+  the mean pairwise token 3-gram Jaccard similarity across voter summaries, and
+  `None` below two non-empty outputs — "unmeasured" is neither "identical" nor
+  "perfectly diverse". It is lexical: it answers "did the voters write the same
+  text", never "are the voters right".
+- **`suspicious_unanimity` can only block.** It fires solely on full agreement
+  (`1.0`) + at least two counted voters + measured similarity at or above
+  `HIGH_SIMILARITY_THRESHOLD` (0.85), and is applied inside
+  `SwarmAggregator._apply_deliberation`: a unanimous approval over near-identical
+  outputs is downgraded to `manual_review` with
+  `blocked_by=["suspicious_unanimity"]`. A refusal can never be raised to an
+  approval, and an unmeasured panel changes nothing. The measurement is stored
+  at `plan.metrics["panel_decorrelation"]`, rendered in the team report and the
+  telemetry snapshot. Tests: `tests/test_swarm_diversity.py`.
+
+**Calibrated cost projection (measured history, never an invented estimate).**
+`swarm/cost_model.py` supplies the third answer beside `SwarmTelemetry`'s
+wall-clock-only `cost_projection` and post-spend `budget_pressure`: given this
+decomposition and Alpha's own recorded history, what will it spend? It is
+deliberately a *separate* metrics namespace — `SwarmTelemetry.cost_projection`
+keeps its pinned `None` token/tool-call fields, and `SwarmBenefitEstimator`
+stays byte-identical (the estimator routes on wall-clock heuristics; this module
+is the empirical calibration beside it).
+
+- **Cold start is unmeasured, not zero.** Samples come only from completed tasks
+  with recorded `token_usage` (`samples_from_plans`, plans ordered by
+  `created_at`, newest 500 samples kept). With no usable class the method is
+  `insufficient_history` (`INSUFFICIENT_HISTORY`) and every figure is `None`.
+- **Classes relax, and the relaxation is disclosed.** A task's class is the
+  first tier with at least `MIN_CLASS_SAMPLES` (3) members: capability tags ->
+  prompt-size bucket -> model -> all tasks. Each per-task row names its tier, so
+  a global fallback is visible rather than hidden. Percentiles are nearest-rank
+  p50/p90 per class.
+- **A partial figure is labelled partial.** A metric summed over only some
+  projected tasks lands in `partial_metrics` with a warning; `budget_verdict`
+  **warns** above the declared ceiling and **refuses** only when a complete p90
+  exceeds `COST_REFUSAL_MULTIPLE` (2x) times the declared
+  `max_tokens`/`max_tool_calls` (strict `>`). A lower bound must not refuse work,
+  and a cold start has nothing to compare.
+- **USD needs the operator's price.** Prices come from `config.yaml ->
+  model_pricing` only (`resolve_pricing`); a model without a declared price
+  yields `None` for the whole USD figure — a partial sum would understate spend,
+  which is worse than no number — with the unpriced model named in
+  `usd_unpriced_models`.
+- **Wire-up.** Recorded as `plan.metrics["calibrated_cost_projection"]` at
+  `create_swarm` (after the spec lint and the panel audit, before registration);
+  a refusal raises `SwarmPlanValidationError` with the stable prefix
+  `swarm was refused before registration: calibrated cost projection p90 ...`.
+  The `swarm` tool's spawn response carries the recorded payload, and the
+  telemetry snapshot exposes it under `cost_projection`. Tests:
+  `tests/test_swarm_cost_model.py`.
 
 **The governor does not route models.** `SwarmResourceGovernor` adapts concurrency
 after 429s and reports which models a swarm used. It used to carry a `MODEL_TIERS`
@@ -216,9 +358,11 @@ hypothesis, 3 unanimous rejections the alternative; anything less reports
 `unresolved` with the reason. **A small undecided panel must say "unresolved",
 never "approved".**
 
-- Guards may only **block**. Domination, sycophancy, evidence-free approval and
-  any disagreement between the sequential test and the explicit policy downgrade
-  a result to `manual_review`; nothing can raise a refusal to an approval.
+- Guards may only **block**. Domination, sycophancy, evidence-free approval,
+  suspicious unanimity (a unanimous approval over near-identical panel outputs,
+  per `diversity.suspicious_unanimity`) and any disagreement between the
+  sequential test and the explicit policy downgrade a result to
+  `manual_review`; nothing can raise a refusal to an approval.
   `SwarmAggregator._apply_deliberation` attaches the full report either way so
   the disagreement stays visible; a malformed payload discloses an `error`
   instead of raising.

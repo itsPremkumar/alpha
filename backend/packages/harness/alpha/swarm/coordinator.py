@@ -18,7 +18,9 @@ from alpha.swarm.admission import admission_advisory_metrics
 from alpha.swarm.aggregator import SwarmAggregator
 from alpha.swarm.cnp_auction import LeaderCandidate, LeaderElection, elect_leader
 from alpha.swarm.communication import SwarmMessage, SwarmMessageBus
+from alpha.swarm.cost_model import budget_verdict, project_plan_costs, resolve_pricing, samples_from_plans
 from alpha.swarm.decomposer import SwarmTaskDecomposer
+from alpha.swarm.diversity import composition_audit
 from alpha.swarm.estimator import SwarmBenefitEstimator
 from alpha.swarm.models import (
     SwarmBudget,
@@ -32,6 +34,7 @@ from alpha.swarm.models import (
     is_terminal_swarm_status,
 )
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
+from alpha.swarm.spec_lint import lint_plan
 from alpha.swarm.stigmergy import StigmergicTraceStore, TraceCategory
 from alpha.swarm.team import assign_specialists, build_team_report
 from alpha.swarm.telemetry import SwarmTelemetry
@@ -235,8 +238,18 @@ class SwarmCoordinator:
         auto_replan: bool = False,
         requires_consensus: bool = False,
         idempotency_key: str | None = None,
+        acceptance_waiver: bool = False,
     ) -> SwarmPlan:
-        """Construct, validate, and register a new bounded swarm plan."""
+        """Construct, validate, and register a new bounded swarm plan.
+
+        The plan is refused before registration when the wall-budget
+        projection exceeds the declared ceiling, or when the deterministic
+        specification lint raises a ``refuse``-severity finding.  Passing
+        ``acceptance_waiver=True`` records an explicit operator decision to
+        admit tasks that declare output artifacts without acceptance criteria:
+        the finding is downgraded to a visible ``warn`` on
+        ``plan.metrics["spec_lint"]`` rather than hidden.
+        """
 
         goal = str(goal or "").strip()
         if not goal:
@@ -297,8 +310,58 @@ class SwarmCoordinator:
                 f"{projection['projected_wall_seconds']:.3f}s of critical-path work, "
                 f"above the declared {projection['wall_budget_seconds']:.3f}s wall budget. "
                 "Raise max_wall_seconds or reduce/split the goal. Token and tool-call "
-                "projections are unmeasured, so they cannot be used for admission."
+                "admission is governed by the calibrated history projection when one "
+                "exists, never by this wall-clock estimate."
             )
+        # Specification lint: a plan must be *checkable* before any token is
+        # spent.  A refuse-severity finding stops the plan HERE -- before
+        # registration, checkpointing, budget start, or any event -- so a
+        # rejected specification can never remain visible as a running swarm.
+        # The accepted report (including an explicit acceptance waiver) is
+        # recorded on the plan so a later read sees which rules ran.
+        lint_report = lint_plan(plan, acceptance_waiver=bool(acceptance_waiver))
+        if lint_report.refused:
+            raise SwarmPlanValidationError(lint_report.refusal_message())
+        plan.metrics["spec_lint"] = lint_report.to_dict()
+        # Panel composition audit (S4): a panel whose voters collide on *every*
+        # declared axis is refused before registration, because a panel of
+        # clones turns an isolated error into a systemic one.  The declared
+        # axes are the ones this build can actually observe (model_override and
+        # directive framing); temperature/seed have no per-task field and are
+        # disclosed as unsupported rather than invented.  Only a total
+        # collision refuses -- the shipped decomposer always varies solver
+        # framings, so refusing a partial collision would refuse every healthy
+        # ensemble.
+        diversity_audit = composition_audit(plan)
+        if diversity_audit is not None:
+            plan.metrics["diversity"] = diversity_audit
+            if diversity_audit["identical_tuples"]:
+                raise SwarmPlanValidationError(
+                    "swarm was refused before registration: panel composition is homogeneous -- "
+                    f"all {diversity_audit['panel_size']} voters share one identical "
+                    f"({', '.join(diversity_audit['colliding_axes'])}) tuple, so an isolated error "
+                    "would become a systemic one. Differentiate the directives or route the voters "
+                    "to different models."
+                )
+        # Calibrated cost projection (S7): the third answer beside the wall-clock
+        # projection above and post-spend `budget_pressure`.  Built only from
+        # Alpha's own recorded completed tasks; cold start is `None` +
+        # "insufficient_history", never an invented figure.  A p90 above the
+        # declared ceiling warns; above COST_REFUSAL_MULTIPLE it refuses, and
+        # only on a complete projection -- a lower bound must not refuse work.
+        pricing_table, default_model_name = resolve_pricing()
+        calibrated = project_plan_costs(
+            plan,
+            samples_from_plans(self._swarms.values()),
+            pricing=pricing_table,
+            default_model=default_model_name,
+        )
+        cost_verdict = budget_verdict(calibrated, plan.budget)
+        if cost_verdict["warnings"]:
+            calibrated["warnings"] = [*(calibrated.get("warnings") or []), *cost_verdict["warnings"]]
+        plan.metrics["calibrated_cost_projection"] = calibrated
+        if cost_verdict["refusal"]:
+            raise SwarmPlanValidationError(f"swarm was refused before registration: {cost_verdict['refusal']}")
         # Plan-time admission advisory (disclosure, never a gate): the plan can
         # declare up to MAX_SWARM_PLAN_CONCURRENCY workers, but every worker
         # executes through the process-wide subagent admission controller, so

@@ -6,6 +6,7 @@ import asyncio
 import json
 import threading
 import uuid
+from collections.abc import Mapping
 from typing import Any, Literal
 
 from langchain.tools import tool
@@ -13,9 +14,11 @@ from langchain.tools import tool
 from alpha.config.limits import MAX_SWARM_PLAN_CONCURRENCY
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.swarm.coordinator import get_swarm_coordinator
+from alpha.swarm.decomposer import SwarmTaskDecomposer
 from alpha.swarm.governor import get_swarm_resource_governor
 from alpha.swarm.incidents import get_swarm_incident_manager
 from alpha.swarm.models import SwarmBudget, SwarmMode, TaskNodeState
+from alpha.swarm.spec_lint import SpecLintReport, lint_plan
 from alpha.swarm.telemetry import SwarmTelemetry
 from alpha.utils.assembly_io import run_assembly
 
@@ -24,6 +27,7 @@ from alpha.utils.assembly_io import run_assembly
 def swarm_tool(
     action: Literal[
         "evaluate",
+        "lint",
         "spawn",
         "status",
         "step",
@@ -63,6 +67,7 @@ def swarm_tool(
     max_wall_seconds: float | None = None,
     auto_replan: bool = False,
     requires_consensus: bool = False,
+    acceptance_waiver: bool = False,
     idempotency_key: str = "",
     reason: str = "",
 ) -> str:
@@ -75,10 +80,10 @@ def swarm_tool(
     stays readable — it is read-only).
 
     Args:
-        action: Operation to perform. Supported values are evaluate, spawn,
-            status, step, run_async, expand, replan, claim, message, observe,
-            metrics, strategy, telemetry, trace, leader, incidents, governor,
-            compete, compete_status, pause, resume, and cancel.
+        action: Operation to perform. Supported values are evaluate, lint,
+            spawn, status, step, run_async, expand, replan, claim, message,
+            observe, metrics, strategy, telemetry, trace, leader, incidents,
+            governor, compete, compete_status, pause, resume, and cancel.
         goal: High-level mission for evaluation, swarm creation, or a GRO
             `compete` run.
         swarm_id: Existing swarm id for operations other than evaluate/spawn;
@@ -108,6 +113,9 @@ def swarm_tool(
         auto_replan: Permit bounded automatic repair-task expansion.
         requires_consensus: Require explicit evidence-backed votes before
             reporting completion.
+        acceptance_waiver: Explicitly admit tasks that declare output
+            artifacts without acceptance criteria; the decision is recorded
+            on the plan's spec_lint metrics and stays visible, never hidden.
         idempotency_key: Optional owner-scoped key that makes spawn retries
             return the existing plan instead of creating a second swarm.
         reason: Optional rationale for pause/cancellation, or the category for
@@ -141,6 +149,31 @@ def swarm_tool(
             f"- **Rationale**: {decision.reason}\n"
         )
 
+    if action == "lint":
+        # A dry-run lint decomposes without registering; a lint against an
+        # existing swarm re-checks the live plan (tasks may have been added by
+        # expand/replan) and preserves the waiver the plan was admitted with.
+        if swarm_id.strip():
+            plan = coordinator.get_swarm(swarm_id.strip(), owner_id=owner_id)
+            if not plan:
+                return f"Error: Swarm '{swarm_id.strip()}' not found or is not visible to this owner."
+            recorded = plan.metrics.get("spec_lint") if isinstance(plan.metrics, Mapping) else None
+            waiver = bool(acceptance_waiver) or (isinstance(recorded, Mapping) and bool(recorded.get("acceptance_waiver")))
+            return _render_spec_lint(plan, lint_plan(plan, acceptance_waiver=waiver), dry_run=False)
+        if not goal.strip():
+            return "Error: 'goal' parameter is required for a dry-run lint (or pass an existing 'swarm_id')."
+        try:
+            swarm_mode = SwarmMode(mode.lower().strip())
+        except ValueError:
+            swarm_mode = SwarmMode.AUTO
+        candidate = SwarmTaskDecomposer.decompose(
+            goal=goal.strip(),
+            mode=swarm_mode,
+            items=items or None,
+            max_concurrency=min(max(0, max_concurrency), MAX_SWARM_PLAN_CONCURRENCY),
+        )
+        return _render_spec_lint(candidate, lint_plan(candidate, acceptance_waiver=acceptance_waiver), dry_run=True)
+
     if action == "spawn":
         if not goal.strip():
             return "Error: 'goal' parameter is required to spawn a swarm."
@@ -159,6 +192,7 @@ def swarm_tool(
                 budget=budget,
                 auto_replan=auto_replan,
                 requires_consensus=requires_consensus,
+                acceptance_waiver=acceptance_waiver,
                 idempotency_key=idempotency_key.strip() or None,
             )
         except ValueError as exc:
@@ -173,6 +207,13 @@ def swarm_tool(
         # plan's declared concurrency. Advisory, never a gate.
         advisory = plan.metrics.get("admission_advisory") or {}
         advisory_lines = f"- **Process admission (advisory)**: {advisory.get('note')}\n- **Admission schedule snapshot** (advisory, never enforced): `{json.dumps(advisory, sort_keys=True)}`\n\n" if advisory else ""
+        # The calibrated projection (S7) and the panel composition audit (S4),
+        # as recorded on the plan at admission.  A cold start renders the
+        # "insufficient_history" method rather than a number nobody measured.
+        calibrated = plan.metrics.get("calibrated_cost_projection") or {}
+        calibrated_lines = f"- **Calibrated cost projection (recorded history)**: `{json.dumps(calibrated, sort_keys=True)}`\n" if calibrated else ""
+        diversity_audit = plan.metrics.get("diversity") or {}
+        diversity_lines = f"- **Panel composition audit (advisory)**: `{json.dumps(diversity_audit, sort_keys=True)}`\n" if diversity_audit else ""
         tasks_summary = "\n".join(f"  - `[{task.task_id}]` {task.objective} (deps: {task.dependencies or 'none'})" for task in plan.tasks.values())
         return (
             "### Autonomous Swarm Successfully Spawned (plan created; execution is explicit)\n"
@@ -182,6 +223,8 @@ def swarm_tool(
             f"- **Tasks**: {len(plan.tasks)}\n"
             f"- **Task DAG**:\n{tasks_summary}\n"
             f"- **Projected cost**: `{json.dumps(projection, sort_keys=True)}`\n"
+            f"{calibrated_lines}"
+            f"{diversity_lines}"
             f"{advisory_lines}"
             f"Run it with `swarm(action='run_async', swarm_id='{plan.swarm_id}')`; `step` only dispatches work."
         )
@@ -345,6 +388,27 @@ def swarm_tool(
         return f"Swarm '{swarm_id}' cancelled: {coordinator.cancel_swarm(swarm_id, reason=reason)}"
 
     return f"Unknown action '{action}'."
+
+
+def _render_spec_lint(plan: Any, report: SpecLintReport, *, dry_run: bool) -> str:
+    """Render a specification-lint report, machine-readable JSON included."""
+
+    swarm_id = getattr(plan, "swarm_id", "") or "(unregistered)"
+    lines = [
+        f"### Swarm Specification Lint: `{swarm_id}`{' (dry run)' if dry_run else ''}",
+        f"- **Verdict**: `{'refused' if report.refused else 'admitted'}`",
+        f"- **Findings**: {report.count('refuse')} refuse-severity, {report.count('warn')} warn-severity",
+        f"- **Acceptance waiver**: `{'yes' if report.acceptance_waiver else 'no'}`",
+        "",
+    ]
+    if report.findings:
+        for finding in report.findings:
+            scope = f"task `{finding.task_id}`" if finding.task_id else "plan"
+            lines.append(f"- `[{finding.severity}]` {scope} `{finding.code}`: {finding.evidence}")
+    else:
+        lines.append("- No findings: every task carries acceptance criteria or an explicit waiver, cited paths resolve, and directives are distinct.")
+    lines.extend(["", "```json", json.dumps(report.to_dict(), indent=2, sort_keys=True), "```"])
+    return "\n".join(lines)
 
 
 # --- GRO (group-relative orchestration) ---------------------------------
