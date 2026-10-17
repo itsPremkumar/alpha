@@ -493,7 +493,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                 </select>
                 <label className="sr-only" htmlFor="swarm-concurrency">Maximum concurrent swarm agents</label>
                 <select id="swarm-concurrency" aria-label="Maximum concurrent swarm agents" title="Maximum workers scheduled at once; Gateway and provider capacity may reduce effective concurrency" value={swarmConcurrency} onChange={(event) => setSwarmConcurrency(Number(event.target.value))} className={inputCls}>
-                  {[2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 100, 150, 200, 300].map((count) => <option key={count} value={count}>{count} agents at once</option>)}
+                  {[2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 100, 150, 200, 300, 500, 750, 1000].map((count) => <option key={count} value={count}>{count} agents at once</option>)}
                 </select>
                 <Btn onClick={submitSwarmPlan} disabled={!swarmObjective.trim()}>
                   <Play className="size-3.5" /> Create plan

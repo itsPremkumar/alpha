@@ -153,7 +153,7 @@ def swarm_tool(
                 goal=goal.strip(),
                 mode=swarm_mode,
                 items=items,
-                max_concurrency=min(max(1, max_concurrency), 300),
+                max_concurrency=min(max(1, max_concurrency), 1000),
                 owner_id=owner_id,
                 budget=budget,
                 auto_replan=auto_replan,

@@ -55,7 +55,7 @@ def test_the_authority_values_are_pinned():
     assert limits.MAX_FANOUT_PER_NODE == 4
     assert limits.MAX_DELEGATION_HOPS == 6
     assert limits.DEFAULT_CONCURRENT_NATIVE_SUBAGENTS == 3
-    assert limits.MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD == 300
+    assert limits.MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD == 1000
     assert limits.DEFAULT_WAVE_CONCURRENCY == 4
     assert limits.MAX_WAVE_CONCURRENCY_CEILING == 32
     assert limits.MAX_GROUP_NESTING_DEPTH == 4

@@ -158,7 +158,7 @@ class SwarmCreateRequest(BaseModel):
     objective: str | None = Field(default=None, min_length=3, max_length=32_000)
     mode: str = "auto"
     items: list[str] | None = Field(default=None, max_length=512)
-    max_concurrency: int = Field(default=8, ge=1, le=300)
+    max_concurrency: int = Field(default=8, ge=1, le=1000)
     budget: SwarmBudgetRequest | None = None
     auto_replan: bool = False
     requires_consensus: bool = False

@@ -75,7 +75,7 @@ test("out-of-range concurrency falls back to the default", () => {
   // invalid preference: it is discarded rather than clamped, matching the
   // codebase's "refuse, don't clamp" discipline.
   const s = storage();
-  pref.storeSwarmPreference(s, { enabled: true, mode: "auto", concurrency: 999 });
+  pref.storeSwarmPreference(s, { enabled: true, mode: "auto", concurrency: 1500 });
   assert.equal(pref.readStoredSwarmPreference(s).concurrency, 4);
   pref.storeSwarmPreference(s, { enabled: true, mode: "auto", concurrency: 0 });
   assert.equal(pref.readStoredSwarmPreference(s).concurrency, 4);

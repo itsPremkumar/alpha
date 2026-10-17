@@ -101,7 +101,7 @@ class SwarmBudget:
     max_tokens: int | None = None
     max_tool_calls: int | None = None
     max_wall_seconds: float | None = None
-    max_tasks: int = 300
+    max_tasks: int = 1000
     max_replans: int = 3
     max_consecutive_failures: int = 8
     used_tokens: int = 0
@@ -226,7 +226,7 @@ class SwarmBudget:
             max_tokens=_as_optional_int(data.get("max_tokens")),
             max_tool_calls=_as_optional_int(data.get("max_tool_calls")),
             max_wall_seconds=_as_optional_float(data.get("max_wall_seconds")),
-            max_tasks=_as_int(data.get("max_tasks"), 300),
+            max_tasks=_as_int(data.get("max_tasks"), 1000),
             max_replans=_as_int(data.get("max_replans"), 3),
             max_consecutive_failures=_as_int(data.get("max_consecutive_failures"), 8),
             used_tokens=_as_int(data.get("used_tokens"), 0),
