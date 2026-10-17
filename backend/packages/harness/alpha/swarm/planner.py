@@ -16,7 +16,7 @@ rewarding fake parallelism.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -90,14 +90,48 @@ class PlanCandidate:
         }
 
 
+def _seconds_parallelism(plan: SwarmPlan, task_count: int) -> float | None:
+    """Parallelism measured in seconds, or ``None`` when no estimate exists.
+
+    The hop-based lower bound treats every task as equal, so a plan with one
+    600-second task and nine 5-second tasks scores identically to its inverse.
+    ``SwarmTaskNode.estimated_seconds`` exists precisely to break that tie, and
+    the decomposer already folds it into ``critical_path_seconds``.
+
+    Returns ``None`` rather than a number when the plan carries no duration
+    estimate, so the caller can fall back to hops instead of scoring a plan it
+    cannot measure.  With uniform durations this reduces to the hop-based term
+    exactly, which is why the change is safe for plans that predate estimates.
+    """
+
+    if task_count <= 0:
+        return None
+    metrics = plan.metrics if isinstance(plan.metrics, Mapping) else {}
+    serial = metrics.get("estimated_serial_seconds")
+    critical = plan.critical_path_seconds
+    if serial is None or critical is None:
+        return None
+    try:
+        serial_value = float(serial)
+        critical_value = float(critical)
+    except (TypeError, ValueError):
+        return None
+    if serial_value <= 0.0 or critical_value <= 0.0:
+        return None
+    speedup = serial_value / critical_value
+    return 1.0 - (1.0 / max(speedup, 1.0))
+
+
 def score_plan(plan: SwarmPlan, *, max_concurrency: int = 8, endorsed: bool = False) -> PlanScore:
     """Score how well a plan exposes parallel work without inflating overhead.
 
     ``parallelism`` is ``1 - 1/speedup`` for the plan's own lower-bound
     makespan, so a strictly serial plan scores 0 and unbounded parallelism
-    scores 1.  ``depth`` penalises levels beyond the ideal floor
-    ``max(depth, ceil(n/concurrency))``; ``complexity`` is mean out-degree; and
-    ``overhead`` is task inflation relative to what concurrency can use.
+    scores 1.  The speedup is measured in **seconds** when the plan carries a
+    duration-weighted critical path, and in hops otherwise — see
+    :func:`_seconds_parallelism`.  ``depth`` penalises levels beyond the ideal
+    floor ``max(depth, ceil(n/concurrency))``; ``complexity`` is mean out-degree;
+    and ``overhead`` is task inflation relative to what concurrency can use.
     """
 
     features = compute_dag_features(plan.tasks)
@@ -117,7 +151,11 @@ def score_plan(plan: SwarmPlan, *, max_concurrency: int = 8, endorsed: bool = Fa
     # only the second number keeps it from being scored as "more parallel".
     exposed_width = min(features.max_width, effective_concurrency)
 
-    parallelism = 1.0 - (1.0 / max(speedup, 1.0))
+    # Seconds when the plan has a duration-weighted critical path, hops
+    # otherwise.  With uniform durations these are the same number; with
+    # unequal ones the seconds version is the one that reflects reality.
+    measured = _seconds_parallelism(plan, n)
+    parallelism = measured if measured is not None else 1.0 - (1.0 / max(speedup, 1.0))
     excess_depth = max(0, features.depth - math.ceil(n / effective_concurrency))
     depth_term = 1.0 - min(1.0, excess_depth / n)
     mean_out_degree = (features.edge_count / n) if n else 0.0

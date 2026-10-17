@@ -295,17 +295,18 @@ runner's daemon-thread fallback when no event loop is available.
 
 **Pre-launch cost projection.** `SwarmTelemetry.cost_projection(plan)` answers
 the only question that decides whether to start: given this decomposition, will
-it fit the ceiling already declared? The `swarm` tool's `spawn` action refuses a
-plan whose own predicted makespan exceeds its own `max_wall_seconds`, before the
-first worker starts — a plan that cannot honour its budget would otherwise be
-guaranteed to end in `budget_exhausted` however well it ran. The rule is
-self-consistent rather than configurable, so it cannot drift from the budget it
-checks. **Only wall-clock is projected.** There is no per-task token or tool-call
-estimate anywhere in the plan, so `projected_tokens` and `projected_tool_calls`
-are `None` — "unmeasured", never `0` and never an invented figure. A projection
-that quietly guessed would be worse than no projection. `SwarmBudget` still bounds
-the run while it runs and `budget_pressure` still reports the ratio after spend;
-the projection is the third, earlier answer.
+it fit the ceiling already declared? `SwarmCoordinator.create_swarm` refuses a
+plan whose predicted makespan exceeds its `max_wall_seconds` before registering,
+checkpointing, or publishing it — a doomed plan must not remain visible as
+"running" after a failed spawn. The `swarm` tool converts the validation error
+to an actionable response and includes the projection for accepted plans. The
+rule is self-consistent rather than configurable, so it cannot drift from the
+budget it checks. **Only wall-clock is projected.** There is no per-task token or
+tool-call estimate anywhere in the plan, so `projected_tokens` and
+`projected_tool_calls` are `None` — "unmeasured", never `0` and never an
+invented figure. A projection that quietly guessed would be worse than no
+projection. `SwarmBudget` still bounds the run while it runs and `budget_pressure`
+still reports the ratio after spend; the projection is the third, earlier answer.
 
 **The governor does not route models.** `SwarmResourceGovernor` adapts concurrency
 after 429s and reports which models a swarm used. It used to carry a `MODEL_TIERS`
@@ -321,6 +322,31 @@ lists: `models_requested` (distinct non-`None` `model_override`) and `models_use
 (the `model` field each worker stamps into its evidence via `_model_label`). A
 requested model that was never reached is therefore never reported as used. With no
 plan both are `None` — "not measured yet", not a fallback name.
+
+**Duration-weighted makespan in candidate scoring.** `score_plan` computes its
+parallelism term from a *seconds* critical path when the plan carries one, and
+from hop counts otherwise. The hop lower bound treats every task as equal, so a
+plan with one 600-second task and nine 5-second tasks previously scored
+identically to its inverse — and `SwarmTaskNode.estimated_seconds` existed to
+break exactly that tie while nothing read it. The decomposer already computed
+`critical_path_seconds` (`estimate_method =
+"dependency_critical_path_plus_capacity_v1"`), but only on the *final* plan,
+after selection, so every candidate still carried the default `0.0` at scoring
+time. It now runs per candidate, before `build_candidate`. With uniform
+durations the two measures agree exactly, so this is a strict improvement rather
+than a reweighting. The hop-based fields (`critical_path`, `exposed_width`,
+`lower_bound_rounds`) are retained: they answer a different question.
+
+**Degeneracy signals (advisory, never gating).** `parallelism_realised` sweeps
+the recorded `started_at`/`completed_at` intervals for peak overlap and flags
+*serial collapse* — a swarm that spawned many subagents and ran them one at a
+time. `subtask_completion_ratio` flags *spurious parallelism* — a wide fan-out
+that completes little. Both are the pathologies Kimi's `r_parallel` and
+`r_finish` reward terms exist to suppress, and both map onto MAST failure modes
+(step repetition; ignored other agent's input). A flagged run is **reported,
+never aborted**: a serial run that succeeded is still a success, just an
+expensive one, and the operator is the one who should see that. Missing
+timestamps yield `state: "unknown"`, never a fabricated `collapsed`.
 
 `SwarmCoordinator` serializes state transitions and restores interrupted plans as
 paused with fresh-lease requirements; `SwarmScheduler` validates DAGs before

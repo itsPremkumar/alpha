@@ -240,6 +240,103 @@ class SwarmTelemetry:
         }
 
     @staticmethod
+    def parallelism_realised(plan: SwarmPlan) -> dict[str, Any]:
+        """Did the swarm actually run tasks concurrently, or one at a time?
+
+        **Why this is measured.**  Kimi's PARL needed a dedicated reward term
+        (``r_parallel``) to suppress *serial collapse* - the local optimum where
+        an orchestrator defaults to single-agent execution because sequential is
+        easier to credit-assign.  A swarm can spawn thirty subagents and still
+        run them serially, paying thirty times the coordination for one agent's
+        throughput.  Alpha had no signal for this, so a collapsed run was
+        indistinguishable from a correct one.
+
+        Overlap is computed from the recorded ``started_at``/``completed_at``
+        intervals, not from a counter, so it reflects what actually happened
+        rather than what the scheduler intended.  Tasks with no timestamps are
+        skipped rather than assumed serial - an unmeasured run is ``unknown``,
+        never ``false``.
+        """
+
+        intervals: list[tuple[float, float]] = []
+        for task in plan.tasks.values():
+            started = task.started_at
+            completed = task.completed_at
+            if started is None or completed is None:
+                continue
+            start = float(started)
+            end = float(completed)
+            if end < start:
+                continue
+            intervals.append((start, end))
+
+        if not intervals:
+            return {
+                "max_concurrent_observed": None,
+                "flagged": False,
+                "state": "unknown",
+                "basis": "no task recorded both a start and completion timestamp",
+            }
+
+        # Sweep the interval endpoints: the maximum number of overlapping
+        # intervals is the peak concurrency the run actually reached.
+        events: list[tuple[float, int]] = []
+        for start, end in intervals:
+            events.append((start, 1))
+            events.append((end, -1))
+        events.sort(key=lambda item: (item[0], item[1]))
+        current = 0
+        peak = 0
+        for _timestamp, delta in events:
+            current += delta
+            peak = max(peak, current)
+
+        spawned = len(plan.tasks)
+        # Collapse means: more than one task existed, and never two at once.
+        flagged = spawned > 1 and peak <= 1
+        return {
+            "max_concurrent_observed": peak,
+            "tasks_with_intervals": len(intervals),
+            "tasks_spawned": spawned,
+            "flagged": flagged,
+            "state": "collapsed" if flagged else "parallel",
+            "basis": "peak overlap of recorded started_at/completed_at intervals; unknown when no task has both",
+        }
+
+    @staticmethod
+    def subtask_completion_ratio(plan: SwarmPlan) -> dict[str, Any]:
+        """How much of a fan-out produced something worth keeping.
+
+        **Why this is measured.**  The companion degeneracy to serial collapse
+        is *spurious parallelism*: the orchestrator spawns many subagents without
+        meaningful decomposition, inflating a parallel metric while completing
+        little.  Kimi needed ``r_finish`` for exactly this.  Alpha's
+        ``loop_indicator`` catches repeated work but not a wide fan-out that
+        simply accomplishes little.
+
+        Retried tasks are excluded from the denominator's intent: a task that
+        failed and was retried is one unit of work, not two units of fan-out.
+        """
+
+        spawned = len(plan.tasks)
+        completed = sum(1 for task in plan.tasks.values() if task.state == TaskNodeState.COMPLETED)
+        meaningful = sum(1 for task in plan.tasks.values() if task.state == TaskNodeState.COMPLETED and bool((task.result_summary or "").strip()))
+        ratio = round(meaningful / spawned, 6) if spawned else None
+        # A wide fan-out that completes little is the shape to flag.  The
+        # threshold is deliberately low: four tasks is already a fan-out, and
+        # fewer than half of them producing anything is not parallelism.
+        flagged = bool(spawned >= 4 and ratio is not None and ratio < 0.5)
+        return {
+            "tasks_spawned": spawned,
+            "tasks_completed": completed,
+            "tasks_with_results": meaningful,
+            "completion_ratio": ratio,
+            "flagged": flagged,
+            "state": "spurious" if flagged else ("ok" if ratio is not None else "unknown"),
+            "basis": "completed tasks with a non-empty result over spawned tasks; flagged at >=4 spawned with ratio < 0.5",
+        }
+
+    @staticmethod
     def cost_projection(plan: SwarmPlan) -> dict[str, Any]:
         """What a not-yet-run plan is predicted to cost, before it spends anything.
 
@@ -306,6 +403,8 @@ class SwarmTelemetry:
         instability = cls.tool_instability(plan)
         gain = cls.information_gain(plan)
         overhead = cls.coordination_overhead(plan)
+        parallelism = cls.parallelism_realised(plan)
+        completion = cls.subtask_completion_ratio(plan)
         risk: list[str] = []
         if loop["flagged"]:
             risk.append("rework_loop")
@@ -317,6 +416,14 @@ class SwarmTelemetry:
             risk.append("low_information_gain")
         if instability["tool_error_rate"] is not None and instability["tool_error_rate"] >= 0.5:
             risk.append("tool_instability")
+        # The two degenerate parallel policies.  Both are advisory: a flagged
+        # run is reported, never aborted, because a serial run that succeeded is
+        # still a success - it is just an expensive one, and the operator is the
+        # one who should see that.
+        if parallelism["flagged"]:
+            risk.append("serial_collapse")
+        if completion["flagged"]:
+            risk.append("spurious_parallelism")
 
         report = dict(deliberation) if deliberation else None
         saved = None
@@ -331,6 +438,8 @@ class SwarmTelemetry:
             "tool_instability": instability,
             "information_gain": gain,
             "coordination_overhead": overhead,
+            "parallelism_realised": parallelism,
+            "subtask_completion_ratio": completion,
             "risk_signals": risk,
             "deliberation": report,
             "deliberation_rounds_saved": saved,

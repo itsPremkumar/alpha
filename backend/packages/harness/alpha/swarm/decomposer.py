@@ -243,6 +243,15 @@ class SwarmTaskDecomposer:
         candidates: list[PlanCandidate] = []
         for candidate_mode in modes:
             plan = cls._build_plan(goal, candidate_mode, items, swarm_id, max_concurrency)
+            # Measured BEFORE scoring, not after.  ``score_plan`` reads the
+            # duration-weighted critical path to tell a plan with one long task
+            # and nine short ones from its inverse; without this call every
+            # candidate still has the default 0.0 and the scorer falls back to
+            # hop counts, which treat all tasks as equal.  The final plan gets
+            # the same computation again below, so this is not a second
+            # implementation - it is the same one, run while the number can
+            # still decide something.
+            cls._compute_critical_path_and_speedup(plan)
             candidates.append(build_candidate(plan, max_concurrency=max_concurrency, endorsed=(route_mode is not None and candidate_mode == route_mode)))
         winner = select_best_candidate(candidates)
         if winner is None:
