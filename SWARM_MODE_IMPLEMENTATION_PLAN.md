@@ -325,7 +325,11 @@ Status against the phases above, evidence-tagged:
   complete (`partial_success` / `failed`, "no successful worker summaries") —
   a plan-time mode-classification / reduce-step failure measured at HEAD; not an
   advisory regression (the advisory never touches admission or execution) and
-  recorded here, not hidden.
+  recorded here, not hidden. Root cause [M, swarm logs]: the map/reduce item
+  workers abort at `ThreadDataMiddleware.before_agent` — "Thread ID is
+  required in runtime context or config.configurable" (swarm worker runs do
+  not set a thread id); the hierarchical probe completed 5/5, so the gap is
+  per-mode, not total.
 
   Item 13 (tuning `score_plan`, learned routing) remains untouched: this item 12
   verification changes no size or estimate.
