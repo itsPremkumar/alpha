@@ -37,8 +37,25 @@ test("the generic group icon survives as the nameless-room fallback", () => {
 test("an agent's own picture is never replaced by a group picture", () => {
   // The group branch is chosen by `kind`, so a direct thread keeps the agent
   // avatar lookup instead.
-  assert.match(
-    messages,
-    /avatarByName\[activeTitle\]/,
-  );
+  assert.match(messages, /avatarByName\[activeTitle\]/);
+});
+
+// ── the details pane lists people, so it must draw the same pictures ─────────
+
+test("the details pane receives the picture map", () => {
+  assert.match(messages, /<DetailsPane[\s\S]{0,200}?avatars=\{avatarByName\}/);
+});
+
+test("every member list in the details pane passes it on", () => {
+  // DIRECT / INHERITED / RULE MATCHED are three separate lists; one of them
+  // rendering initials while the others render pictures is the exact defect.
+  const rows = messages.match(/<MemberRow[\s\S]*?\/>/g) ?? [];
+  assert.equal(rows.length, 3, `expected three MemberRow call sites, found ${rows.length}`);
+  for (const row of rows) {
+    assert.match(row, /avatars=\{props\.avatars\}/);
+  }
+});
+
+test("the member row draws the member's own picture", () => {
+  assert.match(messages, /avatars\?\.\[props\.name\]/);
 });

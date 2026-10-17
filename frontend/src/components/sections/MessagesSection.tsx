@@ -3159,6 +3159,7 @@ export function MessagesSection(props: {
         {sel && showDetails && (
           <DetailsPane
             sel={sel}
+            avatars={avatarByName}
             onOpenProjectDetails={props.onOpenProjectDetails}
             members={activeMembers}
             presence={activePresence}
@@ -3624,6 +3625,7 @@ function DetailsPane(props: {
                 <MemberRow
                   key={entry.name}
                   name={entry.name}
+                  avatars={props.avatars}
                   displayName={entry.displayName}
                   role={entry.role}
                   state={entry.state}
@@ -3651,6 +3653,7 @@ function DetailsPane(props: {
                 <MemberRow
                   key={`inh-${b.name}`}
                   name={b.name}
+                  avatars={props.avatars}
                   state={
                     props.presence.find((p) => p.name === b.name)?.state ?? null
                   }
@@ -3679,6 +3682,7 @@ function DetailsPane(props: {
                   <MemberRow
                     key={`rule-${b.name}`}
                     name={b.name}
+                    avatars={props.avatars}
                     state={
                       props.presence.find((p) => p.name === b.name)?.state ??
                       null
