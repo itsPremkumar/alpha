@@ -510,6 +510,8 @@ def test_aio_deploy_socket_preflight_allows_windows_when_docker_reachable(tmp_pa
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
@@ -535,6 +537,8 @@ def test_aio_deploy_socket_preflight_rejects_missing_socket_on_posix(tmp_path):
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode == 1, result.stdout + result.stderr
@@ -570,6 +574,8 @@ def test_aio_deploy_socket_preflight_rejects_missing_custom_socket_on_windows(tm
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode == 1, result.stdout + result.stderr
@@ -606,6 +612,8 @@ def test_aio_deploy_socket_preflight_rejects_windows_when_docker_unreachable(tmp
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     assert result.returncode == 1, result.stdout + result.stderr
