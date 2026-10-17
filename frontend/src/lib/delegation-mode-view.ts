@@ -59,7 +59,17 @@ export function firstSentence(text: string | null | undefined, max = 88): string
   const head = (sentence || flat).slice(0, max);
   const cut = head.lastIndexOf(" ");
   const kept = (cut > max * 0.6 ? head.slice(0, cut) : head).trim().replace(/[,;:]$/, "");
-  return kept.length < (sentence || flat).length ? `${kept}…` : kept;
+  // Drop a trailing fragment that hangs off an UNCLOSED bracket.
+  //
+  // Measured against the real Gateway catalog: `deep-code-reviewer` describes
+  // itself as "...and convention checks (verdict ...)", so cutting at the last
+  // space left the row reading "…and convention checks (verdict…". That is the
+  // exact mid-word cut this function exists to prevent, just wearing a bracket:
+  // the last space fell *inside* a parenthesised clause, so "word boundary"
+  // was not "clause boundary". An orphaned fragment is worse than a shorter
+  // label, so the whole bracket tail goes.
+  const closed = kept.replace(/\s*[([][^()[\]]*$/, "").trim();
+  return closed.length < (sentence || flat).length ? `${closed}…` : closed;
 }
 
 /** Server-reported cost facts. Absent means "not reported", never a guess. */

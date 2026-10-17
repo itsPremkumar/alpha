@@ -101,6 +101,60 @@ test("whitespace is collapsed so a multi-line description reads as one row", () 
   assert.equal(firstSentence("a   b\n\nc\t d."), "a b c d.");
 });
 
+test("a fragment hanging off an unclosed bracket is dropped, not cut", () => {
+  // The real `deep-code-reviewer` description. Cutting at the last space put the
+  // ellipsis inside the parenthesised clause, so the row read
+  // "...and convention checks (verdict…" - a mid-word cut wearing a bracket.
+  const out = firstSentence(
+    "Autonomous patch gatekeeper with API, type, regression, and convention checks (verdict returned).",
+  );
+  assert.ok(!out.includes("verdict"), `orphaned bracket fragment survived: ${JSON.stringify(out)}`);
+  assert.ok(!/\(\s*…/.test(out), `a dangling opener must not survive: ${JSON.stringify(out)}`);
+  assert.equal(out, "Autonomous patch gatekeeper with API, type, regression, and convention checks…");
+});
+
+test("a balanced bracket inside a sentence is kept", () => {
+  // Not a blanked-out anything: a complete parenthetical is real content and
+  // must survive the cut when it is not left dangling.
+  const out = firstSentence("Bounded helper (bash only) for small shell steps. Then it stops.");
+  assert.ok(out.includes("(bash only)"), out);
+});
+
+test("no rendered label ever ends in a partial word or an opener", () => {
+  // The server catalog as measured, not invented prose.
+  //
+  // The old guard here was `!/\w…$/`, which is worthless: "edits…" (a complete
+  // word) and "dele…" (a fragment) both match, so it passed on the very row
+  // that read "(verdict…" in the browser. The real property is that the kept
+  // text is a true prefix of the source AND the cut landed on a space - which
+  // is what "not a partial word" actually means - plus no orphaned bracket.
+  const real = [
+    "Autonomous multi-file refactoring specialist with AST impact analysis and atomic edits per file.",
+    "Autonomous patch gatekeeper with API, type, regression, and convention checks (verdict returned only when the run is genuinely finished, never assumed).",
+    "Autonomous root-cause analysis with fault localization and candidate patch synthesis.",
+    "Autonomous profiling, bottleneck detection, and benchmark tooling (verification claimed only when a measurement exists).",
+    "Autonomous taint analysis, credential scanning, and sanitization-guard remediation.",
+    "Autonomous property-based test generation (mutation validation claimed only when a harness runs).",
+    "A capable agent for bounded exploration and action when there is clear delegation benefit.",
+    "Command execution specialist for bounded shell workflows with clear delegation benefit.",
+  ];
+  for (const description of real) {
+    const out = firstSentence(description);
+    const body = out.endsWith("…") ? out.slice(0, -1) : out;
+    if (!out.endsWith("…")) continue; // a whole first sentence needs no check
+    assert.ok(description.startsWith(body), `not a prefix of the source: ${JSON.stringify(out)}`);
+    assert.ok(
+      description[body.length] === " ",
+      `cut did not land on a word boundary, so the label ends mid-word: ${JSON.stringify(out)}`,
+    );
+    assert.ok(!/[([]\s*…$/.test(out), `dangling opener: ${JSON.stringify(out)}`);
+    assert.ok(!/\s…$/.test(out), `ellipsis after a space: ${JSON.stringify(out)}`);
+    const opens = (body.match(/[([]/g) || []).length;
+    const closes = (body.match(/[)\]]/g) || []).length;
+    assert.equal(opens, closes, `unbalanced bracket left in the label: ${JSON.stringify(out)}`);
+  }
+});
+
 test("absent or empty text yields empty, never an invented sentence", () => {
   assert.equal(firstSentence(null), "");
   assert.equal(firstSentence(undefined), "");
@@ -237,8 +291,9 @@ test("a worker row is a label and a complete sentence, never a fragment", () => 
   // `displayName: null` falls back to `name` — `null` is not "unnamed".
   assert.ok(option.label.length > 0);
   assert.equal(optionText(option), `${option.label} · ${option.hint}`);
-  // The old `.slice(0, 72)` produced "…with convention c…". No mid-word cut here.
-  assert.ok(!/\w…$/.test(option.hint), `mid-word cut survived: ${JSON.stringify(option.hint)}`);
+  // This fixture's description already ends in a full sentence, so it must be
+  // used whole. The old `.slice(0, 72)` produced "…with convention c…" here.
+  assert.equal(option.hint, "Autonomous patch gatekeeper with API, type, regression, and convention checks.");
 });
 
 test("a worker with no reported description is labelled unreported, not filled in", () => {
