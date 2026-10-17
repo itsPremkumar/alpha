@@ -353,6 +353,92 @@ def _guard_git(selection: WorktreeSelection, *, git_available: bool, git_error: 
     )
 
 
+#: Capability tags that describe **work that produces a mergeable diff**.  A task
+#: carrying any of these needs a worktree rather than a disposable workspace.
+_WRITE_CAPABILITY_TAGS = frozenset(
+    {
+        "code_generation",
+        "system_design",
+        "data_modeling",
+        "python",
+        "typescript",
+        "backend",
+        "sql",
+        "react",
+        "tailwind",
+        "docker",
+        "python_repl",
+        "performance_tuning",
+    }
+)
+
+#: Capability tags that describe **read-only** work.  A task carrying only these
+#: never needs a mergeable branch; parallelising it is the safe case.
+_READ_ONLY_CAPABILITY_TAGS = frozenset(
+    {
+        "web_search",
+        "document_synthesis",
+        "technical_writing",
+        "code_review",
+        "code_audit",
+        "security_review",
+        "vulnerability_analysis",
+        "incident_response",
+        "ui_design",
+    }
+)
+
+#: Capability tags that imply **untrusted code execution** and therefore a
+#: provider-backed sandbox boundary rather than a bare worktree.
+_UNTRUSTED_CAPABILITY_TAGS = frozenset({"python_repl", "docker"})
+
+#: Capability tags that imply **merge verification** - judging whether another
+#: branch may be merged.  Must never share a workspace with implementation work.
+_VERIFICATION_CAPABILITY_TAGS = frozenset({"code_review", "regression_suite", "permission_audit"})
+
+
+def task_signals_for(
+    task: Any,
+    *,
+    requested_mode: WorktreeMode | None = None,
+) -> TaskSignals:
+    """Derive isolation signals from a task's measured shape.
+
+    Before this, the swarm runner called ``select_strategy`` with a hardcoded
+    ``produces_mergeable_diff=True`` for every task that had a worktree path,
+    so every task was treated as write-capable and every task that missed the
+    branch got no isolation at all - including the read-heavy exploration that
+    the industry consensus says is the safe case to parallelise.
+
+    Signals are derived, never asserted: a task with no capability tags is
+    *unknown*, and unknown resolves to the recoverable default (a worktree) -
+    the same rule ``TaskSignals`` itself documents.  Nothing here invents a
+    write or a read that the task's own directive did not imply.
+    """
+
+    tags = getattr(task, "capability_tags", None) or []
+    tag_set = {str(tag) for tag in tags}
+
+    produces_diff = bool(tag_set & _WRITE_CAPABILITY_TAGS)
+    read_only = bool(tag_set) and tag_set <= _READ_ONLY_CAPABILITY_TAGS
+    runs_untrusted = bool(tag_set & _UNTRUSTED_CAPABILITY_TAGS)
+    merge_verification = bool(tag_set & _VERIFICATION_CAPABILITY_TAGS)
+
+    # A task with no tags is unknown on every axis; let the policy's default
+    # (worktree, recoverable) apply rather than guessing.
+    if not tag_set:
+        produces_diff = False
+        read_only = False
+
+    return TaskSignals(
+        produces_mergeable_diff=produces_diff,
+        read_only=read_only,
+        runs_untrusted_code=runs_untrusted,
+        merge_verification=merge_verification,
+        requested_mode=requested_mode,
+    )
+
+
 def _resolve_requested(
     mode: WorktreeMode,
     signals: TaskSignals,

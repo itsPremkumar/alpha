@@ -347,7 +347,6 @@ class SwarmTaskDecomposer:
                 # hint needs at least one tag and is then ranked by coverage.
                 task.capability_source = "inferred"
                 _apply_capability_model_routing(task)
-                _apply_capability_model_routing(task)
 
     @classmethod
     def _candidate_modes(cls, resolved: StrategyResolution, items: Sequence[str] | None) -> list[SwarmMode]:

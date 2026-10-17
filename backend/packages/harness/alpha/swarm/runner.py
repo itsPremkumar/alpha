@@ -20,7 +20,6 @@ from alpha.agents.middlewares.receipt_verification import validate_receipt_verdi
 from alpha.config.runtime_paths import project_root, runtime_home
 from alpha.sandbox.worktree_strategy import (
     Assurance,
-    TaskSignals,
     WorktreeMode,
     is_protected_branch,
     select_strategy,
@@ -146,13 +145,18 @@ class AsyncSwarmRunner:
             branch_name = _worktree_branch_name(task_node.task_id)
             if is_protected_branch(branch_name):
                 raise RuntimeError(f"refusing to run task {task_node.task_id!r} on protected branch {branch_name!r}")
-            # Ask the strategy layer which isolation a coding task gets rather
-            # than assuming a worktree is available. A coding task produces a
-            # mergeable diff, so that is the signal that selects the mode; a
-            # deployment without usable git answers with a lower-assurance
-            # copy, which cannot commit or merge — and pretending otherwise is
-            # how a "successful" coding task ends up with no branch at all.
-            selection = select_strategy(TaskSignals(produces_mergeable_diff=True))
+            # Derive the signals from the task's own measured shape rather than
+            # asserting that every coding task produces a mergeable diff. A
+            # task that only carries read-only capability tags (research,
+            # review, audit) is now treated as read-only and gets the read
+            # isolation tier; one that carries write tags is treated as a
+            # writer; one that carries no tags at all is unknown and resolves to
+            # the recoverable default. The policy engine already exists and
+            # already handles each of these cases — the bug was that the swarm
+            # never fed it anything but True.
+            from alpha.sandbox.worktree_strategy import task_signals_for
+
+            selection = select_strategy(task_signals_for(task_node))
             if selection.assurance is not Assurance.STANDARD or selection.mode is not WorktreeMode.WORKTREE:
                 raise RuntimeError(f"worktree isolation is unavailable for task {task_node.task_id!r} (selected {selection.mode}, assurance {selection.assurance}): {selection.reason}")
             return CodingWorktreeWorker(

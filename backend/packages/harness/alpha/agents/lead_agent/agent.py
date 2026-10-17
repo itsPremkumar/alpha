@@ -606,6 +606,12 @@ def build_middlewares(
         # The deterministic grounding gate must know about that exact tool or
         # it will reject the creation call that the model was explicitly given.
         grounding_extra = frozenset({"setup_agent"})
+    if deferred_setup is not None and deferred_setup.tool_search_tool is not None:
+        # Deferred discovery is also injected outside the ordinary builtin
+        # registry. It is the only supported way to promote a deferred tool,
+        # so the grounding inventory must recognize it whenever this run has
+        # an active deferred catalog.
+        grounding_extra |= frozenset({deferred_setup.tool_search_tool.name})
     if runtime_config.get("subagent_enabled", False):
         from alpha.tools.tools import SUBAGENT_TOOLS
 

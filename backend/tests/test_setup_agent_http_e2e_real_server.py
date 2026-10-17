@@ -48,6 +48,7 @@ def _build_fake_create_chat_model(agent_name: str):
             },
             tool_call_id="call_real_http_1",
             final_text=f"Agent {agent_name} created via real HTTP e2e.",
+            discover_tool=True,
         )
 
     return fake_create_chat_model

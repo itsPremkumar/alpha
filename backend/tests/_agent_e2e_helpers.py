@@ -43,15 +43,34 @@ def build_single_tool_call_model(
     tool_args: dict[str, Any],
     tool_call_id: str = "call_e2e_1",
     final_text: str = "done",
+    discover_tool: bool = False,
 ) -> FakeToolCallingModel:
-    """Build a fake model that emits exactly one tool_call then finishes.
+    """Build a fake model that calls one tool and then finishes.
 
-    Two-turn behaviour, identical across our e2e tests:
+    Direct calls use two turns. With ``discover_tool=True``, model the
+    production ``tool_search`` round-trip before invoking the requested tool.
+
+    Direct-call behavior:
       turn 1 → AIMessage with a single tool_call for *tool_name*
       turn 2 → AIMessage with *final_text* (terminates the agent loop)
     """
-    return FakeToolCallingModel(
-        responses=[
+    responses = []
+    if discover_tool:
+        responses.append(
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "tool_search",
+                        "args": {"query": f"select:{tool_name}"},
+                        "id": f"call_discover_{tool_call_id}",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        )
+    responses.extend(
+        [
             AIMessage(
                 content="",
                 tool_calls=[
@@ -66,3 +85,4 @@ def build_single_tool_call_model(
             AIMessage(content=final_text),
         ]
     )
+    return FakeToolCallingModel(responses=responses)

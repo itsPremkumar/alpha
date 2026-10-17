@@ -182,6 +182,7 @@ def _build_fake_setup_agent_model(agent_name: str):
             },
             tool_call_id="call_runtime_business_1",
             final_text=f"Created {agent_name} through the real setup_agent tool.",
+            discover_tool=True,
         )
 
     return fake_create_chat_model
