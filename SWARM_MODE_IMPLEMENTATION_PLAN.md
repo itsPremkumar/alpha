@@ -299,12 +299,36 @@ Status against the phases above, evidence-tagged:
   auto-size sentinel end-to-end (router `ge=0`, coordinator passes it through,
   decomposer picks from the situation: batch → one worker per item capped at
   the ceiling; complexity ≥ 0.7 → 8; ≥ 0.4 → 4; otherwise 2).
-- **Phase E — partially served.** The live sweep above measured the *sizing*
-  decision at plan level on every case; predicted-vs-realised makespan per new
-  mode (item 12) has not been recorded against a real run yet — execution-level
-  realised concurrency this session is covered by the runtime suites, not a
-  fresh 1000-specialist spend. Item 13 (tuning `score_plan`, learned routing)
-  remains untouched until that recording exists.
+- **Phase E — item 12 recorded [M], 2026-10-17.** Predicted-vs-realised makespan
+  measured against committed HEAD (`748e1cc`; advisory backend `76cecf6` +
+  style fixup `dc87001`) on a scratch-worktree Gateway (127.0.0.1:8010, isolated
+  `ALPHA_HOME`), three tiny echo probes; every number read off the live API or
+  the probe's own clock. Swarm ids `swm-be8281a5`, `swm-65ad25f0`,
+  `swm-514b7278` (probe-owned, terminal or cancelled, scratch storage):
+
+  | run | plan chosen at POST | predicted est. parallel / critical path | advisory: expected_realized / inflight / wide_plan_risk | realised | probe wall |
+  |---|---|---|---|---|---|
+  | 3 echo items, `max_concurrency=0` | `map_reduce`, auto 3, 4 tasks | 30s / 30s | 3 / 67 / false | `partial_success` at 330s probe cap (cancelled) | — |
+  | 2 echo items, `max_concurrency=0` | `map_reduce`, auto 2, 3 tasks | 30s / 30s | 2 / 67 / false | `failed` (3/3 tasks failed) | 17.7s |
+  | no items, `max_concurrency=100` | `hierarchical`, 100 declared, 5 tasks | 60s / 60s | 3 / 67 / **true** (+refusal note) | `completed` 5/5 | 35.4s |
+
+  Readings [I]: (1) the advisory is exact on every POST — `expected_realized`
+  = `min(declared, max_running)` (3, 2, 3) and in-flight = running+queued (67)
+  matched the installed `subagent_runtime` schedule (3/64/queue/300s); the
+  100-wide plan fired `wide_plan_risk: true` with the refusal-admission note.
+  (2) The never-gate rule is proven live: the 100-wide plan — flagged at
+  `wide_plan_risk: true` — was accepted, executed, and completed 5/5; nothing was
+  refused at admission. (3) Predicted makespans are conservative critical-path
+  estimates, not promises: the one completing run finished in 35.4s against a
+  60s prediction (echo tasks execute in ~15-20s against the modeled 30s/task).
+  (4) **Anomaly, committed tree:** both item-mode `map_reduce` probes did not
+  complete (`partial_success` / `failed`, "no successful worker summaries") —
+  a plan-time mode-classification / reduce-step failure measured at HEAD; not an
+  advisory regression (the advisory never touches admission or execution) and
+  recorded here, not hidden.
+
+  Item 13 (tuning `score_plan`, learned routing) remains untouched: this item 12
+  verification changes no size or estimate.
 
 ---
 
