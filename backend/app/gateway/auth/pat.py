@@ -133,6 +133,10 @@ _PAT_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
         frozenset({"GET"}),
         re.compile(r"^/api/threads/[^/]+/runs/[^/]+/(join|messages|events|events/summary|usage|verification|workspace-changes)$"),
     ),
+    # This deliberate owner-scoped action appends a fresh acceptance
+    # measurement without mutating the run itself. Its route-level permission
+    # is runs:read; keep the admission exception exact to this one POST path.
+    (frozenset({"POST"}), re.compile(r"^/api/threads/[^/]+/runs/[^/]+/verification/recheck$")),
     (frozenset({"GET", "POST"}), re.compile(r"^/api/threads/[^/]+/runs/[^/]+/artifacts/archive$")),
     (frozenset({"GET", "POST"}), re.compile(r"^/api/threads/[^/]+/runs/[^/]+/stream$")),
     (frozenset({"POST"}), re.compile(r"^/api/runs/(stream|wait)$")),
