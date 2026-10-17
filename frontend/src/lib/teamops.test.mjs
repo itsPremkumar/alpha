@@ -68,6 +68,7 @@ test("createSwarm sends goal and explicit execution-neutral options", async () =
       mode: "auto",
       max_concurrency: 4,
       items: undefined,
+      budget: undefined,
     });
     return { cost_projection: expectedProjection };
   });
@@ -82,18 +83,28 @@ test("createSwarm keeps an absent projection distinct from a measured zero", asy
 test("createSwarm sends the selected topology and worker concurrency", async () => {
   setHttpHandler((_path, _method, payload) => {
     assert.equal(payload.mode, "map_reduce");
-    assert.equal(payload.max_concurrency, 16);
+    assert.equal(payload.max_concurrency, 1000);
+    assert.equal(payload.items.length, 1000);
+    assert.deepEqual(payload.budget, { max_tasks: 1001 });
   });
-  await teamops.createSwarm("Process a document collection", { mode: "map_reduce", maxConcurrency: 16 });
+  await teamops.createSwarm("Process a document collection", {
+    mode: "map_reduce",
+    maxConcurrency: 1000,
+    items: Array.from({ length: 1000 }, (_, index) => `item-${index + 1}`),
+    maxTasks: 1001,
+  });
 });
 
 test("Team Ops presents every Gateway swarm topology and a safe selectable capacity", () => {
   const component = readFileSync(new URL("../components/sections/TeamOpsSection.tsx", import.meta.url), "utf8");
-  for (const mode of ["auto", "parallel", "map_reduce", "scatter_gather", "hierarchical", "debate", "ensemble", "coding_worktree"]) {
+  for (const mode of ["auto", "parallel", "map_reduce", "scatter_gather", "hierarchical", "debate", "ensemble", "coding_worktree", "read_fanout", "critical_path_split"]) {
     assert.match(component, new RegExp(`\\["${mode}",`));
   }
   assert.match(component, /value=\{swarmConcurrency\}/);
   assert.match(component, /maxConcurrency: swarmConcurrency/);
+  assert.match(component, /type="number" min=\{0\} max=\{1000\}/);
+  assert.match(component, /up to 1,000/);
+  assert.match(component, /task graph width, runtime\/provider limits and budget/);
   assert.match(component, /Pre-run estimate/);
   assert.match(component, /Tokens \{lastSwarmProjection\.projection\.projected_tokens \?\? "not estimated"\}/);
   assert.match(component, /model evidenced \{t\.usedModels\.length > 0 \? t\.usedModels\.join/);

@@ -107,36 +107,38 @@ export function SwarmModeControl({
         <>
           <span className="text-border/60">|</span>
           <label className="sr-only" htmlFor="composer-swarm-mode">Swarm topology</label>
+          <select
+            id="composer-swarm-mode"
+            value={mode}
+            disabled={disabled}
+            onChange={(e) => onModeChange(e.target.value)}
+            className="max-w-32 bg-transparent text-[10px] focus:outline-none"
+            title="Swarm topology: how the coordinator decomposes the goal"
+          >
+            {SWARM_MODES.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label.split(" — ")[0]}
+              </option>
+            ))}
+          </select>
+          <span className="text-border/60">|</span>
+          <label className="sr-only" htmlFor="composer-swarm-concurrency">Swarm concurrency</label>
           <input
             id="composer-swarm-concurrency"
             type="number"
-            min={1}
+            min={0}
             max={1000}
             value={concurrency}
             disabled={disabled}
             onChange={(e) => {
               const v = Number(e.target.value);
-              if (Number.isFinite(v) && v >= 1 && v <= 1000) onConcurrencyChange(Math.floor(v));
+              if (Number.isFinite(v) && v >= 0 && v <= 1000) onConcurrencyChange(Math.floor(v));
             }}
-            className="w-14 bg-transparent text-[10px] focus:outline-none"
-            title="Maximum concurrent workers in a swarm wave (1-1000, or 0 for auto)"
+            className="w-16 bg-transparent text-[10px] focus:outline-none"
+            aria-label="Maximum concurrent swarm workers; 0 selects automatic sizing"
+            title="Worker ceiling: 0 = auto, 1-1000 = requested maximum. Task graph width and runtime/provider capacity can lower actual concurrency."
           />
-          <span className="text-border/60">|</span>
-          <label className="sr-only" htmlFor="composer-swarm-concurrency">Swarm concurrency</label>
-          <select
-            id="composer-swarm-concurrency"
-            value={concurrency}
-            disabled={disabled}
-            onChange={(e) => onConcurrencyChange(Number(e.target.value))}
-            className="max-w-16 bg-transparent text-[10px] focus:outline-none"
-            title="Maximum concurrent workers in a swarm wave"
-          >
-            {[2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 100, 150, 200, 300, 500, 750, 1000].map((n) => (
-              <option key={n} value={n}>
-                {n} workers
-              </option>
-            ))}
-          </select>
+          <span className="text-[9px] text-muted-foreground">{concurrency === 0 ? "auto" : "workers max"}</span>
           <Settings2 className="size-3 opacity-50" aria-hidden="true" />
         </>
       )}

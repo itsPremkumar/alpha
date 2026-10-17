@@ -70,7 +70,7 @@ export function readStoredSwarmPreference(storage: StorageLike | null | undefine
     return {
       enabled: parsed.enabled === true,
       mode: isSwarmModeShape(parsed.mode) ? (parsed.mode as string) : "auto",
-      concurrency: typeof parsed.concurrency === "number" && parsed.concurrency >= 1 && parsed.concurrency <= 1000
+      concurrency: typeof parsed.concurrency === "number" && parsed.concurrency >= 0 && parsed.concurrency <= 1000
         ? Math.floor(parsed.concurrency)
         : 4,
     };

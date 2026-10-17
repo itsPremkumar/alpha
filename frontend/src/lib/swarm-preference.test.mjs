@@ -73,12 +73,14 @@ test("the default preference clears the key", () => {
 test("out-of-range concurrency falls back to the default", () => {
   // A preference is not a hard limit, but an out-of-range value is still an
   // invalid preference: it is discarded rather than clamped, matching the
-  // codebase's "refuse, don't clamp" discipline.
+  // codebase's "refuse, don't clamp" discipline. Zero is the supported
+  // auto-sizing sentinel.
   const s = storage();
   pref.storeSwarmPreference(s, { enabled: true, mode: "auto", concurrency: 1500 });
   assert.equal(pref.readStoredSwarmPreference(s).concurrency, 4);
+  // Zero is the explicit auto-sizing sentinel on the Gateway contract.
   pref.storeSwarmPreference(s, { enabled: true, mode: "auto", concurrency: 0 });
-  assert.equal(pref.readStoredSwarmPreference(s).concurrency, 4);
+  assert.equal(pref.readStoredSwarmPreference(s).concurrency, 0);
   pref.storeSwarmPreference(s, { enabled: true, mode: "auto", concurrency: 8 });
   assert.equal(pref.readStoredSwarmPreference(s).concurrency, 8);
 });
@@ -106,4 +108,13 @@ test("Composer seeds swarm mode from the shared preference (wiring pending)", ()
   // The preference module is the deliverable here; the composer integration
   // is the next step and will tighten this to a real import.
   assert.ok(true);
+});
+
+test("composer keeps the topology selector and unique numeric concurrency control", () => {
+  const component = readFileSync(new URL("../components/SwarmModeControl.tsx", import.meta.url), "utf8");
+  assert.match(component, /id="composer-swarm-mode"/);
+  assert.match(component, /id="composer-swarm-concurrency"/);
+  assert.match(component, /max=\{1000\}/);
+  assert.match(component, /onModeChange\(e\.target\.value\)/);
+  assert.equal((component.match(/id="composer-swarm-concurrency"/g) ?? []).length, 1);
 });

@@ -233,12 +233,13 @@ export async function listSwarms(): Promise<Swarm[]> {
   }));
 }
 
-export async function createSwarm(objective: string, options?: { mode?: string; maxConcurrency?: number; items?: string[] }): Promise<SwarmCostProjection | null> {
+export async function createSwarm(objective: string, options?: { mode?: string; maxConcurrency?: number; items?: string[]; maxTasks?: number }): Promise<SwarmCostProjection | null> {
   const response = await send<Record<string, unknown>>("/swarms", "POST", {
     goal: objective,
     mode: options?.mode ?? "auto",
     max_concurrency: options?.maxConcurrency ?? 4,
     items: options?.items,
+    budget: options?.maxTasks === undefined ? undefined : { max_tasks: options.maxTasks },
   });
   const projection = response?.cost_projection;
   return projection && typeof projection === "object" && !Array.isArray(projection)

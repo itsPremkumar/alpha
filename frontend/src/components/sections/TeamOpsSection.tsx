@@ -55,6 +55,8 @@ const SWARM_MODES = [
   ["debate", "Debate · independent positions challenge one another"],
   ["ensemble", "Ensemble · independent solutions feed a synthesis"],
   ["coding_worktree", "Coding Worktree · isolate coding workers in worktrees"],
+  ["read_fanout", "Read Fanout · parallel read-only exploration"],
+  ["critical_path_split", "Critical Path Split · shorten the longest dependency chain"],
 ] as const;
 
 /**
@@ -112,6 +114,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
   const [swarms, setSwarms] = useState<Swarm[]>([]);
   const refreshingSwarmsRef = useRef(false);
   const [swarmObjective, setSwarmObjective] = useState("");
+  const [swarmItemsInput, setSwarmItemsInput] = useState("");
   const [swarmMode, setSwarmMode] = useState("auto");
   const [swarmConcurrency, setSwarmConcurrency] = useState(4);
   const [lastSwarmProjection, setLastSwarmProjection] = useState<{ goal: string; projection: SwarmCostProjection | null } | null>(null);
@@ -255,10 +258,22 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
   const submitSwarmPlan = () => {
     const goal = swarmObjective.trim();
     if (!goal) return;
+    const items = swarmItemsInput.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    if (items.length > 1000) {
+      setError("A swarm can contain at most 1,000 work items.");
+      return;
+    }
     return act(async () => {
-      const projection = await createSwarm(goal, { mode: swarmMode, maxConcurrency: swarmConcurrency });
+      const projection = await createSwarm(goal, {
+        mode: swarmMode,
+        maxConcurrency: swarmConcurrency,
+        items: items.length ? items : undefined,
+        // Map/reduce adds one gather task after the item workers.
+        maxTasks: items.length ? Math.max(256, items.length + 1) : undefined,
+      });
       setLastSwarmProjection({ goal, projection });
       setSwarmObjective("");
+      setSwarmItemsInput("");
     }, "Swarm plan created. Use Run to start execution.");
   };
 
@@ -492,14 +507,17 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                   {SWARM_MODES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
                 <label className="sr-only" htmlFor="swarm-concurrency">Maximum concurrent swarm agents</label>
-                <select id="swarm-concurrency" aria-label="Maximum concurrent swarm agents" title="Maximum workers scheduled at once; Gateway and provider capacity may reduce effective concurrency" value={swarmConcurrency} onChange={(event) => setSwarmConcurrency(Number(event.target.value))} className={inputCls}>
-                  {[2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 100, 150, 200, 300, 500, 750, 1000].map((count) => <option key={count} value={count}>{count} agents at once</option>)}
-                </select>
+                <input id="swarm-concurrency" type="number" min={0} max={1000} value={swarmConcurrency} aria-label="Maximum concurrent swarm agents; 0 selects automatic sizing" title="Requested maximum workers per wave. DAG width, local runtime capacity, provider limits and budget can reduce actual concurrency." onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0 && value <= 1000) setSwarmConcurrency(value); }} className={inputCls} />
                 <Btn onClick={submitSwarmPlan} disabled={!swarmObjective.trim()}>
                   <Play className="size-3.5" /> Create plan
                 </Btn>
               </div>
-              <p className="mt-2 text-[10px] text-muted-foreground">Safe default: Auto with 4 concurrent workers. You can choose up to 64; runtime admission, provider capacity and budget can reduce the effective parallelism.</p>
+              <details className="mt-2 text-[10px] text-muted-foreground">
+                <summary className="cursor-pointer">Optional fan-out work items</summary>
+                <label className="mt-2 block" htmlFor="swarm-items">Add one independent work item per line (up to 1,000). Map–Reduce creates a gather task after the workers.</label>
+                <textarea id="swarm-items" value={swarmItemsInput} onChange={(event) => setSwarmItemsInput(event.target.value)} rows={4} maxLength={1_000_000} placeholder="Item 1\nItem 2\nItem 3" className={`${inputCls} mt-1 w-full font-mono`} />
+                <p>{swarmItemsInput.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).length} / 1,000 work items · Requested concurrency is a ceiling; task graph width, runtime/provider limits and budget determine actual parallelism.</p>
+              </details>
               {lastSwarmProjection && (
                 <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs" aria-live="polite">
                   <p className="font-semibold">Pre-run estimate · {lastSwarmProjection.goal}</p>
