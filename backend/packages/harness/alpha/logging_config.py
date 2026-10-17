@@ -465,6 +465,18 @@ class LogRedactionFilter(logging.Filter):
             if not self.should_scrub(value):
                 return value
             return self._redactor.redact_value(value, key=key).value
+        if isinstance(value, BaseException):
+            # Exceptions are useful operator diagnostics, but sending the
+            # object to the generic Redactor classifies it as an unknown shape
+            # and loses its message. Render only the bounded exception summary
+            # here; it still passes through the same secret scrubber as every
+            # other log argument. Do not call repr(), which may include
+            # traceback locals or arbitrary object state.
+            try:
+                summary = f"{type(value).__name__}: {str(value)}"
+            except Exception:
+                summary = f"{type(value).__name__}: [exception message unavailable]"
+            return self._redactor.redact_value(summary, key=key).value
         if isinstance(value, Mapping):
             return {item_key: self._scrub(item, key=item_key) for item_key, item in value.items()}
         if isinstance(value, tuple):

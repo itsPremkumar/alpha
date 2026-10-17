@@ -197,6 +197,17 @@ def test_mapping_arguments_are_scrubbed_under_their_own_keys(root_handler: loggi
     assert "402" in output  # a non-secret field survives
 
 
+def test_exception_arguments_keep_scrubbed_diagnostic_text(root_handler: logging.Handler) -> None:
+    """Exception objects remain actionable without exposing credential text."""
+    configure_logging(_config(enabled=False))
+    secret = _CORPUS["openai_project_key"]
+    logging.getLogger("alpha.test").warning("provider call failed: %s", RuntimeError(f"service unavailable for {secret}"))
+    output = root_handler.stream.getvalue()  # type: ignore[attr-defined]
+    assert "RuntimeError: service unavailable for" in output
+    assert secret not in output
+    assert "[REDACTED:" in output
+
+
 def test_traceback_text_is_scrubbed(root_handler: logging.Handler) -> None:
     """The traceback, not the message, is where a provider URL usually leaks.
 
