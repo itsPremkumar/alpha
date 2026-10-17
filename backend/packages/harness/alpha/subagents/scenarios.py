@@ -65,6 +65,7 @@ class ScenarioId(StrEnum):
     TOURNAMENT = "tournament"
     ADVISORY_COUNCIL = "advisory_council"
     STAGED_PIPELINE = "staged_pipeline"
+    SWARM = "swarm"
     BACKGROUND_DELEGATE = "background_delegate"
 
 
@@ -86,6 +87,10 @@ class Requirement(StrEnum):
     COUNCIL_CONFIGURED = "council_configured"
     #: The dynamic-workflow engine answered a registries read.
     WORKFLOW_CONFIGURED = "workflow_configured"
+    #: The swarm runtime answered a health read.  Swarm is an *orchestration*
+    #: capability rather than a single ``task`` call, so its availability is
+    #: measured separately from delegation.
+    SWARM_CONFIGURED = "swarm_configured"
 
 
 @dataclass(frozen=True)
@@ -149,6 +154,15 @@ SCENARIOS: tuple[Scenario, ...] = (
         requirements=(Requirement.DELEGATION_ENABLED, Requirement.WORKFLOW_CONFIGURED),
         estimated_children=6,
         engine="alpha.workflow",
+    ),
+    Scenario(
+        id=ScenarioId.SWARM,
+        title="Swarm",
+        summary="Decompose a complex goal into a parallel DAG of workers with a coordinator.",
+        dispatch=Dispatch.PIPELINE,
+        requirements=(Requirement.DELEGATION_ENABLED, Requirement.SWARM_CONFIGURED),
+        estimated_children=8,
+        engine="alpha.swarm",
     ),
     Scenario(
         id=ScenarioId.PARALLEL_FAN_OUT,

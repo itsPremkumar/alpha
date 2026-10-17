@@ -50,6 +50,7 @@ _FAN_OUT_COMPLEXITY = 0.55
 _TOURNAMENT_SIGNALS = re.compile(r"\b(tournament|arena|compete|best[- ]of|head[- ]to[- ]head|versus|which (approach|option|implementation) (is |wins|better))\b", re.IGNORECASE)
 _COUNCIL_SIGNALS = re.compile(r"\b(council|debate|disagree|second opinion|red team|adversarial|critique|devil'?s advocate|argue (this|both))\b", re.IGNORECASE)
 _PIPELINE_SIGNALS = re.compile(r"\b(pipeline|staged?|stage[- ]by[- ]stage|then (build|deploy|migrate)|migrate|in order,)\b", re.IGNORECASE)
+_SWARM_SIGNALS = re.compile(r"\b(swarm|multi[- ]?agent|bot team|workgroup|parallel workers|fan[- ]out team)\b", re.IGNORECASE)
 _ASYNC_SIGNALS = re.compile(r"\b(in the background|background(?:ed)?|while i (work|do)|let me know when|don'?t wait|fire (it |this )?off)\b", re.IGNORECASE)
 _FAN_OUT_SIGNALS = re.compile(r"\b(in parallel|at the same time|fan[- ]out|simultaneously|all of these|each of these|compare .* and )\b", re.IGNORECASE)
 
@@ -115,6 +116,7 @@ class PlanContext:
     arena_configured: bool | None = None
     council_configured: bool | None = None
     workflow_configured: bool | None = None
+    swarm_configured: bool | None = None
     #: Children this run may actually spend. `None` means "unstated", which is
     #: not the same as unlimited.
     child_budget: int | None = None
@@ -130,6 +132,8 @@ class PlanContext:
             return self.council_configured
         if requirement is Requirement.WORKFLOW_CONFIGURED:
             return self.workflow_configured
+        if requirement is Requirement.SWARM_CONFIGURED:
+            return self.swarm_configured
         return None
 
 
@@ -150,6 +154,7 @@ def _requirement_label(requirement: Requirement) -> str:
         Requirement.ARENA_CONFIGURED: "Arena",
         Requirement.COUNCIL_CONFIGURED: "the council",
         Requirement.WORKFLOW_CONFIGURED: "the workflow engine",
+        Requirement.SWARM_CONFIGURED: "the swarm runtime",
     }.get(requirement, str(requirement))
 
 
@@ -177,6 +182,12 @@ def _match_reason(scenario_id: ScenarioId, prompt: str, perceived: PerceivedInte
     if scenario_id is ScenarioId.STAGED_PIPELINE:
         if _PIPELINE_SIGNALS.search(prompt):
             return "the request describes ordered dependent stages"
+        return None
+    if scenario_id is ScenarioId.SWARM:
+        if _SWARM_SIGNALS.search(prompt):
+            return "the request asks for a swarm of parallel workers"
+        if perceived is not None and perceived.complexity_score >= 0.7:
+            return f"the perceived complexity {perceived.complexity_score:.2f} is high enough that a parallel fan-out team is worth considering"
         return None
     if scenario_id is ScenarioId.BACKGROUND_DELEGATE:
         if _ASYNC_SIGNALS.search(prompt):
