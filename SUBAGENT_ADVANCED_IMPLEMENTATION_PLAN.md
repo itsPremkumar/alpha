@@ -225,7 +225,7 @@ and is a UI/ergonomics problem, not an automation gap.
 | Intent category (`research` / `quick`) | `general` | |
 | Arena participation | none | Operator starts the tournament; N competitors then run automatically. |
 | Council strategy | none | Config-only; no write route (§4). |
-| Arena / dynamic-workflow / council / deliberation / orchestration | none | Config-only families with **no write route** (§4). |
+| Arena / dynamic-workflow / council / deliberation / orchestration | none | Each has a **write route, a typed client and a mounted component** — see the §4.0 correction. What is missing is only the *tuning* read/write route for `execution_tier` / `orchestration_mode` / `agent_presets` / global ceilings. |
 
 **Built but not adopted — the honest "inert" list:**
 
@@ -314,10 +314,55 @@ The largest genuine addition, and the one that most needs restraint.
 
 | File | Change |
 | --- | --- |
-| `alpha/subagents/scenarios.py` | **new** — the classifier |
+| `alpha/subagents/scenarios.py` | **new** — the scenario catalogue |
 | `alpha/subagents/plan.py` | **new** — `ExecutionPlan` and `resolve()` |
 | `alpha/workflow/intent.py` | reuse `PerceivedIntent`, do not re-perceive |
 | `alpha/subagents/registry.py` | expose the scenario catalogue for the UI |
+
+### 3.1.1 DONE — catalogue + planner (2026-10-17)
+
+Both new modules shipped, with the perception source corrected: `PerceivedIntent`
+lives in `alpha/workflow/dynamic_perception.py`, not `workflow/intent.py`, and is
+imported **`TYPE_CHECKING`-only** so a classifier that runs on every prompt cannot
+drag the perception stack in behind it.
+
+`scenarios.py` holds seven shapes (`direct`, `single_delegate`,
+`parallel_fan_out`, `tournament`, `advisory_council`, `staged_pipeline`,
+`background_delegate`), each naming the engine it would use and the `Requirement`s
+that must be **measured** true first. `plan.py::resolve` produces a frozen,
+inspectable `ExecutionPlan`.
+
+Verified against the **real** perception engine, not a stub — six prompts resolved
+to `direct`, `tournament`, `advisory_council`, `parallel_fan_out`,
+`staged_pipeline` and `background_delegate` respectively, every one with
+`shadow=True` and `is_executable=False`.
+
+**Calibration, measured rather than asserted.** The complexity thresholds
+(0.35 / 0.55) looked unreachable: typical prompts score 0.21–0.39 under the
+perception engine's own formula, so every match above came from a signal phrase.
+Probing for the ceiling showed multi-domain multi-intent prompts reach 0.69–0.71,
+so both branches are live. Recorded because the alternative — shipping thresholds
+nobody had measured — is how a heuristic becomes decoration.
+
+Pinned by `tests/test_subagent_execution_plan.py` (28 tests, 11 subtests). The
+strongest is `TestTheClassifierCannotDispatch`, which parses both modules with
+`ast` and asserts they import no engine — the classifier is structurally unable
+to dispatch. It tracks `if TYPE_CHECKING:` guards rather than flat-walking, so a
+type-only import is not counted as a runtime dependency.
+
+Four bugs this suite caught in its own first draft, all real:
+
+1. `ScenarioId(str(scenario))` **raises** `ValueError` for an unknown id, so
+   "unknown scenario" was a crash rather than a refusal. The lookup now goes
+   through `get_scenario` first.
+2. A flat `ast.walk` counted the `TYPE_CHECKING` import as a runtime dependency,
+   which failed the very pin documenting it as intentional.
+3. A tight budget silently shrank `admitted_children` without naming the bound.
+4. `consumed` was not recorded at all, so a tournament request answered by
+   `direct` was indistinguishable from a correct plan.
+
+**Still to do:** the Gateway catalogue/plan routes and the composer preview
+(Phase 5 §5.1). Nothing in this slice changes dispatch — that is the point.
 
 ### 3.2 `ExecutionPlan` is immutable and inspectable
 
@@ -361,11 +406,30 @@ poor. The scenario is a **cheap classifier**; the parent still writes the briefs
 
 ## 4. Phase 4 — Write routes for the orchestration modes
 
-Four of six families in the Execution modes catalogue badge `No read route`
-because `execution_tier`, `orchestration_mode`, `EdgeMode`, `agent_presets` and
-the global subagent ceilings are `config.yaml`-only.
+### 4.0 CORRECTION (measured 2026-10-17, `main`)
 
-### 4.1 Contract
+**This phase was written on a wrong premise and most of it must not be built.**
+
+It claimed the Arena / dynamic-workflow / council / deliberation / orchestration
+families were "config-only with no write route". Every one of them already has a
+write route, a typed frontend client, and a mounted component:
+
+| Family | Write routes (verified) | Frontend client | Mounted in |
+| --- | --- | --- | --- |
+| Arena | `POST /arena/runs`, `/runs/{id}/start`, `/resume`, `/card`, `/stop`, `DELETE /runs/{id}` | `lib/arena.ts` | `ArenaPanel.tsx` |
+| Dynamic workflow | `POST /workflows/dynamic/perceive`, `POST /workflows/dynamic/execute` (+ ~50 more) | `lib/workflows.ts:768,805` | `WorkflowsSection.tsx:664` |
+| Council (cases) | `POST /council/cases`, `POST /council/cases/{id}/reviews` | `lib/workforce.ts:107,111,227` | Workforce view |
+| Council (debate) | `POST /deliberation/run`, `POST /deliberation/evaluate` | `lib/deliberation.ts` | `MessagesSection.tsx:83` |
+
+Building "write routes" here would have produced a second path to capabilities
+that already have one — the exact accept-then-duplicate outcome §4.1 warns about.
+
+**What the catalogue's `No read route` badge actually means.** It is about
+`execution_tier`, `orchestration_mode`, `EdgeMode`, `agent_presets` and the global
+subagent ceilings — the *tuning* knobs, which are genuinely `config.yaml`-only.
+That is a real but much smaller gap than this section claimed.
+
+### 4.1 What is actually left (tuning config, not capabilities)
 
 - `GET /api/config/delegation` → the **effective resolved** config, with
   per-field provenance (explicit value vs inherited default). This is the same
@@ -383,13 +447,26 @@ the global subagent ceilings are `config.yaml`-only.
 `alpha/config/delegation_config.py` (new schema) · `config.example.yaml` ·
 Settings UI in `frontend/src/components/sections/`.
 
-### 4.3 Also in this phase
+### 4.3 `compare` and `synthesize` — resolved, no work needed
 
-Decide `compare` and `synthesize`. They are advertised Arena modes and **not
-implemented** — the backend already refuses them by name, and the catalogue
-reports them honestly. Either implement them or withdraw them from the advertised
-list; advertising a mode that cannot run is exactly the defect the catalogue
-exists to catch.
+The original text called these "advertised but not implemented" and demanded a
+choice. The code already made the choice, for good reasons:
+
+- **`compare` is genuinely unimplemented.** `service.py:70` refuses it by name at
+  create/estimate, because the executor runs a single-elimination bracket only.
+  An elimination-free "judge everyone" loop does not exist. Implementing it is a
+  real engine change, not a wiring change.
+- **`synthesize` is computed, but deliberately is not a mode.**
+  `tournament.py:307` calls `synthesis.synthesize()` on every `decide` run, and
+  `executor.py:692` reports `synthesis_executed`. What it emits is a **merge
+  plan**, not an executed merge — `synthesis.py:12` states this outright — so
+  promoting it to a mode would let an operator select "synthesize" and receive a
+  plan while the label promised a synthesis. The service refuses rather than
+  fakes it (`service.py:63`).
+
+Both are already reported honestly as *not executable in this build* by the
+catalogue, verified live. **No change is required.** An operator can neither
+select them nor be misled about them, which was the actual requirement.
 
 ### 4.4 Gate
 
