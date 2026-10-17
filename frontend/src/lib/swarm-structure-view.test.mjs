@@ -28,7 +28,7 @@ const code = ts.transpileModule(read("./swarm-structure-view.ts"), {
 }).outputText;
 
 // This module imports nothing, so the transpiled output is self-contained.
-const { swarmTaskRows, swarmLeaderView, swarmTeamView, swarmEventRows, swarmStructureView, swarmTelemetryView, swarmModeBadge, measuredCount, isDisplayableSummary } =
+const { swarmTaskRows, swarmLeaderView, swarmTeamView, swarmEventRows, swarmStructureView, swarmTelemetryView, swarmModeBadge, swarmAdmissionAdvisory, measuredCount, isDisplayableSummary } =
   await import(toDataUrl(code));
 
 // ---------------------------------------------------------------------------
@@ -615,3 +615,104 @@ test("an unreported mode is gray and named, never substituted", () => {
     assert.match(badge.note, /did not report/, String(missing));
   }
 });
+
+// ---------------------------------------------------------------------------
+// swarmAdmissionAdvisory — the plan-time process admission disclosure
+//
+// The Gateway composes this at `create_swarm` (backend commit 76cecf6): a plan
+// can declare 1000-way concurrency while the process admission pool realizes
+// only the installed `subagent_runtime` schedule. The view carries that seam
+// beside the topology badge. The pins here are honesty rules: unreported is
+// its own state, zero is a real reported value (a 0-depth queue), unknown
+// fields stay `null`, and the note travels verbatim.
+// ---------------------------------------------------------------------------
+
+const admittedDetail = (block) => ({
+  swarm_id: "swm-x",
+  metrics: block === undefined ? {} : { admission_advisory: block },
+});
+
+test("a reported advisory maps every field and keeps zero as zero", () => {
+  const advisory = swarmAdmissionAdvisory(
+    admittedDetail({
+      max_running: 3,
+      max_queued: 0,
+      admission_policy: "queue",
+      queue_timeout_seconds: 300,
+      expected_realized_concurrency: 3,
+      inflight_capacity: 67,
+      wide_plan_risk: false,
+      note: "advisory only (never enforced): the plan declares 50-way task concurrency, the process admission pool runs at most 3 subagents concurrently and queues up to 0 more while waiting (queue timeout 300s)",
+    }),
+  );
+  assert.equal(advisory.reported, true);
+  assert.equal(advisory.maxRunning, 3);
+  // A 0-depth queue is a real configuration; `null` would claim "not reported".
+  assert.equal(advisory.maxQueued, 0);
+  assert.equal(advisory.policy, "queue");
+  assert.equal(advisory.queueTimeoutSeconds, 300);
+  assert.equal(advisory.expectedRealizedConcurrency, 3);
+  assert.equal(advisory.inflightCapacity, 67);
+  assert.equal(advisory.widePlanRisk, false);
+  assert.match(advisory.note, /declares 50-way task concurrency/);
+});
+
+test("a wide plan carries the refusal-risk flag and its composed note", () => {
+  const advisory = swarmAdmissionAdvisory(
+    admittedDetail({
+      max_running: 2,
+      max_queued: 1,
+      admission_policy: "queue",
+      queue_timeout_seconds: 300,
+      expected_realized_concurrency: 2,
+      inflight_capacity: 3,
+      wide_plan_risk: true,
+      note: "advisory only (never enforced): the plan declares 50-way task concurrency, the process admission pool runs at most 2 subagents concurrently and queues up to 1 more while waiting (queue timeout 300s); in-flight work beyond 3 concurrent tasks may be refused admission and retried",
+    }),
+  );
+  assert.equal(advisory.widePlanRisk, true);
+  // The note is the Gateway's claim, not a locally recomputed one.
+  assert.match(advisory.note, /in-flight work beyond 3 concurrent tasks/);
+});
+
+test("an unreported advisory is its own honest state, never zeros", () => {
+  for (const detail of [admittedDetail(undefined), {}, undefined, null]) {
+    const advisory = swarmAdmissionAdvisory(detail);
+    assert.equal(advisory.reported, false);
+    for (const field of ["maxRunning", "maxQueued", "policy", "queueTimeoutSeconds", "expectedRealizedConcurrency", "inflightCapacity", "widePlanRisk"]) {
+      assert.equal(advisory[field], null, `${field} must be unknown on ${JSON.stringify(detail)}`);
+    }
+    // "Predates the disclosure" is not a claim about capacity.
+    assert.match(advisory.note, /not reported/);
+    assert.match(advisory.note, /not a claim about capacity/);
+  }
+});
+
+test("partially reported or unmeasured fields stay null, not defaults", () => {
+  const advisory = swarmAdmissionAdvisory(
+    admittedDetail({
+      max_running: 2,
+      note: "advisory only (never enforced): the process admission schedule was not resolvable for this 50-way plan; realized parallelism is unknown, not zero",
+    }),
+  );
+  assert.equal(advisory.reported, true);
+  assert.equal(advisory.maxRunning, 2);
+  assert.equal(advisory.maxQueued, null);
+  assert.equal(advisory.policy, null);
+  assert.equal(advisory.expectedRealizedConcurrency, null);
+  assert.equal(advisory.inflightCapacity, null);
+  assert.equal(advisory.widePlanRisk, null);
+  // The Gateway's unmeasured copy travels verbatim; the view does not rewrite
+  // it into "not reported".
+  assert.match(advisory.note, /unknown, not zero/);
+});
+
+test("a non-numeric or nonsensical number is not reported", () => {
+  const advisory = swarmAdmissionAdvisory(
+    admittedDetail({ max_running: -3, max_queued: "many", note: "n", wide_plan_risk: "yes" }),
+  );
+  assert.equal(advisory.maxRunning, null);
+  assert.equal(advisory.maxQueued, null);
+  assert.equal(advisory.widePlanRisk, null, "a string flag is not a boolean answer");
+});
+

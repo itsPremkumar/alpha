@@ -13,6 +13,7 @@ import {
   swarmStructureView,
   swarmTelemetryView,
   swarmModeBadge,
+  swarmAdmissionAdvisory,
   type SwarmStructureView,
 } from "@/lib/swarm-structure-view";
 import {
@@ -768,6 +769,7 @@ function SwarmStructurePanel(props: { swarmId: string }) {
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [telemetry, setTelemetry] = useState<ReturnType<typeof swarmTelemetryView> | null>(null);
   const [modeBadge, setModeBadge] = useState<ReturnType<typeof swarmModeBadge> | null>(null);
+  const [admission, setAdmission] = useState<ReturnType<typeof swarmAdmissionAdvisory> | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -791,6 +793,10 @@ function SwarmStructurePanel(props: { swarmId: string }) {
       // other reads.
       const root = (detail.value ?? {}) as Record<string, unknown>;
       setModeBadge(swarmModeBadge(root.mode));
+      // Same rule: the plan-time admission advisory updates only on a
+      // fulfilled detail read, and its own "not reported" state is the honest
+      // one for a plan that predates the disclosure.
+      setAdmission(swarmAdmissionAdvisory(root));
     }
     setView(
       swarmStructureView(
@@ -849,6 +855,20 @@ function SwarmStructurePanel(props: { swarmId: string }) {
             )}
           </p>
           <p className="text-[10px] text-muted-foreground">{modeBadge.note}</p>
+        </div>
+      )}
+
+      {admission && (
+        <div className="rounded-lg border border-border/50 px-2.5 py-2" aria-live="polite">
+          <p className="text-[11px] font-semibold">
+            Process admission (advisory){admission.expectedRealizedConcurrency !== null && (
+              <>
+                {" "}· expected realized concurrency <span className="font-mono">{admission.expectedRealizedConcurrency}</span>
+                {admission.maxRunning !== null && <> of a {admission.maxRunning}-slot pool</>}
+              </>
+            )}
+          </p>
+          <p className="text-[10px] text-muted-foreground">{admission.note}</p>
         </div>
       )}
 
