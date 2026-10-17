@@ -36,6 +36,7 @@ import {
 } from "@/lib/reasoning-effort";
 import { InsertMenu } from "@/components/InsertMenu";
 import { DelegationPlanPreview } from "@/components/DelegationPlanPreview";
+import { SwarmModeControl } from "@/components/SwarmModeControl";
 import { ModelMenu } from "@/components/ModelMenu";
 import { QUICK_KEY_PROVIDERS } from "@/lib/model-menu";
 import { listSubagentCatalog, type SubagentDef } from "@/lib/subagents";
@@ -317,6 +318,12 @@ interface ComposerProps {
   /** Selected native task mode: off, automatic, a category, or a catalog worker. */
   delegationMode?: string;
   onDelegationModeChange?: (mode: string) => void;
+  swarmModeEnabled?: boolean;
+  onSwarmModeEnabledChange?: (enabled: boolean) => void;
+  swarmMode?: string;
+  onSwarmModeChange?: (mode: string) => void;
+  swarmConcurrency?: number;
+  onSwarmConcurrencyChange?: (n: number) => void;
   /**
    * Open the workspace view that owns another execution engine.
    *
@@ -397,6 +404,12 @@ export function Composer({
   onSubagentConcurrencyChange,
   subagentTotal = 6,
   onSubagentTotalChange,
+  swarmModeEnabled = false,
+  onSwarmModeEnabledChange,
+  swarmMode = "auto",
+  onSwarmModeChange,
+  swarmConcurrency = 4,
+  onSwarmConcurrencyChange,
   effortLadder = FALLBACK_LADDER,
   effortLabels = FALLBACK_LABELS,
   roomName = null,
@@ -1432,6 +1445,17 @@ export function Composer({
                    reports as unknown rather than absent. */
                 arena={arenaEnabled}
                 childBudget={subagentTotal}
+              />
+            )}
+            {onSwarmModeEnabledChange && (
+              <SwarmModeControl
+                enabled={swarmModeEnabled}
+                mode={swarmMode}
+                concurrency={swarmConcurrency}
+                onEnabledChange={onSwarmModeEnabledChange}
+                onModeChange={onSwarmModeChange ?? (() => {})}
+                onConcurrencyChange={onSwarmConcurrencyChange ?? (() => {})}
+                disabled={isLoading}
               />
             )}
             <VoiceControls

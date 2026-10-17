@@ -25,6 +25,7 @@ import { TranscriptSearch } from "@/components/TranscriptSearch";
 import { WorkspaceSheet } from "@/components/WorkspaceSheet";
 import { findTranscriptMatches, toSearchable } from "@/lib/transcript-search";
 import { DEFAULT_DELEGATION_MODE } from "@/lib/delegation-preference";
+import { readStoredSwarmPreference } from "@/lib/swarm-preference";
 import { exportTranscript, exportFilename } from "@/lib/transcript-export";
 import { collectWorkspaceContent } from "@/lib/workspace-sheet";
 import { TaskList } from "@/components/TaskList";
@@ -1019,6 +1020,12 @@ export default function ChatView({
    * owns the store and the catalog validation; this is just the seed.
    */
   const [delegationMode, setDelegationMode] = useState(DEFAULT_DELEGATION_MODE);
+  // Swarm mode: an opt-in that tells the lead agent swarm orchestration is
+  // available for this run. Defaults off, persisted, reconciled against the
+  // modes this build offers - the same discipline as delegationMode.
+  const [swarmModeEnabled, setSwarmModeEnabled] = useState(false);
+  const [swarmMode, setSwarmMode] = useState("auto");
+  const [swarmConcurrency, setSwarmConcurrency] = useState(4);
   // Safe per-run defaults. The Gateway applies the same middleware ceilings and
   // clamps these against process capacity; these settings only narrow them.
   const [subagentConcurrency, setSubagentConcurrency] = useState(1);
@@ -4419,6 +4426,12 @@ export default function ChatView({
                         onSubagentConcurrencyChange={setSubagentConcurrency}
                         subagentTotal={subagentTotal}
                         onSubagentTotalChange={setSubagentTotal}
+  swarmModeEnabled={swarmModeEnabled}
+  onSwarmModeEnabledChange={setSwarmModeEnabled}
+  swarmMode={swarmMode}
+  onSwarmModeChange={setSwarmMode}
+  swarmConcurrency={swarmConcurrency}
+  onSwarmConcurrencyChange={setSwarmConcurrency}
                         models={models}
                         selectedModel={selectedModel}
                         onSelectModel={(m) => {
