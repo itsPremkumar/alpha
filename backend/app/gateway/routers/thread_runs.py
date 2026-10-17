@@ -1297,7 +1297,13 @@ async def get_run_verification(thread_id: ThreadId, run_id: str, request: Reques
         return {"status": "unverified", "reason": f"Run status {record.status.value!r} is not a successful terminal result.", "report": None}
 
     descriptions = [item.get("description") for item in criteria if isinstance(item, Mapping)]
-    if len(descriptions) != len(criteria) or not all(isinstance(item, str) and item.strip() for item in descriptions):
+    required_evidence_kinds = [item.get("required_evidence_kinds", []) for item in criteria if isinstance(item, Mapping)]
+    if (
+        len(descriptions) != len(criteria)
+        or not all(isinstance(item, str) and item.strip() for item in descriptions)
+        or len(required_evidence_kinds) != len(criteria)
+        or not all(isinstance(kinds, list) and all(isinstance(kind, str) and kind for kind in kinds) for kinds in required_evidence_kinds)
+    ):
         return {"status": "unverified", "reason": "Stored acceptance criteria are unreadable.", "report": None}
     criteria_digest = _acceptance_criteria_digest(criteria)
     if criteria_digest is None:
@@ -1323,7 +1329,7 @@ async def get_run_verification(thread_id: ThreadId, run_id: str, request: Reques
 
     from alpha.apex.auto_acceptance import evaluate_run_acceptance_criteria
 
-    report = evaluate_run_acceptance_criteria(descriptions, events)
+    report = evaluate_run_acceptance_criteria(descriptions, events, required_evidence_kinds=required_evidence_kinds)
     if report is None:
         result = {
             "status": "unverified",
@@ -1369,7 +1375,13 @@ async def recheck_run_verification(thread_id: ThreadId, run_id: str, request: Re
     if not isinstance(criteria, list) or not criteria:
         raise HTTPException(status_code=409, detail="This run has no acceptance criteria to recheck.")
     descriptions = [item.get("description") for item in criteria if isinstance(item, Mapping)]
-    if len(descriptions) != len(criteria) or not all(isinstance(item, str) and item.strip() for item in descriptions):
+    required_evidence_kinds = [item.get("required_evidence_kinds", []) for item in criteria if isinstance(item, Mapping)]
+    if (
+        len(descriptions) != len(criteria)
+        or not all(isinstance(item, str) and item.strip() for item in descriptions)
+        or len(required_evidence_kinds) != len(criteria)
+        or not all(isinstance(kinds, list) and all(isinstance(kind, str) and kind for kind in kinds) for kinds in required_evidence_kinds)
+    ):
         raise HTTPException(status_code=409, detail="Stored acceptance criteria are unreadable.")
     criteria_digest = _acceptance_criteria_digest(criteria)
     if criteria_digest is None:
@@ -1381,7 +1393,7 @@ async def recheck_run_verification(thread_id: ThreadId, run_id: str, request: Re
         raise HTTPException(status_code=503, detail="The complete run event stream could not be read; partial events cannot verify work.")
     from alpha.apex.auto_acceptance import evaluate_run_acceptance_criteria
 
-    report = evaluate_run_acceptance_criteria(descriptions, events)
+    report = evaluate_run_acceptance_criteria(descriptions, events, required_evidence_kinds=required_evidence_kinds)
     if report is None:
         result = {
             "status": "unverified",

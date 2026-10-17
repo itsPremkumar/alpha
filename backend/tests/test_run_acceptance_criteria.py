@@ -407,6 +407,46 @@ def test_auto_detected_test_receipt_verifies_at_the_run_endpoint_and_is_persiste
     assert len(persisted) == 1
 
 
+@pytest.mark.parametrize(
+    ("description", "required_kind", "seed"),
+    [
+        (READBACK_CRITERION, "exact_text_readback", _seed_readback_evidence),
+        ("Auto-detected project test suite passes.", "test_result", _seed_auto_test_evidence),
+        ("File artifact at `/workspace/result.txt` exists and is non-empty.", "artifact_digest", _seed_readback_evidence),
+    ],
+)
+def test_declared_supported_evidence_kind_is_enforced_and_satisfied(description, required_kind, seed) -> None:
+    event_store = MemoryRunEventStore()
+    criteria = [{"id": "proof", "description": description, "required_evidence_kinds": [required_kind]}]
+    run_manager, _run_store, run_id = _create_run_with_criteria(criteria, event_store)
+    seed(event_store, run_id)
+    app = _make_app(run_manager, event_store)
+
+    body = _verification(app, run_id)
+
+    assert body["status"] == "verified"
+    assert body["report"]["criteria"][0]["verdict"] == "met"
+
+
+def test_mismatched_declared_evidence_kind_stays_unverified_on_get_and_recheck() -> None:
+    event_store = MemoryRunEventStore()
+    criteria = [{"id": "proof", "description": READBACK_CRITERION, "required_evidence_kinds": ["test_result"]}]
+    run_manager, _run_store, run_id = _create_run_with_criteria(criteria, event_store)
+    _seed_readback_evidence(event_store, run_id)
+    app = _make_app(run_manager, event_store)
+
+    initial = _verification(app, run_id)
+    with TestClient(app) as client:
+        response = client.post(f"/api/threads/{THREAD}/runs/{run_id}/verification/recheck")
+    assert response.status_code == 200
+    rechecked = response.json()
+
+    assert initial["status"] == "unverified"
+    assert initial["report"] is None
+    assert rechecked["status"] == "unverified"
+    assert rechecked["report"] is None
+
+
 def test_auto_detected_test_failure_is_a_failed_run_acceptance_measurement() -> None:
     event_store = MemoryRunEventStore()
     criterion = "Auto-detected project test suite passes."

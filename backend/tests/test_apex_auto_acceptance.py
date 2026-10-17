@@ -211,6 +211,35 @@ def test_auto_detected_project_tests_are_measured_from_correlated_tool_result() 
     assert "exit_code=0" in report.criteria[0].evidence
 
 
+def test_declared_evidence_kind_must_match_the_collector() -> None:
+    criterion = 'Read the file back and verify it contains exactly "expected marker".'
+
+    assert (
+        evaluate_run_acceptance_criteria(
+            [criterion],
+            _events(),
+            required_evidence_kinds=[["exact_text_readback"]],
+        )
+        is not None
+    )
+    assert (
+        evaluate_run_acceptance_criteria(
+            [criterion],
+            _events(),
+            required_evidence_kinds=[["test_result"]],
+        )
+        is None
+    )
+    assert (
+        evaluate_run_acceptance_criteria(
+            [criterion],
+            _events(),
+            required_evidence_kinds=[["exact_text_readback", "exact_text_readback"]],
+        )
+        is None
+    )
+
+
 def test_auto_detected_test_failure_is_not_reported_as_a_pass() -> None:
     report = evaluate_run_acceptance_criteria(
         ["Auto-detected project test suite passes."],

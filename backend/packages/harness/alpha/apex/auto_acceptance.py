@@ -340,6 +340,8 @@ def evaluate_tool_readback_criteria(
 def evaluate_run_acceptance_criteria(
     criteria: Sequence[str],
     events: Sequence[Mapping[str, Any]],
+    *,
+    required_evidence_kinds: Sequence[Sequence[str]] | None = None,
 ) -> AcceptanceReport | None:
     """Dispatch supported run evidence checks without interpreting free-form prose.
 
@@ -351,20 +353,36 @@ def evaluate_run_acceptance_criteria(
     """
     if not criteria or not events:
         return None
+    if required_evidence_kinds is not None and (
+        len(required_evidence_kinds) != len(criteria) or any(not isinstance(kinds, Sequence) or isinstance(kinds, (str, bytes)) or not all(isinstance(kind, str) and kind for kind in kinds) for kinds in required_evidence_kinds)
+    ):
+        return None
+    if required_evidence_kinds is not None and any(len(kinds) > 8 or len(set(kinds)) != len(kinds) for kinds in required_evidence_kinds):
+        return None
     parsed: list[tuple[str, str, str]] = []
-    for criterion in criteria:
+    for index, criterion in enumerate(criteria):
         text = str(criterion)
         if _AUTO_TEST_CRITERION.fullmatch(text):
-            parsed.append((text, "auto_test", ""))
+            kind = "auto_test"
+            parsed.append((text, kind, ""))
+            supported_evidence_kind = "test_result"
+            if required_evidence_kinds is not None and required_evidence_kinds[index] and set(required_evidence_kinds[index]) != {supported_evidence_kind}:
+                return None
             continue
         expected = _criterion_expected_text(text)
         if expected is not None:
             parsed.append((text, "exact_text", expected))
+            supported_evidence_kind = "exact_text_readback"
+            if required_evidence_kinds is not None and required_evidence_kinds[index] and set(required_evidence_kinds[index]) != {supported_evidence_kind}:
+                return None
             continue
         path = _criterion_artifact_path(text)
         if path is None:
             return None
         parsed.append((text, "artifact", path))
+        supported_evidence_kind = "artifact_digest"
+        if required_evidence_kinds is not None and required_evidence_kinds[index] and set(required_evidence_kinds[index]) != {supported_evidence_kind}:
+            return None
 
     results: list[CriterionResult] = []
     evaluators: set[str] = set()

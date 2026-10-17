@@ -589,7 +589,10 @@ exactly-once execution.
   successful write in that run, if any. It also supports the exact criterion
   `Auto-detected project test suite passes.` only when a correlated
   `auto_test_and_repair` result reports an auto-detected argv command with exit
-  code 0 and zero failures. Other criterion types remain unverified; see
+  code 0 and zero failures. Other criterion types remain unverified.
+  `required_evidence_kinds` is enforced against the collector: `exact_text_readback`,
+  `artifact_digest`, and `test_result` are supported by their matching checks;
+  an unsupported or mismatched requirement stays unverified. See
   [the verification API](docs/API.md#read-run-acceptance-verification). The
   Run Inspector can explicitly recheck a successful run and show append-only
   measurement history when acceptance criteria were declared; runs marked

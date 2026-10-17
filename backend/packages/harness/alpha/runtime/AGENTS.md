@@ -89,6 +89,9 @@ decides a lifecycle — `RunManager` still does. Never equate a terminal
 run status with verified acceptance: `success` with criteria and no evidence, and
 `error` either way, return `unverified`. The auto-verifier supports explicit
 exact-text file readback plus `File artifact at "/path" exists and is non-empty`.
+Declared `required_evidence_kinds` must be collected by the matching verifier:
+`exact_text_readback`, `artifact_digest`, or `test_result`; unsupported or
+mismatched requirements remain unverified in both cached GET and recheck.
 Artifact evidence requires a successful `read_file` event for the exact path
 after its latest successful `write_file` in the run, if any; it records a bounded SHA-256 digest,
 reports an empty file as `NOT_MET`, and leaves absent, stale, ambiguous, or
