@@ -26,6 +26,7 @@ from alpha.sandbox.worktree_strategy import (
 )
 from alpha.swarm.aggregator import SwarmAggregator
 from alpha.swarm.governor import get_swarm_resource_governor
+from alpha.swarm.grounding import ground_claims
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode, TaskNodeState, is_terminal_swarm_status
 from alpha.swarm.reflection import SwarmReflector
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
@@ -387,10 +388,6 @@ class AsyncSwarmRunner:
                         # payloads can submit generic evidence but cannot assert
                         # this server-generated citation audit.
                         updated.citation_audit = dict(receipt_verdict)
-                    SwarmAggregator.apply_acceptance_verification(
-                        updated,
-                        outcome.get("evidence") if isinstance(outcome.get("evidence"), (list, tuple)) else [],
-                    )
                     plan.budget.record_task_success()
                     governor.record_success(self.provider)
                     updated.token_usage = {
@@ -450,6 +447,34 @@ class AsyncSwarmRunner:
                         # A concurrent cancel/budget stop is authoritative; the
                         # task result was already fenced above if necessary.
                         pass
+                # Claim grounding runs AFTER the completion commit.  Running
+                # the grounding round trip while the node still read RUNNING
+                # widened the window the watchdog samples for stragglers, so a
+                # healthy worker already on its way back could be classified
+                # as slow and a duplicate provider attempt launched.  Computed
+                # here, written under the lock below, still only from the
+                # internal outcome and only after lease acceptance; a
+                # grounding failure omits the field rather than inventing a
+                # verdict.
+                claim_grounding: dict[str, Any] | None = None
+                grounding_text = str(outcome.get("summary") or "")
+                if grounding_text.strip():
+                    try:
+                        claim_grounding = await asyncio.to_thread(ground_claims, grounding_text)
+                    except Exception:
+                        logger.warning("Swarm claim grounding failed", exc_info=True)
+                with self.coordinator.state_lock:
+                    if updated.state == TaskNodeState.COMPLETED:
+                        if claim_grounding is not None:
+                            # Same discipline as the citation audit: written
+                            # only here, from the internal outcome, after lease
+                            # acceptance. External completion can never
+                            # populate it.
+                            updated.claim_grounding = dict(claim_grounding)
+                        SwarmAggregator.apply_acceptance_verification(
+                            updated,
+                            outcome.get("evidence") if isinstance(outcome.get("evidence"), (list, tuple)) else [],
+                        )
                 # Mark the plan dirty rather than rewriting the whole snapshot
                 # here.  This runs once per node, and ``checkpoint`` serialises
                 # the entire plan and fsyncs it under the state lock, so a

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from alpha.config import limits
+from alpha.swarm.admission import admission_advisory_metrics
 from alpha.swarm.aggregator import SwarmAggregator
 from alpha.swarm.cnp_auction import LeaderCandidate, LeaderElection, elect_leader
 from alpha.swarm.communication import SwarmMessage, SwarmMessageBus
@@ -31,6 +32,7 @@ from alpha.swarm.models import (
     is_terminal_swarm_status,
 )
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
+from alpha.swarm.spec_lint import lint_plan
 from alpha.swarm.stigmergy import StigmergicTraceStore, TraceCategory
 from alpha.swarm.team import assign_specialists, build_team_report
 from alpha.swarm.telemetry import SwarmTelemetry
@@ -234,8 +236,18 @@ class SwarmCoordinator:
         auto_replan: bool = False,
         requires_consensus: bool = False,
         idempotency_key: str | None = None,
+        acceptance_waiver: bool = False,
     ) -> SwarmPlan:
-        """Construct, validate, and register a new bounded swarm plan."""
+        """Construct, validate, and register a new bounded swarm plan.
+
+        The plan is refused before registration when the wall-budget
+        projection exceeds the declared ceiling, or when the deterministic
+        specification lint raises a ``refuse``-severity finding.  Passing
+        ``acceptance_waiver=True`` records an explicit operator decision to
+        admit tasks that declare output artifacts without acceptance criteria:
+        the finding is downgraded to a visible ``warn`` on
+        ``plan.metrics["spec_lint"]`` rather than hidden.
+        """
 
         goal = str(goal or "").strip()
         if not goal:
@@ -298,6 +310,23 @@ class SwarmCoordinator:
                 "Raise max_wall_seconds or reduce/split the goal. Token and tool-call "
                 "projections are unmeasured, so they cannot be used for admission."
             )
+        # Specification lint: a plan must be *checkable* before any token is
+        # spent.  A refuse-severity finding stops the plan HERE -- before
+        # registration, checkpointing, budget start, or any event -- so a
+        # rejected specification can never remain visible as a running swarm.
+        # The accepted report (including an explicit acceptance waiver) is
+        # recorded on the plan so a later read sees which rules ran.
+        lint_report = lint_plan(plan, acceptance_waiver=bool(acceptance_waiver))
+        if lint_report.refused:
+            raise SwarmPlanValidationError(lint_report.refusal_message())
+        plan.metrics["spec_lint"] = lint_report.to_dict()
+        # Plan-time admission advisory (disclosure, never a gate): the plan can
+        # declare up to MAX_SWARM_PLAN_CONCURRENCY workers, but every worker
+        # executes through the process-wide subagent admission controller, so
+        # realized parallelism is bounded by the armed `subagent_runtime`
+        # schedule.  Wide plans are accepted; the risk flag is a labelled
+        # warning.  The refusal above stays governed only by the wall budget.
+        plan.metrics["admission_advisory"] = admission_advisory_metrics(plan.max_concurrency)
         # Compose the team BEFORE leader election, so the election ranks
         # candidates by a declared capability instead of by worker kind, and
         # before `validate_graph`, so an assignment can never produce a plan

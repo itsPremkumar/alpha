@@ -38,6 +38,7 @@ from alpha.swarm.deliberation import (
 )
 from alpha.swarm.estimator import SwarmBenefitEstimator
 from alpha.swarm.governor import SwarmResourceGovernor, get_swarm_resource_governor
+from alpha.swarm.grounding import GROUNDING_BASIS, Claim, ground_claims
 from alpha.swarm.incidents import (
     SwarmIncident,
     SwarmIncidentManager,
@@ -65,6 +66,7 @@ from alpha.swarm.planner import (
 from alpha.swarm.reflection import SwarmReflection, SwarmReflector
 from alpha.swarm.runner import AsyncSwarmRunner
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
+from alpha.swarm.spec_lint import SpecFinding, SpecLintReport, lint_plan
 from alpha.swarm.stigmergy import StigmergicTrace, StigmergicTraceStore, TraceCategory
 from alpha.swarm.strategy import ComplexityTier, StrategyResolution, resolve_strategy, tier_for
 from alpha.swarm.team import (
@@ -95,6 +97,7 @@ __all__ = [
     "AsyncSwarmRunner",
     "AutonomousWorkTrigger",
     "BudgetPressure",
+    "Claim",
     "CodingWorktreeWorker",
     "ComplexityTier",
     "ContractAward",
@@ -106,6 +109,7 @@ __all__ = [
     "DeliberationPolicy",
     "DeliberationReport",
     "EphemeralSubagentWorker",
+    "GROUNDING_BASIS",
     "LeaderCandidate",
     "LeaderElection",
     "PlanCandidate",
@@ -143,6 +147,8 @@ __all__ = [
     "SwarmWatchdog",
     "SwarmWorkerAgent",
     "SwarmWorkerBackend",
+    "SpecFinding",
+    "SpecLintReport",
     "SPECIALIST_WORKER_TYPE",
     "TaskNodeState",
     "TeamAssignment",
@@ -160,7 +166,9 @@ __all__ = [
     "get_swarm_incident_manager",
     "get_swarm_memory_manager",
     "get_swarm_resource_governor",
+    "ground_claims",
     "is_terminal_swarm_status",
+    "lint_plan",
     "register_roster_provider",
     "render_team_report_markdown",
     "resolve_roster",

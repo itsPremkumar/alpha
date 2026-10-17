@@ -219,6 +219,13 @@ class SwarmTaskDecomposer:
             if candidate is not None:
                 plan, resolved = cls._settle(goal, items, mode, candidate, sid, max_concurrency, requires_consensus=requires_consensus)
 
+        # Every plan states how it was decomposed.  This decomposer selects
+        # among fixed graph shapes and never calls a model, so the source must
+        # say so rather than leaving a reader to assume a model planned the work.
+        plan.metrics["decomposition"] = {
+            "source": "template",
+            "reason": "no model decomposer configured",
+        }
         # Recorded for every plan, explicit or automatic: an operator looking at
         # a finished run can see which signal chose the mode and which tier gated
         # the coordination machinery.

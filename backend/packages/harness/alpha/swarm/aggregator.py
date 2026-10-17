@@ -10,6 +10,7 @@ from alpha.bots.quality_gate import evaluate_quality_gate
 from alpha.runtime.runs.verification import verify_acceptance_criteria
 from alpha.swarm.consensus import ConsensusPolicy, evaluate_consensus, votes_from_evidence
 from alpha.swarm.deliberation import DeliberationPolicy, rounds_from_evidence, run_deliberation
+from alpha.swarm.grounding import grounding_unresolved
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode, TaskNodeState
 
 
@@ -54,6 +55,22 @@ class SwarmAggregator:
             ],
         }
         task.acceptance_status = "passed" if verification.verified else "failed"
+        if verification.verified:
+            # Claim grounding (S2): a task that explicitly asked for acceptance
+            # is not accepted while its summary cites paths that contradict the
+            # workspace.  The ``unverifiable`` class (absolute / virtual-sandbox
+            # paths) deliberately does NOT fail the task -- a claim this module
+            # cannot check must not read as a failed one -- and the verdicts
+            # stay visible beside the downgrade.
+            unresolved_claims = grounding_unresolved(task)
+            if unresolved_claims:
+                task.acceptance_status = "failed"
+                task.verification = {
+                    **task.verification,
+                    "verified": False,
+                    "grounding_unresolved": unresolved_claims,
+                    "error": (f"{unresolved_claims} claim(s) in the accepted result did not resolve against the workspace; a cited path that cannot be corroborated must not read as accepted"),
+                }
 
     @classmethod
     def _apply_deliberation(cls, consensus_result: dict[str, Any], evidence: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

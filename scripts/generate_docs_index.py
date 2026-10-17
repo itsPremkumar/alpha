@@ -155,6 +155,12 @@ class ScanResult:
 # library.  Keep descriptions one line and edit this table, never INDEX.md, when
 # a document moves or its navigation summary changes.
 FILE_OVERRIDES: dict[str, DocumentSpec] = {
+    "BOT_MODE_MULTI_AGENT_MASTER_PLAN.md": DocumentSpec(
+        "plans",
+        "Research-backed Bot Mode and multi-agent coordination plan: Hermes/Grok Bot/OpenClaw 2.0/ClawTeam landscape, "
+        "a file-and-line audit of Alpha's ten broken or fabricated seams, an honest scorecard, and four ordered phases "
+        "that close wiring gaps before adding product surface.",
+    ),
     "ALPHA_ADVANCED_MEMORY_SYSTEM_IMPLEMENTATION_PLAN.md": DocumentSpec(
         "plans",
         "Advanced memory-system implementation plan covering the taxonomy, safe storage and retrieval contracts, phased lifecycle integration, governance, tests, and acceptance criteria.",

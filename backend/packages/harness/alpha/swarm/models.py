@@ -325,6 +325,13 @@ class SwarmTaskNode:
     # separate from caller-supplied evidence so the external completion API
     # cannot make a worker report appear receipt-checked.
     citation_audit: dict[str, Any] = field(default_factory=dict)
+    # Deterministic post-hoc grounding of the file/line/test claims in the
+    # accepted result summary, computed by the internal runner against the
+    # workspace. Written only by the runner after lease acceptance; external
+    # completion cannot populate it. A payload carrying GROUNDING_BASIS whose
+    # ``unresolved`` is non-zero blocks declared acceptance (see
+    # ``SwarmAggregator.apply_acceptance_verification``).
+    claim_grounding: dict[str, Any] = field(default_factory=dict)
     acceptance_criteria: list[dict[str, Any]] = field(default_factory=list)
     acceptance_status: str = "not_required"
     estimated_seconds: float = 15.0
@@ -364,6 +371,7 @@ class SwarmTaskNode:
             "result_payload": dict(self.result_payload),
             "verification": dict(self.verification),
             "citation_audit": dict(self.citation_audit),
+            "claim_grounding": dict(self.claim_grounding),
             "acceptance_criteria": [dict(item) for item in self.acceptance_criteria if isinstance(item, Mapping)],
             "acceptance_status": self.acceptance_status,
             "estimated_seconds": self.estimated_seconds,
@@ -417,6 +425,7 @@ class SwarmTaskNode:
             result_payload=_as_mapping(data.get("result_payload")),
             verification=_as_mapping(data.get("verification")),
             citation_audit=_as_mapping(data.get("citation_audit")),
+            claim_grounding=_as_mapping(data.get("claim_grounding")),
             acceptance_criteria=[dict(item) for item in data.get("acceptance_criteria", []) if isinstance(item, Mapping)],
             acceptance_status=str(data.get("acceptance_status", "not_required")),
             estimated_seconds=max(0.0, _as_float(data.get("estimated_seconds"), 15.0)),

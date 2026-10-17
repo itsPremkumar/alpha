@@ -71,6 +71,7 @@ from alpha.capabilities.eligibility import (
     match_capabilities,
     normalize_tags,
 )
+from alpha.swarm.grounding import GROUNDING_BASIS
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode, TaskNodeState
 
 logger = logging.getLogger(__name__)
@@ -729,6 +730,24 @@ def _task_row(task: SwarmTaskNode) -> dict[str, Any]:
         else:
             citation_status = "unresolved"
             citation_note = "One or more receipt citations did not resolve to a successful matching call."
+    grounding_status = ""
+    grounding_note = ""
+    grounding_audit = task.claim_grounding
+    if isinstance(grounding_audit, Mapping) and grounding_audit.get("basis") == GROUNDING_BASIS:
+        # Same rule as the citation audit above: only an audit carrying the
+        # grounding contract speaks. An empty or foreign-shaped field means no
+        # grounding ran (receipts unavailable, external completion, a legacy
+        # plan), and rendering a verdict there would fabricate one.
+        checked_claims = grounding_audit.get("claims_checked")
+        unresolved_claims = grounding_audit.get("unresolved")
+        if isinstance(checked_claims, int) and checked_claims > 0:
+            if isinstance(unresolved_claims, int) and unresolved_claims > 0:
+                grounding_status = "unresolved_claims"
+                grounding_note = f"{unresolved_claims} of {checked_claims} cited claim(s) did not resolve against the workspace; a cited path that cannot be corroborated is not accepted."
+            else:
+                grounding_status = "grounded"
+                grounding_note = f"{checked_claims} cited claim(s) re-resolved against the workspace; this proves the cited paths exist, not that the claims are correct."
+        # claims_checked == 0 renders no verdict, same as an audit that never ran.
     return {
         "task_id": task.task_id,
         "state": task.state.value if isinstance(task.state, TaskNodeState) else str(task.state),
@@ -744,6 +763,8 @@ def _task_row(task: SwarmTaskNode) -> dict[str, Any]:
         "acceptance_status": task.acceptance_status,
         "citation_status": citation_status or None,
         "citation_verification": citation_note,
+        "claim_grounding_status": grounding_status or None,
+        "claim_grounding_detail": grounding_note,
         "artifacts": list(task.output_artifacts),
         "evidence_count": len(task.evidence),
         "token_usage": dict(task.token_usage or {}),
@@ -852,6 +873,14 @@ def build_team_report(plan: SwarmPlan) -> dict[str, Any]:
                     "detail": row["citation_verification"],
                 }
             )
+        if row["claim_grounding_status"] == "unresolved_claims":
+            unknown.append(
+                {
+                    "kind": "unresolved_claim_grounding",
+                    "task_id": task.task_id,
+                    "detail": row["claim_grounding_detail"],
+                }
+            )
         if task.acceptance_criteria and _acceptance_label(task) == "unverified":
             unknown.append({"kind": "acceptance_unverified", "task_id": task.task_id, "detail": "the task declared acceptance criteria and no deterministic verification verdict was recorded"})
     consensus = plan.consensus if isinstance(plan.consensus, Mapping) else {}
@@ -957,6 +986,8 @@ def render_team_report_markdown(report: Mapping[str, Any]) -> str:
                 lines.append(f"  - Returned: {summary_text if len(summary_text) <= 600 else summary_text[:600] + ' [truncated]'}")
             if row["citation_verification"]:
                 lines.append(f"  - Receipt citation audit: {row['citation_verification']}")
+            if row["claim_grounding_detail"]:
+                lines.append(f"  - Claim grounding: {row['claim_grounding_detail']}")
             if row["error"]:
                 lines.append(f"  - Error: {row['error']}")
             if row["artifacts"]:
@@ -970,6 +1001,8 @@ def render_team_report_markdown(report: Mapping[str, Any]) -> str:
             lines.append(f"- **`{row['task_id']}`** ({row['state']}) asked for `{', '.join(row.get('required_capabilities') or []) or '(nothing declared)'}`")
             if row["citation_verification"]:
                 lines.append(f"  - Receipt citation audit: {row['citation_verification']}")
+            if row["claim_grounding_detail"]:
+                lines.append(f"  - Claim grounding: {row['claim_grounding_detail']}")
         lines.append("")
     composition = report.get("unassigned_at_composition") or []
     if composition:
