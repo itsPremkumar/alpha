@@ -411,6 +411,136 @@ def test_the_report_never_claims_acceptance_the_verifier_did_not_record(roster, 
     assert "acceptance_unverified" in {item["kind"] for item in report["unknown"]}
 
 
+def test_team_report_surfaces_uncorroborated_specialist_action_claims():
+    plan = SwarmPlan(
+        swarm_id="swm-receipt-audit",
+        goal="Review a repository change",
+        mode=SwarmMode.PARALLEL,
+        tasks={
+            "task-qa": SwarmTaskNode(
+                task_id="task-qa",
+                objective="Review the change",
+                state=TaskNodeState.COMPLETED,
+                result_summary="I reviewed the code and found an issue.",
+                citation_audit={
+                    "source": "receipt_citations",
+                    "requirement": "cited_ids_in_execution_record",
+                    "citation_resolved": False,
+                    "cited": [],
+                    "resolved": [],
+                    "failed": [],
+                    "unknown": [],
+                    "no_citation_claims": True,
+                },
+            )
+        },
+    )
+
+    report = build_team_report(plan)
+
+    assert "uncorroborated_action_claims" in {item["kind"] for item in report["unknown"]}
+    assert any(row["citation_status"] == "uncorroborated" for row in report["tasks_without_a_specialist"])
+    assert "not supported by receipt citations" in render_team_report_markdown(report)
+
+
+def _audit_plan(task_id: str, **audit) -> SwarmPlan:
+    return SwarmPlan(
+        swarm_id=f"swm-{task_id}",
+        goal="Review a repository change",
+        mode=SwarmMode.PARALLEL,
+        tasks={
+            task_id: SwarmTaskNode(
+                task_id=task_id,
+                objective="Review the change",
+                state=TaskNodeState.COMPLETED,
+                result_summary="I reviewed the code and found an issue.",
+                citation_audit=dict(audit),
+            )
+        },
+    )
+
+
+def test_team_report_does_not_fabricate_a_citation_verdict_when_no_audit_ran():
+    # An empty citation_audit means the audit never ran: receipts were
+    # unavailable, the audit failed, the task was completed externally, or the
+    # plan predates the field. Reporting "unresolved" here would fabricate a
+    # negative verdict about calls nobody recorded.
+    report = build_team_report(_audit_plan("task-no-audit"))
+
+    rows = report["tasks_without_a_specialist"]
+    assert rows and all(row["citation_status"] is None for row in rows)
+    assert all(row["citation_verification"] == "" for row in rows)
+    assert "unresolved_receipt_citations" not in {item["kind"] for item in report["unknown"]}
+    assert "uncorroborated_action_claims" not in {item["kind"] for item in report["unknown"]}
+    assert "Receipt citation audit" not in render_team_report_markdown(report)
+
+
+def test_team_report_resolved_citations_state_their_limit():
+    audit = {
+        "source": "receipt_citations",
+        "requirement": "cited_ids_in_execution_record",
+        "citation_resolved": True,
+        "cited": ["r1"],
+        "resolved": ["r1"],
+        "failed": [],
+        "unknown": [],
+        "no_citation_claims": False,
+    }
+    report = build_team_report(_audit_plan("task-resolved", **audit))
+
+    rows = report["tasks_without_a_specialist"]
+    assert rows and all(row["citation_status"] == "resolved" for row in rows)
+    assert all("does not prove claim correctness" in row["citation_verification"] for row in rows)
+    assert "does not prove claim correctness" in render_team_report_markdown(report)
+
+
+def test_team_report_vacuous_citation_pass_renders_no_line():
+    # A resolved verdict citing nothing audited nothing; rendering a receipt
+    # line would imply recorded calls exist.
+    audit = {
+        "source": "receipt_citations",
+        "requirement": "cited_ids_in_execution_record",
+        "citation_resolved": True,
+        "cited": [],
+        "resolved": [],
+        "failed": [],
+        "unknown": [],
+        "no_citation_claims": False,
+    }
+    report = build_team_report(_audit_plan("task-vacuous", **audit))
+
+    rows = report["tasks_without_a_specialist"]
+    assert rows and all(row["citation_status"] is None for row in rows)
+    assert "Receipt citation audit" not in render_team_report_markdown(report)
+
+
+def test_team_report_ignores_a_foreign_shaped_citation_audit():
+    # A mapping that does not carry the receipt-citation contract is not a
+    # verdict: neither its positive nor its negative hint may be rendered.
+    report = build_team_report(_audit_plan("task-foreign", source="client_claimed_verification", citation_resolved=True))
+
+    rows = report["tasks_without_a_specialist"]
+    assert rows and all(row["citation_status"] is None for row in rows)
+    assert "unresolved_receipt_citations" not in {item["kind"] for item in report["unknown"]}
+
+
+def test_team_report_surfaces_failed_citation_resolution():
+    audit = {
+        "source": "receipt_citations",
+        "requirement": "cited_ids_in_execution_record",
+        "citation_resolved": False,
+        "cited": ["r2"],
+        "resolved": [],
+        "failed": [{"id": "r2", "reason": "receipt status=error"}],
+        "unknown": [],
+        "no_citation_claims": False,
+    }
+    report = build_team_report(_audit_plan("task-failed-citation", **audit))
+
+    assert "unresolved_receipt_citations" in {item["kind"] for item in report["unknown"]}
+    assert any(row["citation_status"] == "unresolved" for row in report["tasks_without_a_specialist"])
+
+
 def test_the_report_names_a_failed_task_rather_than_omitting_it(roster, tmp_path):
     plan = _executed_plan(roster, tmp_path)
     scheduler = SwarmScheduler(plan)

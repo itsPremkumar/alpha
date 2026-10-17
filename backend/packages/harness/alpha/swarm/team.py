@@ -62,6 +62,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from alpha.agents.middlewares.receipt_verification import VERDICT_SOURCE
 from alpha.capabilities.eligibility import (
     ASSIGNABLE_BOT_STATUSES,
     MAX_REQUIRED_TAGS,
@@ -705,6 +706,29 @@ def _acceptance_label(task: SwarmTaskNode) -> str:
 
 
 def _task_row(task: SwarmTaskNode) -> dict[str, Any]:
+    receipt_audit = task.citation_audit
+    citation_note = ""
+    citation_status = ""
+    if isinstance(receipt_audit, Mapping) and receipt_audit.get("source") == VERDICT_SOURCE:
+        # Only an audit carrying the receipt-citation contract speaks. An empty
+        # or foreign-shaped field means no audit was computed (receipts
+        # unavailable, the audit failed, external completion, a legacy plan) —
+        # reporting "unresolved" there would fabricate a negative verdict, and
+        # honoring a bare ``citation_resolved`` from an unknown source would
+        # fabricate a positive one.
+        if receipt_audit.get("citation_resolved") is True:
+            if receipt_audit.get("cited"):
+                citation_status = "resolved"
+                citation_note = "Receipt citations resolve to recorded calls; this does not prove claim correctness."
+            # A resolved verdict citing nothing is a vacuous pass — nothing
+            # was audited, so no citation line is rendered (same rule as
+            # ``render_citation_verdict``).
+        elif receipt_audit.get("no_citation_claims") is True:
+            citation_status = "uncorroborated"
+            citation_note = "Action claims were not supported by receipt citations."
+        else:
+            citation_status = "unresolved"
+            citation_note = "One or more receipt citations did not resolve to a successful matching call."
     return {
         "task_id": task.task_id,
         "state": task.state.value if isinstance(task.state, TaskNodeState) else str(task.state),
@@ -718,6 +742,8 @@ def _task_row(task: SwarmTaskNode) -> dict[str, Any]:
         "duration_seconds": task.duration_seconds,
         "acceptance": _acceptance_label(task),
         "acceptance_status": task.acceptance_status,
+        "citation_status": citation_status or None,
+        "citation_verification": citation_note,
         "artifacts": list(task.output_artifacts),
         "evidence_count": len(task.evidence),
         "token_usage": dict(task.token_usage or {}),
@@ -809,6 +835,23 @@ def build_team_report(plan: SwarmPlan) -> dict[str, Any]:
     for task in plan.tasks.values():
         if task.state == TaskNodeState.FAILED and task.error_message:
             unknown.append({"kind": "failed_task", "task_id": task.task_id, "detail": task.error_message})
+        row = _task_row(task)
+        if row["citation_status"] == "uncorroborated":
+            unknown.append(
+                {
+                    "kind": "uncorroborated_action_claims",
+                    "task_id": task.task_id,
+                    "detail": row["citation_verification"],
+                }
+            )
+        elif row["citation_status"] == "unresolved":
+            unknown.append(
+                {
+                    "kind": "unresolved_receipt_citations",
+                    "task_id": task.task_id,
+                    "detail": row["citation_verification"],
+                }
+            )
         if task.acceptance_criteria and _acceptance_label(task) == "unverified":
             unknown.append({"kind": "acceptance_unverified", "task_id": task.task_id, "detail": "the task declared acceptance criteria and no deterministic verification verdict was recorded"})
     consensus = plan.consensus if isinstance(plan.consensus, Mapping) else {}
@@ -912,6 +955,8 @@ def render_team_report_markdown(report: Mapping[str, Any]) -> str:
             if row["result_summary"]:
                 summary_text = row["result_summary"]
                 lines.append(f"  - Returned: {summary_text if len(summary_text) <= 600 else summary_text[:600] + ' [truncated]'}")
+            if row["citation_verification"]:
+                lines.append(f"  - Receipt citation audit: {row['citation_verification']}")
             if row["error"]:
                 lines.append(f"  - Error: {row['error']}")
             if row["artifacts"]:
@@ -923,6 +968,8 @@ def render_team_report_markdown(report: Mapping[str, Any]) -> str:
         lines.extend(["## Tasks That Did Not Run Under a Declared Specialist", ""])
         for row in unassigned:
             lines.append(f"- **`{row['task_id']}`** ({row['state']}) asked for `{', '.join(row.get('required_capabilities') or []) or '(nothing declared)'}`")
+            if row["citation_verification"]:
+                lines.append(f"  - Receipt citation audit: {row['citation_verification']}")
         lines.append("")
     composition = report.get("unassigned_at_composition") or []
     if composition:

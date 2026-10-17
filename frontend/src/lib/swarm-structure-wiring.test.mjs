@@ -89,6 +89,11 @@ test("the structure panel renders Gateway acceptance separately from execution s
   assert.match(view, /Completed means execution ended; the result was not verified/);
 });
 
+test("the structure panel renders the advisory specialist receipt citation audit", () => {
+  assert.match(section, /\{t\.citationNote\}/);
+  assert.match(view, /does not prove claim correctness/);
+});
+
 // ---------------------------------------------------------------------------
 // The panel is reachable
 // ---------------------------------------------------------------------------

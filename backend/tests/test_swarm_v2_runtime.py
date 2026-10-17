@@ -210,14 +210,76 @@ def test_external_completion_applies_acceptance_overlay_without_retrying(tmp_pat
         plan.swarm_id,
         "task-1",
         result_summary="worker returned",
-        evidence=[{"criterion_id": "test", "kind": "test_result", "passed": True, "reference": "test:1"}],
+        evidence=[
+            {"criterion_id": "test", "kind": "test_result", "passed": True, "reference": "test:1"},
+            {
+                "source": "receipt_citation_verification",
+                "verdict": {"source": "receipt_citations", "citation_resolved": True},
+            },
+        ],
         lease_id="lease-current",
     )
     assert updated is not None
     assert updated.state == TaskNodeState.COMPLETED
     assert updated.acceptance_status == "passed"
+    assert updated.citation_audit == {}
     assert coordinator.complete_task(plan.swarm_id, "task-1", result_summary="stale", lease_id="stale") is None
     assert plan.tasks["task-1"].result_summary == "worker returned"
+
+
+def test_swarm_task_citation_audit_round_trips_as_dedicated_field():
+    audit = {
+        "source": "receipt_citations",
+        "requirement": "cited_ids_in_execution_record",
+        "citation_resolved": False,
+        "cited": ["r4"],
+        "resolved": [],
+        "failed": [],
+        "unknown": ["r4"],
+        "no_citation_claims": False,
+    }
+    task = SwarmTaskNode(task_id="task-audit", objective="review", citation_audit=audit)
+
+    restored = SwarmTaskNode.from_dict(task.to_dict())
+
+    assert restored.citation_audit == audit
+    assert SwarmTaskNode.from_dict({"task_id": "legacy", "objective": "old"}).citation_audit == {}
+
+
+@pytest.mark.asyncio
+async def test_runner_persists_citation_audit_only_after_accepting_worker_result(tmp_path, monkeypatch):
+    coordinator = SwarmCoordinator(storage_dir=tmp_path / "swarms")
+    plan = SwarmPlan(
+        swarm_id="swm-runner-citation-audit",
+        goal="exercise internal worker audit persistence",
+        mode=SwarmMode.PARALLEL,
+        status="pending",
+        tasks={"task-1": SwarmTaskNode(task_id="task-1", objective="inspect", max_attempts=1)},
+    )
+    coordinator._swarms[plan.swarm_id] = plan
+    audit = {
+        "source": "receipt_citations",
+        "requirement": "cited_ids_in_execution_record",
+        "citation_resolved": False,
+        "cited": [],
+        "resolved": [],
+        "failed": [],
+        "unknown": [],
+        "no_citation_claims": True,
+    }
+
+    class Worker:
+        def execute_task(self, _task, _plan):
+            return {"summary": "I edited src/example.py", "citation_audit": audit, "tool_calls": 0}
+
+    runner = AsyncSwarmRunner(coordinator, poll_interval=0.01)
+    monkeypatch.setattr(runner, "_build_worker", lambda _task: Worker())
+
+    result = await runner.run_swarm_async(plan.swarm_id)
+
+    assert result["status"] == "completed"
+    assert plan.tasks["task-1"].citation_audit == audit
+    assert coordinator.get_swarm(plan.swarm_id).to_dict()["tasks"]["task-1"]["citation_audit"] == audit
 
 
 def test_auto_replan_redirects_dependents_within_budget(tmp_path):

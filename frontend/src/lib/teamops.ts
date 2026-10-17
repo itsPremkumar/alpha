@@ -52,7 +52,7 @@ export async function startGroupRun(name: string, objective: string): Promise<vo
 /**
  * The server's own task-state projection for one swarm.
  *
- * `SwarmPlan.progress()` (alpha/swarm/models.py:423) always returns all six
+ * `SwarmPlan.progress()` (alpha/swarm/models.py) always returns all six
  * counters, but the type keeps them optional because an older Gateway, or a
  * plan persisted by one, may omit a key. Absent is therefore `undefined`, never
  * 0 — `swarmProgress()` below is what turns this into a view, and it is the

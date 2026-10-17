@@ -132,6 +132,8 @@ export interface SwarmTaskRow {
   acceptanceVerified: boolean | null;
   /** Plain-language distinction between execution completion and acceptance. */
   acceptanceNote: string;
+  /** Advisory receipt citation audit; it does not prove claim correctness. */
+  citationNote: string;
 }
 
 function stateTone(state: string | null): Tone {
@@ -207,6 +209,21 @@ export function swarmTaskRows(tasks: unknown): SwarmTaskRow[] {
             : acceptanceStatus
               ? `Gateway acceptance status: ${acceptanceStatus}; verification was not inferred.`
               : "Acceptance criteria and verification were not reported by the Gateway.";
+    const citationVerdict = objectOr(t.citation_audit);
+    // Only an audit carrying the receipt-citations contract speaks. An empty
+    // or foreign-shaped field means no audit was computed, so no note — and a
+    // resolved verdict citing nothing is a vacuous pass that renders nothing,
+    // mirroring the backend's `render_citation_verdict`.
+    const citedIds = Array.isArray(citationVerdict.cited) ? citationVerdict.cited : [];
+    const citationNote = citationVerdict.source !== "receipt_citations"
+      ? ""
+      : citationVerdict.citation_resolved === true
+        ? citedIds.length > 0
+          ? "Receipt citations resolve to recorded calls; this does not prove claim correctness."
+          : ""
+        : citationVerdict.no_citation_claims === true
+          ? "Action claims were not supported by receipt citations."
+          : "One or more receipt citations did not resolve to a successful matching call.";
 
     const error = typeof t.error_message === "string" && t.error_message.trim() ? t.error_message : null;
 
@@ -254,6 +271,7 @@ export function swarmTaskRows(tasks: unknown): SwarmTaskRow[] {
       acceptanceCriteriaCount,
       acceptanceVerified,
       acceptanceNote,
+      citationNote,
     };
   });
 }

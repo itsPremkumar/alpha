@@ -19,6 +19,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
+from alpha.agents.middlewares.receipt_verification import verify_receipt_citations
 from alpha.bots.health import get_health_monitor
 from alpha.bots.registry import BotRegistry
 from alpha.sandbox.worktrees import WorktreeManager
@@ -338,8 +339,22 @@ class SpecialistSubagentWorker:
                 "turn_budget": config.max_turns,
             }
         ]
+        citation_audit: dict[str, Any] | None = None
         if receipts is not None:
             evidence.append({"source": "tool_receipts", "count": len(receipts), "receipts": list(receipts)[:32]})
+            # Regular task delegation performs this deterministic parent-side
+            # audit. Swarm specialists use the same executor but previously
+            # discarded the citation verdict, so a detailed report with
+            # fabricated paths could look indistinguishable from a reviewed
+            # result. This resolves citations against actual harvested calls;
+            # it does not prove the claims themselves are correct.
+            try:
+                citation_audit = dict(verify_receipt_citations(summary, receipts))
+            except Exception:
+                # Verification is advisory and failure-isolated: keep the
+                # worker's real result, while omitting a verdict we could not
+                # compute instead of inventing one.
+                logger.warning("Could not verify swarm specialist receipt citations", exc_info=True)
         if getattr(result, "bash_executions", None):
             evidence.append({"source": "bash_executions", "count": len(result.bash_executions)})
         return {
@@ -351,6 +366,7 @@ class SpecialistSubagentWorker:
             "usage_source": usage_source,
             "tool_calls": max(1, len(receipts or []) or 1),
             "model": self.model or "inherit",
+            "citation_audit": citation_audit,
             "result_payload": {
                 "specialist": self.specialist,
                 "agent_type": config.name,

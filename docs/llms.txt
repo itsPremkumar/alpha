@@ -44,6 +44,7 @@ Operator console: the Mods workspace view renders the ordered chain and each mod
 - [Voice conversation](VOICE_CONVERSATION.md): the real-time local voice loop (Whisper + Piper, no paid speech API).
 - [Workforce](WORKFORCE.md): bot roster, SOUL protocol, DMs, swarm DAG runtime, projects with owner-scoped per-run project instructions, Kanban, Bot Forge, and UI guidance for choosing subagent limits, swarm topologies, Arena competitor counts, and when each fits.
 - Swarm task results display the Gateway's acceptance status in Team Ops; task completion without declared acceptance criteria is explicitly unverified.
+- Specialist swarm reports include an advisory receipt-citation audit; action claims without citations or with unresolved citations are surfaced as uncorroborated, and call receipts are not treated as proof of claim correctness.
 - [Per-bot model configuration](BOT_MODEL_CONFIG.md): each bot's primary model, fallback chain, counselling and mixture panels, named only from `config.yaml` `models[]`.
 - [Lion companion](LION_COMPANION.md): the local-first Milo companion and its presentation contract.
 - [Run recovery](RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.
@@ -61,6 +62,7 @@ Operator console: the Mods workspace view renders the ordered chain and each mod
 - [System One laptop control](SYSTEM_ONE_LAPTOP_CONTROL_IDEAS.md): computer-use architecture and Alpha's fit.
 - [System One browser eval](SYSTEM_ONE_BROWSER_AGENT_EVAL.md): measured evaluation of a browser agent.
 - [Memory](https://github.com/itsPremkumar/alpha/blob/main/docs/MEMORY.md): layered memory, task-aware typed recall (opt-in), trusted-workspace code structure memory (default-off), L1 credential redaction limits, prospective reminders, and fail-closed memory-fabric deletion.
+- [Hy-Memory 2.0 adoption plan](ALPHA_HY_MEMORY_2_ADOPTION_PLAN.md): feature-by-feature comparison against Tencent's dual-process memory system, phased default-off adoption plan, and what Alpha must not adopt.
 - [Memory types](MEMORY_TYPES.md): the canonical memory taxonomy and Alpha's coverage of it.
 - [Memory fabric plan](MEMORY_FABRIC_PLAN.md): memory fabric boundaries and deferred work.
 - [Third-party memory notices](THIRD_PARTY_MEMORY_NOTICES.md): subsystem-level attribution for adapted memory code.

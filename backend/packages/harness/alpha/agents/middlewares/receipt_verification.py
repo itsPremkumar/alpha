@@ -115,14 +115,14 @@ def verify_receipt_citations(report_text: str, receipts: list[ToolReceipt]) -> R
 
 
 def validate_receipt_verdict(value: object) -> ReceiptVerdict | None:
-    """Structural check for a persisted verdict (read side trusts nothing)."""
+    """Check the exact advisory contract and shape (read side trusts nothing)."""
     if not isinstance(value, dict):
         return None
     source = value.get("source")
     requirement = value.get("requirement")
     citation_resolved = value.get("citation_resolved")
     no_citation_claims = value.get("no_citation_claims")
-    if not isinstance(source, str) or not isinstance(requirement, str):
+    if source != VERDICT_SOURCE or requirement != VERDICT_REQUIREMENT:
         return None
     if not isinstance(citation_resolved, bool) or not isinstance(no_citation_claims, bool):
         return None

@@ -302,6 +302,22 @@ messages, enforces the consecutive-failure circuit and reports
 keeps execution status separate from acceptance: duplicate voters and unverified
 evidence cannot produce a clean approval.
 
+Specialist swarm tasks must run the same advisory receipt-citation audit as
+ordinary delegated tasks when the executor harvested receipts. Surface
+uncorroborated action claims in the team report and task UI. A resolved receipt
+proves only that a matching call was recorded as successful; it never proves
+the claim or delivery is correct and must not be promoted to acceptance. The
+verdict lives in the dedicated ``SwarmTaskNode.citation_audit`` field, written
+only by the runner from a validated internal worker outcome after lease
+acceptance — external task completion supplies generic ``evidence`` and can
+never populate it, the request contract has no such field, and a report
+renders a citation status only for an audit carrying the receipt-citation
+contract (an audit that never ran renders nothing, never a fabricated
+verdict). Regressions: ``tests/test_swarm_v2_runtime.py``,
+``tests/test_swarm_api_v2.py``, ``tests/test_team_composition.py``,
+``tests/test_swarm_worker_execution.py``; UI projection:
+``frontend/src/lib/swarm-structure-view.ts``.
+
 Gateway swarm reads and mutations are owner-scoped (`SwarmPlan.owner_id`); the
 `swarm` tool derives the owner from request context and cannot self-assert a
 verified blackboard message. Model-visible blackboard content is bounded data in the
@@ -418,9 +434,10 @@ tiers), `test_swarm_deliberation.py` (SPRT, guards),
 described, budgeted, handed off and verified the same way whichever engine ran
 it. It exists because Alpha grew **seven** schedulers and **three**
 incompatible task vocabularies — `WorkflowNode.status` (12 values),
-`SwarmTaskNode` (a typed `TaskNodeState` enum **and** a bare `status: str`
-carrying 10 more, on one object), and `graph.TaskNode.status` (10) — with
-nothing translating between them. The measured baseline is
+`SwarmTaskNode.state` (a typed `TaskNodeState` enum, 7 values), the bare
+`SwarmPlan.status` string (11 live values — swarm's two vocabularies live on
+its task model and its plan, not one object), and `graph.TaskNode.status` (10)
+— with nothing translating between them. The measured baseline is
 `docs/architecture/multi-agent-baseline.md`.
 
 It is **additive and owns no lifecycle**. `RunManager` remains the sole
@@ -447,7 +464,7 @@ Three properties are load-bearing:
   toward whichever engine grew last. `native_status` / `native_type` preserve
   what the engine actually said, so a projection is **lossless**: swarm's
   `completed` becomes `succeeded` in the contract and comes back as `completed`.
-  `SwarmTaskNode`'s `partial_success` maps to `RUNNING`, never to `FAILED` or
+  `SwarmPlan.status`'s `partial_success` maps to `RUNNING`, never to `FAILED` or
   `SUCCEEDED`, because the engine never reached a terminal verdict.
 
 Bounds are refused, not clamped; `max_cost_usd=0.0` is a **real ceiling**

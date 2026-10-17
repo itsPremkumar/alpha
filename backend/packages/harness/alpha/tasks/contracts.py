@@ -7,9 +7,9 @@ Alpha grew **seven** schedulers and **three** incompatible task vocabularies:
 * ``alpha.workflow`` (``NodeStatus``): pending, ready, running, waiting,
   succeeded, failed, retrying, skipped, cancelled, suspended, compensating,
   aborted
-* ``alpha.swarm`` (``SwarmTaskNode.status``): a **bare string** carrying
-  planning, running, paused, aggregating, verifying, completed, failed,
-  cancelled, budget_exhausted, stalled
+* ``alpha.swarm`` (``SwarmPlan.status``): a **bare string** carrying
+  planning, running, paused, aggregating, verifying, partial_success,
+  completed, failed, cancelled, budget_exhausted, stalled
 * ``alpha.graph`` (``TaskStatus``): pending, ready, queued, running,
   waiting_approval, blocked, succeeded, failed, cancelled, skipped
 

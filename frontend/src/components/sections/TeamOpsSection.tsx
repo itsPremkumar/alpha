@@ -798,6 +798,11 @@ function SwarmStructurePanel(props: { swarmId: string }) {
                 <p className={`text-[10px] ${t.acceptanceVerified === true ? "text-emerald-600 dark:text-emerald-400" : t.acceptanceVerified === false ? "text-destructive" : "text-amber-600 dark:text-amber-500"}`}>
                   {t.acceptanceNote}
                 </p>
+                {t.citationNote && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-500">
+                    {t.citationNote}
+                  </p>
+                )}
                 {/* Not a summary: the server wrote raw model channel output here.
                     Saying so is the point — quoting it as the worker's answer
                     would present noise as a finding. */}

@@ -159,6 +159,11 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "plans",
         "Advanced memory-system implementation plan covering the taxonomy, safe storage and retrieval contracts, phased lifecycle integration, governance, tests, and acceptance criteria.",
     ),
+    "ALPHA_HY_MEMORY_2_ADOPTION_PLAN.md": DocumentSpec(
+        "plans",
+        "Research-backed plan mapping Tencent Hy-Memory 2.0's dual-process memory features onto Alpha's implemented stacks, with EXISTS/PARTIAL/ABSENT verdicts, "
+        "phased default-off adoption phases, not-adopting list, and honesty boundaries.",
+    ),
     "MEMORY_RUNTIME_AUDIT.md": DocumentSpec(
         "architecture",
         "Evidence-backed map of Alpha memory types, stores, capture and recall wiring, configuration gates, tests, current runtime limits and the recommended first vertical slice.",

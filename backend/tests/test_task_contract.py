@@ -218,18 +218,33 @@ class TestStatusMapsAreExhaustive:
         assert unmapped_statuses_for(ENGINE_DWE, list(NodeStatus)) == ()
 
     def test_swarm_map_covers_every_documented_status_string(self) -> None:
-        """``SwarmTaskNode.status`` is a bare string with a documented value set.
+        """``SwarmPlan.status`` is a bare string with a live value set.
 
-        ``swarm/models.py:423`` names them in a comment and
-        ``TERMINAL_SWARM_STATUSES``/``NON_TERMINAL_SWARM_STATUSES`` enumerate
-        them. The union of those two sets is the real vocabulary, so it is what
-        the map is checked against — a value that exists only in prose is
-        exactly the kind of gap this catches.
+        The inline comment on the field in ``swarm/models.py`` names the
+        members and ``TERMINAL_SWARM_STATUSES``/``NON_TERMINAL_SWARM_STATUSES``
+        enumerate them. The union of those two sets is the real vocabulary, so
+        it is what the map is checked against — a value that exists only in
+        prose is exactly the kind of gap this catches.
         """
         from alpha.swarm.models import NON_TERMINAL_SWARM_STATUSES, TERMINAL_SWARM_STATUSES
 
         documented = sorted(TERMINAL_SWARM_STATUSES | NON_TERMINAL_SWARM_STATUSES)
         assert unmapped_statuses_for(ENGINE_SWARM, documented) == ()
+
+    def test_swarm_partial_success_maps_to_running(self) -> None:
+        """``partial_success`` is the aggregator's partial verdict, never terminal.
+
+        ``SwarmAggregator.aggregate`` writes ``partial_success`` when a
+        completed task fails acceptance or carries declared-but-unverified
+        criteria. Only RUNNING is honest: SUCCEEDED would fabricate success,
+        FAILED a terminal failure — both erase exactly the disclosure this
+        status exists to keep. ``native_status`` preserves the exact word.
+        """
+
+        table = status_map_for(ENGINE_SWARM)
+        assert table["partial_success"] is TaskContractStatus.RUNNING
+        assert table["partial_success"] is not TaskContractStatus.SUCCEEDED
+        assert table["partial_success"] is not TaskContractStatus.FAILED
 
     def test_swarm_task_node_state_enum_is_also_covered(self) -> None:
         """``SwarmTaskNode`` carries *two* vocabularies; both must translate."""

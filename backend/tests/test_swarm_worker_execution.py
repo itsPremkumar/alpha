@@ -100,6 +100,44 @@ def test_ephemeral_worker_honors_model_override(monkeypatch):
     assert evidence["model"] == "stub-swarm-model"
 
 
+def test_specialist_subagent_worker_flags_action_claims_without_receipt_citations(monkeypatch):
+    from alpha.subagents import executor as executor_mod
+
+    completed = object()
+    monkeypatch.setattr(executor_mod, "SubagentStatus", SimpleNamespace(COMPLETED=completed))
+    summary = (
+        "I reviewed the implementation and found four issues in schema_deferral.py:123, "
+        "lead_subagent_wiring.py:456, subagent_wiring.py:789, and lead_wiring.py:234. "
+        "I inspected error handling, data consistency, and logging behavior, then prepared "
+        "the suggested fixes and confirmed the affected code paths."
+    )
+
+    class _FakeExecutor:
+        def __init__(self, **_kwargs):
+            pass
+
+        def execute(self, _prompt):
+            return SimpleNamespace(
+                status=completed,
+                result=summary,
+                stop_reason=None,
+                error=None,
+                token_usage_records=[],
+                tool_receipts=[],
+                bash_executions=[],
+            )
+
+    monkeypatch.setattr(executor_mod, "SubagentExecutor", _FakeExecutor)
+    worker = worker_mod.SpecialistSubagentWorker("tester", tool_pool=[object()])
+
+    outcome = worker.execute_task(_task(), _plan())
+
+    audit = outcome["citation_audit"]
+    assert audit["citation_resolved"] is False
+    assert audit["no_citation_claims"] is True
+    assert audit["cited"] == []
+
+
 def test_default_model_is_not_a_made_up_alias():
     # Teeth: the old default was "fast-model", a name resolvable nowhere else.
     assert worker_mod.EphemeralSubagentWorker("worker-x").model is None

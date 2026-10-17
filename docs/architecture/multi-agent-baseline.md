@@ -39,12 +39,13 @@ classifier returning a preset name**, standing in for strategy selection.
 | Model | Field | Vocabulary |
 |---|---|---|
 | `WorkflowNode` | `status: NodeStatus` | pending, ready, running, waiting, succeeded, failed, retrying, skipped, cancelled, suspended, compensating, aborted |
-| `SwarmTaskNode` | `state: TaskNodeState` **and** `status: str` | 7 enum values **plus** 10 bare strings (`swarm/models.py:423`) — two vocabularies on one object |
+| `SwarmTaskNode` + `SwarmPlan` | `state: TaskNodeState` / `status: str` | 7 enum values on the task **plus** 11 bare strings on the plan (`swarm/models.py`, listed on the field and enumerated by `TERMINAL_SWARM_STATUSES` ∪ `NON_TERMINAL_SWARM_STATUSES`) — swarm's two vocabularies sit on two sibling models |
 | `TaskNode` | `status: TaskStatus` | pending, ready, queued, running, waiting_approval, blocked, succeeded, failed, cancelled, skipped |
 
-`SwarmTaskNode` carrying both a typed enum and a bare string on the same object
-is the clearest single symptom: the API surface and the scheduler disagree about
-what state a task is in.
+Swarm carrying two vocabularies that are not checked against each other — a
+typed enum on `SwarmTaskNode`, a bare string on `SwarmPlan` — is the clearest
+single symptom: the plan projection and the scheduler's task states can tell
+different stories about the same run.
 
 ### 1.2 Three budget types, one enforced in code
 

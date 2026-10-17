@@ -13,11 +13,12 @@ Alpha grew **seven** schedulers and **three** incompatible task vocabularies:
 | Engine | Model | Status vocabulary |
 |---|---|---|
 | `alpha.workflow` | `WorkflowNode` | pending, ready, running, waiting, succeeded, failed, retrying, skipped, cancelled, suspended, compensating, aborted |
-| `alpha.swarm` | `SwarmTaskNode` | `state: TaskNodeState` (7) **and** `status: str` (10 documented values at `swarm/models.py:423`) |
+| `alpha.swarm` | `SwarmTaskNode` | `state: TaskNodeState` (7) **plus** `SwarmPlan.status`: a bare string of 11 live values at `swarm/models.py`, enumerated by `TERMINAL_SWARM_STATUSES` ∪ `NON_TERMINAL_SWARM_STATUSES` |
 | `alpha.graph` | `TaskNode` | pending, ready, queued, running, waiting_approval, blocked, succeeded, failed, cancelled, skipped |
 
-Nothing translated between them. `SwarmTaskNode` even carries **two** vocabularies
-in one object. A run started in one engine could not be observed, budgeted,
+Nothing translated between them. Swarm alone carries **two** vocabularies —
+the typed enum on `SwarmTaskNode` and the status string on its plan. A run
+started in one engine could not be observed, budgeted,
 resumed or verified in another. The source plan's own §31 ("What Not to Build
 First") names this failure: *"multiple overlapping orchestration frameworks
 running the same task"*.

@@ -12,6 +12,17 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **hy-memory-adoption-plan:** Research plan for adopting Tencent Hunyuan's
+  open-source Hy-Memory 2.0 into Alpha's memory stacks:
+  `docs/ALPHA_HY_MEMORY_2_ADOPTION_PLAN.md` compares every Hy-Memory capability
+  against the implemented evidence (two memory stacks, ten default-off wave
+  packages, 29 Gateway memory routes), defines five phased default-off adoption
+  phases — history-preserving fact revision, System-2 schema induction over the
+  belief graph, a working-scene experience layer, a zero-LLM coding diff chain,
+  and reader upgrades (local rerank, fail-open graph post-processing, agentic
+  query rewrite) — plus what Alpha must not adopt and the pre-existing gaps
+  Hy-Memory does not resolve.
+
 - **model-selection-status-honesty:** The workspace header now labels the
   default model route as **Default (auto-routed)**, matching the composer, and
   reports an unknown saved model id as **Unknown model** rather than implying

@@ -411,6 +411,62 @@ test("task completion without acceptance criteria is explicitly not verification
   assert.match(row.acceptanceNote, /Completed means execution ended; the result was not verified/);
 });
 
+test("receipt citation audit is visible but never described as claim verification", () => {
+  const [uncorroborated] = swarmTaskRows({
+    qa: mapTask({
+      citation_audit: {
+        source: "receipt_citations",
+        citation_resolved: false,
+        no_citation_claims: true,
+      },
+    }),
+  });
+  assert.match(uncorroborated.citationNote, /not supported by receipt citations/);
+
+  const [resolved] = swarmTaskRows({
+    qa: mapTask({
+      citation_audit: {
+        source: "receipt_citations",
+        citation_resolved: true,
+        no_citation_claims: false,
+        cited: ["r1", "r2"],
+      },
+    }),
+  });
+  assert.match(resolved.citationNote, /does not prove claim correctness/);
+});
+
+test("no citation audit and a vacuous pass render no citation note", () => {
+  // No audit at all: receipts were unavailable or the audit never ran. A note
+  // here would fabricate a verdict about calls nobody recorded.
+  const [noAudit] = swarmTaskRows({ qa: mapTask() });
+  assert.equal(noAudit.citationNote, "");
+
+  // A resolved verdict citing nothing audited nothing.
+  const [vacuous] = swarmTaskRows({
+    qa: mapTask({
+      citation_audit: { source: "receipt_citations", citation_resolved: true, no_citation_claims: false, cited: [] },
+    }),
+  });
+  assert.equal(vacuous.citationNote, "");
+});
+
+test("a citation verdict without the receipt-citations contract is not rendered", () => {
+  const [foreign] = swarmTaskRows({
+    qa: mapTask({ citation_audit: { source: "client_claimed_verification", citation_resolved: true } }),
+  });
+  assert.equal(foreign.citationNote, "");
+});
+
+test("unresolved receipt citations are named, not rounded into a clean result", () => {
+  const [unresolved] = swarmTaskRows({
+    qa: mapTask({
+      citation_audit: { source: "receipt_citations", citation_resolved: false, no_citation_claims: false, cited: ["r3"] },
+    }),
+  });
+  assert.match(unresolved.citationNote, /did not resolve to a successful matching call/);
+});
+
 test("task acceptance UI uses only the Gateway's typed verification verdict", () => {
   const [passed] = swarmTaskRows({
     done: mapTask({ acceptance_status: "passed", acceptance_criteria: [{ kind: "exact_text" }], verification: { verified: true } }),

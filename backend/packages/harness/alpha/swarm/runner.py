@@ -16,6 +16,7 @@ import threading
 import time
 from typing import Any
 
+from alpha.agents.middlewares.receipt_verification import validate_receipt_verdict
 from alpha.config.runtime_paths import project_root, runtime_home
 from alpha.sandbox.worktree_strategy import (
     Assurance,
@@ -363,6 +364,13 @@ class AsyncSwarmRunner:
                             },
                         )
                         return
+                    receipt_verdict = validate_receipt_verdict(outcome.get("citation_audit"))
+                    if receipt_verdict is not None:
+                        # This field is populated only from the internal worker
+                        # outcome after lease acceptance. External task-complete
+                        # payloads can submit generic evidence but cannot assert
+                        # this server-generated citation audit.
+                        updated.citation_audit = dict(receipt_verdict)
                     SwarmAggregator.apply_acceptance_verification(
                         updated,
                         outcome.get("evidence") if isinstance(outcome.get("evidence"), (list, tuple)) else [],

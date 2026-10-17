@@ -539,6 +539,10 @@ make doctor    # verify the environment
 - **Swarm acceptance in Team Ops** — each task shows the Gateway's typed
   acceptance verdict. A completed task with no declared criteria is explicitly
   labeled unverified; task completion alone is never presented as proof.
+- **Specialist report citation audit** — swarm tasks cross-check cited receipt
+  IDs against the specialist's recorded tool calls. Missing or unresolved
+  citations are surfaced as uncorroborated; a resolved call receipt is execution
+  evidence only and does not prove the report's claims are correct.
 - **Swarm operations surface** — REST + SSE for claims, leases, revisions, events,
   messages, replans, progress, and leader/resource telemetry; the `swarm` tool
   exposes the same to authorized agents, plus `strategy` (why this mode was

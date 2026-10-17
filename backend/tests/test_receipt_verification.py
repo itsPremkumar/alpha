@@ -159,6 +159,9 @@ class TestValidate:
         assert validate_receipt_verdict(None) is None
         assert validate_receipt_verdict({"source": 1}) is None
         assert validate_receipt_verdict({"citation_resolved": "yes"}) is None
+        wrong_contract = dict(verify_receipt_citations("[r1]", LEDGER))
+        wrong_contract["source"] = "client_claimed_verification"
+        assert validate_receipt_verdict(wrong_contract) is None
         bad = dict(verify_receipt_citations("[r3]", LEDGER))
         bad["failed"] = [{"id": "r3"}]  # missing reason
         assert validate_receipt_verdict(bad) is None

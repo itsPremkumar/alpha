@@ -106,11 +106,12 @@ _NATIVE_TO_CANONICAL: Final[Mapping[str, Mapping[str, TaskContractStatus]]] = {
         "compensating": TaskContractStatus.RUNNING,
         "aborted": TaskContractStatus.CANCELLED,
     },
-    # alpha.swarm carries **two** vocabularies on one object, so this map
-    # covers both and must stay that way:
+    # alpha.swarm carries **two** disjoint vocabularies across its two
+    # models, so this map covers both and must stay that way:
     #
-    # * ``SwarmTaskNode.status`` is a bare string whose value set is documented
-    #   in a comment at swarm/models.py:423 and enumerated by
+    # * ``SwarmPlan.status`` is a bare string whose live value set (11
+    #   values, ``partial_success`` included) is documented in a comment on
+    #   the field at swarm/models.py and enumerated by
     #   TERMINAL_SWARM_STATUSES / NON_TERMINAL_SWARM_STATUSES;
     # * ``SwarmTaskNode.state`` is the typed ``TaskNodeState`` enum the
     #   scheduler actually transitions.

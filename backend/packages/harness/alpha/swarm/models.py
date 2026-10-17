@@ -314,6 +314,10 @@ class SwarmTaskNode:
     tool_calls: int = 0
     result_payload: dict[str, Any] = field(default_factory=dict)
     verification: dict[str, Any] = field(default_factory=dict)
+    # Advisory receipt audit computed by the internal specialist runner. Kept
+    # separate from caller-supplied evidence so the external completion API
+    # cannot make a worker report appear receipt-checked.
+    citation_audit: dict[str, Any] = field(default_factory=dict)
     acceptance_criteria: list[dict[str, Any]] = field(default_factory=list)
     acceptance_status: str = "not_required"
     estimated_seconds: float = 15.0
@@ -352,6 +356,7 @@ class SwarmTaskNode:
             "tool_calls": self.tool_calls,
             "result_payload": dict(self.result_payload),
             "verification": dict(self.verification),
+            "citation_audit": dict(self.citation_audit),
             "acceptance_criteria": [dict(item) for item in self.acceptance_criteria if isinstance(item, Mapping)],
             "acceptance_status": self.acceptance_status,
             "estimated_seconds": self.estimated_seconds,
@@ -404,6 +409,7 @@ class SwarmTaskNode:
             tool_calls=max(0, _as_int(data.get("tool_calls"))),
             result_payload=_as_mapping(data.get("result_payload")),
             verification=_as_mapping(data.get("verification")),
+            citation_audit=_as_mapping(data.get("citation_audit")),
             acceptance_criteria=[dict(item) for item in data.get("acceptance_criteria", []) if isinstance(item, Mapping)],
             acceptance_status=str(data.get("acceptance_status", "not_required")),
             estimated_seconds=max(0.0, _as_float(data.get("estimated_seconds"), 15.0)),
@@ -420,7 +426,10 @@ class SwarmPlan:
     critical_path_seconds: float = 0.0
     max_concurrency: int = 8
     blackboard_context: dict[str, Any] = field(default_factory=dict)
-    status: str = "planning"  # planning, running, paused, aggregating, verifying, completed, failed, cancelled, budget_exhausted, stalled
+    # ``partial_success`` is live: ``NON_TERMINAL_SWARM_STATUSES`` carries it
+    # and ``SwarmAggregator.aggregate`` writes it (declared-acceptance
+    # failures / incomplete verification read partial, never completed).
+    status: str = "planning"  # planning, running, paused, aggregating, verifying, partial_success, completed, failed, cancelled, budget_exhausted, stalled
     created_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
     completed_at: str | None = None
     final_result: str | None = None

@@ -152,6 +152,11 @@ structured messages remain intact in durable run receipts.
 Team Ops shows each swarm task's typed Gateway acceptance state. A completed
 task without declared acceptance criteria is explicitly unverified; completion
 records execution state, not proof that the result is correct.
+Specialist swarm reports also carry an advisory receipt-citation audit: cited
+IDs are checked against harvested tool calls, while missing or unresolved
+citations for action claims are surfaced as uncorroborated. A resolved call
+receipt proves only that the matching call was recorded as successful, not that
+the claim or delivery is correct.
 The [Workforce selection guide](https://github.com/itsPremkumar/alpha/blob/main/docs/WORKFORCE.md#choosing-a-method-and-its-size-in-the-ui)
 explains the eight swarm topologies and distinguishes a swarm's concurrency
 ceiling from subagent delegation limits and Arena's actual competitor count.
