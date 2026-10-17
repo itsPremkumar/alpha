@@ -28,7 +28,7 @@ const code = ts.transpileModule(read("./swarm-structure-view.ts"), {
 }).outputText;
 
 // This module imports nothing, so the transpiled output is self-contained.
-const { swarmTaskRows, swarmLeaderView, swarmTeamView, swarmEventRows, swarmStructureView, measuredCount, isDisplayableSummary } =
+const { swarmTaskRows, swarmLeaderView, swarmTeamView, swarmEventRows, swarmStructureView, swarmTelemetryView, measuredCount, isDisplayableSummary } =
   await import(toDataUrl(code));
 
 // ---------------------------------------------------------------------------
@@ -426,6 +426,36 @@ test("the real payload renders three task rows with their real structure", () =>
   assert.equal(reduce.worker, "architect");
   assert.equal(reduce.workerType, "permanent_bot");
   assert.equal(reduce.dependsOn.length, 4);
+});
+
+test("swarm telemetry displays measured overlap and completion with advisory risk", () => {
+  const result = swarmTelemetryView({
+    telemetry: {
+      parallelism_realised: { state: "parallel", max_concurrent_observed: 3, tasks_with_intervals: 4 },
+      subtask_completion_ratio: { state: "spurious", tasks_spawned: 5, tasks_with_results: 1, flagged: true },
+      risk_signals: ["spurious_parallelism", "spurious_parallelism"],
+    },
+  });
+  assert.equal(result.parallelism, "3 tasks concurrent at peak");
+  assert.equal(result.completion, "1 of 5 tasks produced a result · low completion flagged");
+  assert.deepEqual(result.riskSignals, ["spurious_parallelism"]);
+  assert.match(result.note, /do not verify result correctness/);
+});
+
+test("unmeasured or missing swarm telemetry stays unknown rather than zero", () => {
+  const unmeasured = swarmTelemetryView({
+    telemetry: {
+      parallelism_realised: { state: "unknown", max_concurrent_observed: null },
+      subtask_completion_ratio: { state: "unknown", tasks_spawned: 4, tasks_with_results: 0 },
+      risk_signals: [],
+    },
+  });
+  assert.equal(unmeasured.parallelism, "task overlap not measured");
+  assert.equal(unmeasured.completion, "meaningful completion not measured");
+  const absent = swarmTelemetryView({});
+  assert.match(absent.note, /not reported/);
+  assert.doesNotMatch(absent.parallelism, /0 tasks/);
+  assert.doesNotMatch(absent.completion, /0 of 0/);
 });
 
 test("task completion without acceptance criteria is explicitly not verification", () => {

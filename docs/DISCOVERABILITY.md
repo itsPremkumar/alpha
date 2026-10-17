@@ -160,6 +160,10 @@ The repository practices what it ships:
 - **Primary sources** are linked, not paraphrased.
 - **UI behavior claims** are tied to the Gateway fields actually reported and
   the frontend projection that renders them; absent measurements remain absent.
+- Team Ops swarm execution telemetry is derived from recorded task intervals and
+  completion summaries. It describes overlap and result production, not
+  correctness or acceptance. The swarm list refreshes live, nonterminal entries
+  without reloading unrelated Team Ops panels.
 - **Upstream provenance** is credited explicitly in the README's *Project
   provenance* section and in `docs/THIRD_PARTY_MEMORY_NOTICES.md`.
 - **Machine-readable citation** is available as `CITATION.cff` and a BibTeX block

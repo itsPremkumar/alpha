@@ -159,6 +159,11 @@ unmeasured because the plan has no per-task estimates for those dimensions.
 Team Ops distinguishes each task's requested model override from model names
 recorded in worker evidence; an absent label is shown as unreported rather than
 inferred from a configured default or a hardcoded tier.
+The same structure panel reports peak task overlap and how many tasks produced
+meaningful results from recorded Gateway telemetry. Unknown values remain
+unknown, failed metric reads are reported separately, and these advisory
+signals do not verify result correctness. Team Ops refreshes nonterminal swarm
+rows every three seconds without reloading unrelated panels.
 Specialist swarm reports also carry an advisory receipt-citation audit: cited
 IDs are checked against harvested tool calls, while missing or unresolved
 citations for action claims are surfaced as uncorroborated. A resolved call

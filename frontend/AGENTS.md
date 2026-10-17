@@ -64,6 +64,12 @@ mane-vs-face crop rule, and the desktop/installer surfaces are in the
   rendered verbatim rather than coerced.
 - Reject on non-2xx. A failed call must reject with the server's reason rather
   than resolving to an empty list that looks like "nothing was recorded".
+- Team Ops swarm structure reads detail, events, and measured telemetry as
+  independent requests. Keep errors distinct from absent measurements; display
+  `parallelism_realised` and `subtask_completion_ratio` as advisory execution
+  signals, never as proof that a result is correct. The swarm list polls only
+  while it has nonterminal, non-paused rows; prevent overlapping reads and keep
+  the polling independent of unrelated Team Ops panels.
 
 ## Chat history and project membership contract
 

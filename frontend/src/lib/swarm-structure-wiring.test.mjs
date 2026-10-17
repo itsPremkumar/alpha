@@ -60,21 +60,38 @@ test("the event read rejects instead of resolving to an empty log", () => {
   assert.match(fn, /return get</, "the read goes through the shared client, which rejects on non-2xx");
 });
 
+test("the measured telemetry read targets the swarm metrics route", () => {
+  const start = teamops.indexOf("export async function swarmMetrics");
+  assert.ok(start > 0, "swarmMetrics must exist");
+  const body = teamops.slice(start, teamops.indexOf("\n}", start));
+  assert.match(body, /\/swarms\/\$\{encodeURIComponent\(id\)\}\/metrics`/);
+});
+
 // ---------------------------------------------------------------------------
 // The dependencies the panel needs are actually imported
 // ---------------------------------------------------------------------------
 
-test("the section calls the detail and event reads it renders", () => {
+test("the section calls the detail, event, and metrics reads it renders", () => {
   // Asserting the NAME is not enough: `swarmDetails` also appears in a doc
   // comment and in a call, so removing the import would still match. The
   // meaningful claim is that both are CALLED with the swarm id.
-  for (const name of ["swarmDetails", "swarmEvents"]) {
+  for (const name of ["swarmDetails", "swarmEvents", "swarmMetrics"]) {
     assert.match(
       section,
       new RegExp(`${name}\\(props\\.swarmId\\)`),
       `${name}(props.swarmId) must be called — an imported-but-uncalled read renders nothing`,
     );
   }
+});
+
+test("active swarm lists refresh from the Gateway without reloading other Team Ops panels", () => {
+  const refresh = section.slice(section.indexOf("const refreshSwarms = useCallback(async"), section.indexOf("const flash =", section.indexOf("const refreshSwarms = useCallback(async")));
+  assert.match(refresh, /setSwarms\(await listSwarms\(\)\)/);
+  assert.match(section, /hasRefreshableSwarms\(swarms\)/);
+  assert.match(section, /window\.setInterval\(\(\) => \{ void refreshSwarms\(\); \}, 3_000\)/);
+  assert.match(section, /refreshingSwarmsRef/);
+  assert.match(section, /useCallback\(async \(\) =>/);
+  assert.match(section, /\[shouldRefreshSwarms, refreshSwarms\]/);
 });
 
 test("the section imports the pure view module rather than re-deriving sentences", () => {
@@ -94,6 +111,10 @@ test("the structure panel renders Gateway acceptance separately from execution s
 test("the structure panel renders the advisory specialist receipt citation audit", () => {
   assert.match(section, /\{t\.citationNote\}/);
   assert.match(view, /does not prove claim correctness/);
+  assert.ok(
+    section.indexOf("{t.acceptanceNote}") < section.indexOf("{t.summary}</p>"),
+    "verification status must be visible before model-written result text",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -120,7 +141,7 @@ test("the panel is defined in this file, not merely referenced", () => {
 // The two reads settle independently
 // ---------------------------------------------------------------------------
 
-test("the panel's own reads use allSettled, so one failure cannot blank the other", () => {
+test("the panel's three reads use allSettled, so one failure cannot blank the others", () => {
   // Scoped to `SwarmStructurePanel`, NOT the whole file. Two other call sites
   // (lines ~158 and ~179) legitimately use `Promise.allSettled`, so a file-wide
   // `doesNotMatch(/Promise.all\(/)` would be checking unrelated code — and a
@@ -128,7 +149,7 @@ test("the panel's own reads use allSettled, so one failure cannot blank the othe
   const start = section.indexOf("function SwarmStructurePanel");
   assert.ok(start > 0, "SwarmStructurePanel must exist");
   const body = section.slice(start, section.indexOf("\nfunction SwarmMessagesPanel", start));
-  assert.match(body, /Promise\.allSettled/, "the two reads must settle independently");
+  assert.match(body, /Promise\.allSettled/, "the reads must settle independently");
   assert.doesNotMatch(body, /Promise\.all\(/, "Promise.all would make one failure hide the other");
 });
 
@@ -142,6 +163,14 @@ test("a failed event read passes undefined, not an empty array", () => {
 test("a failed detail read is disclosed rather than shown as an empty swarm", () => {
   const body = section.slice(section.indexOf("function SwarmStructurePanel"));
   assert.match(body, /not because the plan has no tasks/);
+});
+
+test("a failed telemetry read is disclosed separately from missing measurements", () => {
+  const body = section.slice(section.indexOf("function SwarmStructurePanel"));
+  assert.match(body, /This swarm's measured telemetry could not be read/);
+  assert.match(body, /metricsError/);
+  assert.match(body, /Advisory risks:/);
+  assert.match(view, /advisory signals do not verify result correctness/);
 });
 
 // ---------------------------------------------------------------------------

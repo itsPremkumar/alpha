@@ -361,6 +361,52 @@ export interface SwarmEventRow {
   worker: string | null;
 }
 
+export interface SwarmTelemetryView {
+  parallelism: string;
+  completion: string;
+  riskSignals: string[];
+  note: string;
+}
+
+/** Render only measurements returned by the Gateway telemetry snapshot. */
+export function swarmTelemetryView(payload: unknown): SwarmTelemetryView {
+  const root = objectOr(payload);
+  const telemetry = objectOr(root.telemetry);
+  const parallel = objectOr(telemetry.parallelism_realised);
+  const completion = objectOr(telemetry.subtask_completion_ratio);
+  const parallelState = typeof parallel.state === "string" ? parallel.state : null;
+  const maxConcurrent = measuredCount(parallel.max_concurrent_observed);
+  const parallelism = parallelState === "unknown"
+    ? "task overlap not measured"
+    : maxConcurrent === null && parallelState === null
+      ? "task overlap not reported"
+    : maxConcurrent === null
+      ? "peak concurrent tasks not reported"
+      : `${maxConcurrent} task${maxConcurrent === 1 ? "" : "s"} concurrent at peak${parallel.flagged === true ? " · serial collapse flagged" : ""}`;
+
+  const spawned = measuredCount(completion.tasks_spawned);
+  const completedWithResults = measuredCount(completion.tasks_with_results);
+  const completionState = typeof completion.state === "string" ? completion.state : null;
+  const completionText = completionState === "unknown"
+    ? "meaningful completion not measured"
+    : completionState === null
+      ? "meaningful completion not reported"
+    : spawned === null || completedWithResults === null
+      ? "meaningful completion not reported"
+      : `${completedWithResults} of ${spawned} tasks produced a result${completion.flagged === true ? " · low completion flagged" : ""}`;
+  const rawSignals = Array.isArray(telemetry.risk_signals) ? telemetry.risk_signals : [];
+  const riskSignals = [...new Set(rawSignals.filter((signal): signal is string => typeof signal === "string" && signal.trim().length > 0).map((signal) => signal.trim()))];
+  const available = Object.keys(telemetry).length > 0;
+  return {
+    parallelism,
+    completion: completionText,
+    riskSignals,
+    note: available
+      ? "Measured from recorded task state; advisory signals do not verify result correctness."
+      : "Swarm telemetry was not reported by the Gateway.",
+  };
+}
+
 /**
  * The event timeline, oldest first by `sequence` when every row has one.
  *

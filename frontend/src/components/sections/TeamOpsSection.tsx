@@ -1,16 +1,16 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm,
+  listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm, hasRefreshableSwarms,
   swarmAction, swarmMessages, publishSwarmMessage, SWARM_MESSAGE_WINDOW,
   swarmProgress, swarmProgressLabel,
-  swarmDetails, swarmEvents,
+  swarmDetails, swarmEvents, swarmMetrics,
   type Swarm, type SwarmAction, type SwarmMessage, type SwarmCostProjection, listMcpTasks, listJobs, cancelJob,
   companyStatus, executiveDigest, companyKpis,
 } from "@/lib/teamops";
 import {
-  swarmStructureView,
+  swarmStructureView, swarmTelemetryView,
   type SwarmStructureView,
 } from "@/lib/swarm-structure-view";
 import {
@@ -110,6 +110,7 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
   const [groupObjective, setGroupObjective] = useState("");
 
   const [swarms, setSwarms] = useState<Swarm[]>([]);
+  const refreshingSwarmsRef = useRef(false);
   const [swarmObjective, setSwarmObjective] = useState("");
   const [swarmMode, setSwarmMode] = useState("auto");
   const [swarmConcurrency, setSwarmConcurrency] = useState(4);
@@ -207,10 +208,34 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
     }
   };
 
+  const refreshSwarms = useCallback(async () => {
+    if (refreshingSwarmsRef.current) return;
+    refreshingSwarmsRef.current = true;
+    try {
+      setSwarms(await listSwarms());
+      setReadErrors((prev) => ({ ...prev, swarms: null }));
+    } catch (e) {
+      setReadErrors((prev) => ({ ...prev, swarms: errMsg(e) }));
+    } finally {
+      refreshingSwarmsRef.current = false;
+    }
+  }, []);
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A lifecycle action returns when dispatch is accepted, not when the swarm
+  // finishes. Refresh only this list while any swarm is non-terminal so the
+  // operator sees worker progress and final state without refreshing all Team
+  // Ops panels or relying on a manual page refresh.
+  const shouldRefreshSwarms = hasRefreshableSwarms(swarms);
+  useEffect(() => {
+    if (!shouldRefreshSwarms) return;
+    const timer = window.setInterval(() => { void refreshSwarms(); }, 3_000);
+    return () => window.clearInterval(timer);
+  }, [shouldRefreshSwarms, refreshSwarms]);
 
   const flash = (m: string) => {
     setNotice(m);
@@ -720,19 +745,24 @@ function SwarmStructurePanel(props: { swarmId: string }) {
   const [view, setView] = useState<SwarmStructureView | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [eventsError, setEventsError] = useState<string | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [telemetry, setTelemetry] = useState<ReturnType<typeof swarmTelemetryView> | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
-    // Both reads start together and settle independently. `Promise.allSettled`
+    // All reads start together and settle independently. `Promise.allSettled`
     // rather than `all`, because a swarm whose event log 404s still has a DAG
     // worth showing.
-    const [detail, events] = await Promise.allSettled([
+    const [detail, events, metrics] = await Promise.allSettled([
       swarmDetails(props.swarmId),
       swarmEvents(props.swarmId),
+      swarmMetrics(props.swarmId),
     ]);
     setDetailError(detail.status === "rejected" ? errMsg(detail.reason) : null);
     setEventsError(events.status === "rejected" ? errMsg(events.reason) : null);
+    setMetricsError(metrics.status === "rejected" ? errMsg(metrics.reason) : null);
+    setTelemetry(metrics.status === "fulfilled" ? swarmTelemetryView(metrics.value) : null);
     setView(
       swarmStructureView(
         detail.status === "fulfilled" ? detail.value : undefined,
@@ -770,6 +800,24 @@ function SwarmStructurePanel(props: { swarmId: string }) {
           message={`This swarm's event log could not be read, so no timeline is shown. (${eventsError})`}
           onRetry={load}
         />
+      )}
+      {metricsError && (
+        <ErrorBox
+          message={`This swarm's measured telemetry could not be read. (${metricsError})`}
+          onRetry={load}
+        />
+      )}
+
+      {telemetry && (
+        <div className="rounded-lg border border-border/50 px-2.5 py-2 space-y-1">
+          <p className="text-[11px] font-semibold">Measured execution signals</p>
+          <p className="text-[10px] text-muted-foreground">Parallelism: {telemetry.parallelism}</p>
+          <p className="text-[10px] text-muted-foreground">Meaningful completion: {telemetry.completion}</p>
+          <p className="text-[10px] text-muted-foreground">
+            Advisory risks: {telemetry.riskSignals.length > 0 ? telemetry.riskSignals.join(", ") : "none reported"}
+          </p>
+          <p className="text-[10px] text-muted-foreground">{telemetry.note}</p>
+        </div>
       )}
 
       {view && (
@@ -837,15 +885,15 @@ function SwarmStructurePanel(props: { swarmId: string }) {
                   model evidenced {t.usedModels.length > 0 ? t.usedModels.join(", ") : t.usedModelNote}
                 </p>
                 {t.error && <p className="text-[10px] text-destructive">failed: {t.error}</p>}
-                {t.summary && <p className="text-[10px] text-muted-foreground">{t.summary}</p>}
                 <p className={`text-[10px] ${t.acceptanceVerified === true ? "text-emerald-600 dark:text-emerald-400" : t.acceptanceVerified === false ? "text-destructive" : "text-amber-600 dark:text-amber-500"}`}>
                   {t.acceptanceNote}
                 </p>
                 {t.citationNote && (
-                  <p className="text-[10px] text-amber-600 dark:text-amber-500">
+                  <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-500">
                     {t.citationNote}
                   </p>
                 )}
+                {t.summary && <p className="text-[10px] text-muted-foreground">{t.summary}</p>}
                 {/* Not a summary: the server wrote raw model channel output here.
                     Saying so is the point — quoting it as the worker's answer
                     would present noise as a finding. */}

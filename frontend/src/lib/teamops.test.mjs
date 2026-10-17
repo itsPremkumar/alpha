@@ -31,6 +31,15 @@ const code = ts.transpileModule(source, {
 const teamops = await import(toDataUrl(code));
 const { setHttpHandler } = await import(stubUrl);
 
+test("only non-terminal, non-paused swarms need live refresh", () => {
+  assert.equal(teamops.hasRefreshableSwarms([]), false);
+  assert.equal(teamops.hasRefreshableSwarms([{ status: "completed" }, { status: "failed" }]), false);
+  assert.equal(teamops.hasRefreshableSwarms([{ status: "paused" }]), false);
+  assert.equal(teamops.hasRefreshableSwarms([{ status: "running" }]), true);
+  assert.equal(teamops.hasRefreshableSwarms([{ status: "partial_success" }]), true);
+  assert.equal(teamops.hasRefreshableSwarms([{ status: "future_gateway_state" }]), true);
+});
+
 test("listSwarms surfaces request failures instead of fabricating an empty list", async () => {
   setHttpHandler(() => { throw new Error("gateway unavailable"); });
   await assert.rejects(() => teamops.listSwarms(), /gateway unavailable/);

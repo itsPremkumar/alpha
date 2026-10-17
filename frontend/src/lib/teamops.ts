@@ -79,6 +79,13 @@ export interface Swarm {
   revision?: number;
 }
 
+const TERMINAL_SWARM_STATES = new Set(["completed", "failed", "cancelled", "budget_exhausted", "stalled"]);
+
+/** Whether the list needs polling to pick up further Gateway state transitions. */
+export function hasRefreshableSwarms(swarms: Array<Pick<Swarm, "status">>): boolean {
+  return swarms.some((swarm) => !TERMINAL_SWARM_STATES.has(swarm.status) && swarm.status !== "paused");
+}
+
 /** Pre-run estimate returned by the Gateway alongside a newly created swarm. */
 export interface SwarmCostProjection {
   projected_tasks: number;

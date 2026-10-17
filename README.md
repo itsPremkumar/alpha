@@ -542,6 +542,12 @@ make doctor    # verify the environment
   override from model labels recorded in worker evidence. Missing evidence is
   shown as unreported, and the governor no longer publishes hardcoded model
   tiers as if they were routes.
+- **Measured swarm execution signals** — the structure panel reports peak task
+  overlap and the share of tasks with meaningful results from recorded Gateway
+  telemetry. Not-yet-measured values remain explicit, telemetry read failures
+  are separate, and advisory signals do not verify result correctness. Team Ops
+  refreshes nonterminal swarms every three seconds so progress and final state
+  update without reloading unrelated panels.
 - **Typed communication & consensus** — a bounded blackboard of untrusted
   observations; evidence-backed votes, leader election, and acceptance
   verification that separates *execution success* from *verified delivery*.
