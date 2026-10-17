@@ -20,6 +20,13 @@ class SwarmMode(StrEnum):
     DEBATE = "debate"
     ENSEMBLE = "ensemble"
     CODING_WORKTREE = "coding_worktree"
+    # New modes (Phase D of SWARM_MODE_IMPLEMENTATION_PLAN.md).
+    # read_fanout: N read-only workers in parallel, no isolation, safe to scale
+    # wide. The safe case for parallelism per the industry consensus.
+    READ_FANOUT = "read_fanout"
+    # critical_path_split: decompose so the longest branch shrinks, not the
+    # average. Uses the duration-weighted makespan from _compute_critical_path.
+    CRITICAL_PATH_SPLIT = "critical_path_split"
 
 
 class TaskNodeState(StrEnum):

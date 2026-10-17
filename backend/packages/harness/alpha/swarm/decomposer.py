@@ -97,6 +97,65 @@ from alpha.swarm.planner import MAX_CANDIDATES, PlanCandidate, build_candidate, 
 from alpha.swarm.strategy import StrategyResolution, resolve_strategy  # noqa: E402
 from alpha.swarm.topology import compute_dag_features  # noqa: E402
 
+_CAPABILITY_TIER: dict[str, str] = {
+    "code_generation": "coding",
+    "system_design": "coding",
+    "data_modeling": "coding",
+    "python": "coding",
+    "typescript": "coding",
+    "backend": "coding",
+    "sql": "coding",
+    "react": "coding",
+    "tailwind": "coding",
+    "docker": "coding",
+    "python_repl": "coding",
+    "performance_tuning": "coding",
+    "code_review": "frontier",
+    "code_audit": "frontier",
+    "security_review": "frontier",
+    "vulnerability_analysis": "frontier",
+    "permission_audit": "frontier",
+    "regression_suite": "frontier",
+    "web_search": "fast",
+    "document_synthesis": "fast",
+    "technical_writing": "fast",
+    "incident_response": "fast",
+    "ui_design": "fast",
+}
+
+
+def _apply_capability_model_routing(task: SwarmTaskNode) -> None:
+    if task.model_override:
+        return
+    if not task.capability_tags:
+        return
+    try:
+        from alpha.config import get_app_config
+
+        app_config = get_app_config()
+        routing = getattr(app_config, "model_routing", None)
+        tiers = getattr(routing, "tiers", None) if routing is not None else None
+        if not isinstance(tiers, dict):
+            return
+    except Exception:
+        return
+    tier_priority = {"frontier": 3, "coding": 2, "fast": 1, "local": 0}
+    chosen_tier = None
+    for tag in task.capability_tags:
+        tier = _CAPABILITY_TIER.get(str(tag))
+        if tier is None:
+            continue
+        if chosen_tier is None or tier_priority.get(tier, -1) > tier_priority.get(chosen_tier, -1):
+            chosen_tier = tier
+    if chosen_tier is None or chosen_tier not in tiers:
+        return
+    chain = tiers.get(chosen_tier)
+    if not isinstance(chain, list) or not chain:
+        return
+    name = str(chain[0]).strip()
+    if name:
+        task.model_override = name
+
 
 class SwarmTaskDecomposer:
     """Decomposes goals into a Directed Acyclic Graph (DAG) of swarm tasks."""
@@ -216,6 +275,10 @@ class SwarmTaskDecomposer:
             tasks = cls._decompose_ensemble(goal)
         elif mode == SwarmMode.CODING_WORKTREE:
             tasks = cls._decompose_coding_worktree(goal)
+        elif mode == SwarmMode.READ_FANOUT:
+            tasks = cls._decompose_read_fanout(goal)
+        elif mode == SwarmMode.CRITICAL_PATH_SPLIT:
+            tasks = cls._decompose_critical_path_split(goal)
         else:
             tasks = cls._decompose_hierarchical(goal)
 
@@ -283,6 +346,7 @@ class SwarmTaskDecomposer:
                 # two differently: a declaration must be covered in full, a
                 # hint needs at least one tag and is then ranked by coverage.
                 task.capability_source = "inferred"
+                _apply_capability_model_routing(task)
                 _apply_capability_model_routing(task)
 
     @classmethod
@@ -514,6 +578,92 @@ class SwarmTaskDecomposer:
                 dependencies=["task-worker-a", "task-worker-b"],
                 worker_type="permanent_bot",
                 assigned_worker="tester",
+            ),
+        }
+
+    @classmethod
+    def _decompose_read_fanout(cls, goal: str) -> dict[str, SwarmTaskNode]:
+        return {
+            "task-explore-a": SwarmTaskNode(
+                task_id="task-explore-a",
+                objective=f"Read-only exploration stream A for: {goal}",
+                dependencies=[],
+                worker_type="ephemeral",
+                estimated_seconds=8.0,
+                capability_tags=["web_search", "document_synthesis"],
+            ),
+            "task-explore-b": SwarmTaskNode(
+                task_id="task-explore-b",
+                objective=f"Read-only exploration stream B for: {goal}",
+                dependencies=[],
+                worker_type="ephemeral",
+                estimated_seconds=8.0,
+                capability_tags=["web_search", "document_synthesis"],
+            ),
+            "task-explore-c": SwarmTaskNode(
+                task_id="task-explore-c",
+                objective=f"Read-only exploration stream C for: {goal}",
+                dependencies=[],
+                worker_type="ephemeral",
+                estimated_seconds=8.0,
+                capability_tags=["web_search", "document_synthesis"],
+            ),
+            "task-synthesise": SwarmTaskNode(
+                task_id="task-synthesise",
+                objective=f"Synthesise the read-only findings for: {goal}",
+                dependencies=["task-explore-a", "task-explore-b", "task-explore-c"],
+                worker_type="permanent_bot",
+                assigned_worker="researcher",
+                estimated_seconds=5.0,
+                capability_tags=["document_synthesis", "technical_writing"],
+            ),
+        }
+
+    @classmethod
+    def _decompose_critical_path_split(cls, goal: str) -> dict[str, SwarmTaskNode]:
+        return {
+            "task-research": SwarmTaskNode(
+                task_id="task-research",
+                objective=f"Research and constraints for: {goal}",
+                dependencies=[],
+                worker_type="permanent_bot",
+                assigned_worker="researcher",
+                estimated_seconds=20.0,
+                capability_tags=["web_search", "system_design"],
+            ),
+            "task-design": SwarmTaskNode(
+                task_id="task-design",
+                objective=f"Architecture and component design for: {goal}",
+                dependencies=["task-research"],
+                worker_type="permanent_bot",
+                assigned_worker="architect",
+                estimated_seconds=20.0,
+                capability_tags=["system_design"],
+            ),
+            "task-impl-a": SwarmTaskNode(
+                task_id="task-impl-a",
+                objective=f"Implementation stream A for: {goal}",
+                dependencies=["task-design"],
+                worker_type="ephemeral",
+                estimated_seconds=15.0,
+                capability_tags=["code_generation", "backend"],
+            ),
+            "task-impl-b": SwarmTaskNode(
+                task_id="task-impl-b",
+                objective=f"Implementation stream B for: {goal}",
+                dependencies=["task-design"],
+                worker_type="ephemeral",
+                estimated_seconds=15.0,
+                capability_tags=["code_generation", "backend"],
+            ),
+            "task-verify": SwarmTaskNode(
+                task_id="task-verify",
+                objective=f"Independent quality assurance for: {goal}",
+                dependencies=["task-impl-a", "task-impl-b"],
+                worker_type="permanent_bot",
+                assigned_worker="tester",
+                estimated_seconds=10.0,
+                capability_tags=["code_review", "regression_suite"],
             ),
         }
 

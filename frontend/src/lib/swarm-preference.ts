@@ -24,12 +24,13 @@ export type SwarmModePreference = {
 
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-const ALWAYS_VALID_MODES = new Set(["auto", "parallel", "map_reduce", "scatter_gather", "hierarchical", "debate", "ensemble", "coding_worktree"]);
+const ALWAYS_VALID_MODES = new Set(["auto", "parallel", "map_reduce", "scatter_gather", "hierarchical", "debate", "ensemble", "coding_worktree", "read_fanout", "critical_path_split"]);
 
 /** The modes the Gateway actually mounts (mirrors `SWARM_MODES` in TeamOps). */
 export const KNOWN_SWARM_MODES: readonly string[] = [
   "auto", "parallel", "map_reduce", "scatter_gather", "hierarchical",
   "debate", "ensemble", "coding_worktree",
+  "read_fanout", "critical_path_split",
 ];
 
 /** Mode + human label, for the composer selector and the Team Ops surface. */
@@ -41,7 +42,9 @@ export const SWARM_MODES: readonly [string, string][] = [
   ["hierarchical", "Hierarchical — delegate planning through task levels"],
   ["debate", "Debate — independent positions challenge one another"],
   ["ensemble", "Ensemble — independent solutions feed a synthesis"],
-  ["coding_worktree", "Coding Worktree — isolate coding workers in worktrees"],
+  ["coding_worktree", "Coding Worktree - isolate coding workers in worktrees"],
+  ["read_fanout", "Read Fanout - N read-only workers, safe to scale wide"],
+  ["critical_path_split", "Critical Path Split - balance the longest branch"],
 ];
 
 export function isSwarmModeShape(value: unknown): value is string {
