@@ -17,6 +17,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import ts from "typescript";
+
+// The shared default is imported, not re-declared: the point of the pin below is
+// that both the composer prop and the ChatView seed resolve to the same value.
+const _prefSrc = readFileSync(new URL("./delegation-preference.ts", import.meta.url), "utf8");
+const _prefJs = ts.transpileModule(_prefSrc, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+const { DEFAULT_DELEGATION_MODE } = await import(`data:text/javascript;charset=utf-8,${encodeURIComponent(_prefJs)}`);
 
 const read = (relative) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
@@ -46,16 +53,33 @@ test("the run request carries the server's autonomous opt-in for any selected mo
 });
 
 test("the selector defaults to off", () => {
+  // The pin is the *resolved value*, not the spelling. `ChatView` now seeds
+  // from the shared `DEFAULT_DELEGATION_MODE` (so the composer's persistence and
+  // this initialiser cannot drift), which would let a bare regex on the literal
+  // pass while the default had quietly become something else.
   assert.match(
     chat,
-    /const \[delegationMode, setDelegationMode\] = useState\("off"\)/,
-    "delegation must default to false: it spends tokens and starts background workers",
+    /const \[delegationMode, setDelegationMode\] = useState\(DEFAULT_DELEGATION_MODE\)/,
+    "delegation must seed from the shared default constant",
+  );
+  assert.equal(
+    DEFAULT_DELEGATION_MODE,
+    "off",
+    "the shared default must stay off: it spends tokens and starts background workers",
   );
   assert.match(
     composer,
-    /delegationMode = "off"/,
-    "the composer prop must default to off too",
+    /delegationMode = DEFAULT_DELEGATION_MODE/,
+    "the composer prop must default to the same shared constant",
   );
+});
+
+test("both sides of the default agree on one source", () => {
+  // The prop default in `Composer` and the state seed in `ChatView` are the same
+  // claim written twice. A persistence layer between them would go wrong the day
+  // one moved and the other did not.
+  assert.match(composer, /import .*DEFAULT_DELEGATION_MODE.*delegation-preference|delegation-preference/);
+  assert.match(chat, /DEFAULT_DELEGATION_MODE/);
 });
 
 // ---------------------------------------------------------------------------

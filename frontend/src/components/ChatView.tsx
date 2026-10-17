@@ -24,6 +24,7 @@ import { SwarmBoard } from "@/components/agent-ui/SwarmBoard";
 import { TranscriptSearch } from "@/components/TranscriptSearch";
 import { WorkspaceSheet } from "@/components/WorkspaceSheet";
 import { findTranscriptMatches, toSearchable } from "@/lib/transcript-search";
+import { DEFAULT_DELEGATION_MODE } from "@/lib/delegation-preference";
 import { exportTranscript, exportFilename } from "@/lib/transcript-export";
 import { collectWorkspaceContent } from "@/lib/workspace-sheet";
 import { TaskList } from "@/components/TaskList";
@@ -1012,8 +1013,12 @@ export default function ChatView({
    * typing would change that. This is the opt-in that makes prompt-driven
    * delegation reachable, and it is a per-message decision because it spends
    * tokens and starts background workers.
+   *
+   * The default is `DEFAULT_DELEGATION_MODE` rather than a literal so the
+   * composer's persistence and this initialiser cannot drift apart. `Composer`
+   * owns the store and the catalog validation; this is just the seed.
    */
-  const [delegationMode, setDelegationMode] = useState("off");
+  const [delegationMode, setDelegationMode] = useState(DEFAULT_DELEGATION_MODE);
   // Safe per-run defaults. The Gateway applies the same middleware ceilings and
   // clamps these against process capacity; these settings only narrow them.
   const [subagentConcurrency, setSubagentConcurrency] = useState(1);

@@ -39,6 +39,13 @@ import { DelegationPlanPreview } from "@/components/DelegationPlanPreview";
 import { ModelMenu } from "@/components/ModelMenu";
 import { QUICK_KEY_PROVIDERS } from "@/lib/model-menu";
 import { listSubagentCatalog, type SubagentDef } from "@/lib/subagents";
+import {
+  DEFAULT_DELEGATION_MODE,
+  defaultStorage,
+  readStoredDelegationMode,
+  reconcileDelegationMode,
+  storeDelegationMode,
+} from "@/lib/delegation-preference";
 import { getArenaConfig } from "@/lib/arena";
 import {
   buildDelegationGroups,
@@ -383,7 +390,7 @@ export function Composer({
   onMentionSwitchAgent,
   effort = DEFAULT_EFFORT,
   onEffortChange,
-  delegationMode = "off",
+  delegationMode = DEFAULT_DELEGATION_MODE,
   onDelegationModeChange,
   onDelegationEngineChange,
   subagentConcurrency = 3,
@@ -421,6 +428,46 @@ export function Composer({
     () => buildDelegationGroups({ choices: subagentChoices, error: subagentCatalogError }),
     [subagentChoices, subagentCatalogError],
   );
+
+  /**
+   * Delegation-mode persistence, owned here rather than in `ChatView`.
+   *
+   * `Composer` is the only place that holds the **catalog**, and a stored mode
+   * is only safe to restore if the catalog still offers it - a renamed or
+   * removed custom agent would otherwise leave the selector parked on a mode
+   * that resolves to nothing. `ChatView` holds the value as plain state, so the
+   * restore pushes up through `onDelegationModeChange` and the correction
+   * follows the same path.
+   *
+   * `readyRef` is load-bearing: without it the write effect would fire on first
+   * paint and write the default `off` over the stored value *before* the restore
+   * had read it, so the preference would be destroyed by the act of restoring it.
+   */
+  const delegationModeReady = useRef(false);
+  useEffect(() => {
+    const storage = defaultStorage();
+    const stored = readStoredDelegationMode(storage);
+    if (stored) onDelegationModeChange?.(stored);
+    delegationModeReady.current = true;
+    // Mount only: this is a restore, not a subscription to the value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Drop a stored mode the current catalog no longer offers. */
+  useEffect(() => {
+    if (!delegationModeReady.current) return;
+    const available = delegationGroups.flatMap((group) => group.options.map((option) => option.value)).filter(Boolean);
+    // An empty catalog cannot verify anything, and treating "not loaded" as
+    // "invalid" would make the restored setting depend on load ordering.
+    if (!available.length) return;
+    const { mode, restored } = reconcileDelegationMode(delegationMode, available);
+    if (!restored) onDelegationModeChange?.(mode);
+  }, [delegationGroups, delegationMode, onDelegationModeChange]);
+
+  useEffect(() => {
+    if (!delegationModeReady.current) return;
+    storeDelegationMode(defaultStorage(), delegationMode);
+  }, [delegationMode]);
   /**
    * Whether Arena reports itself enabled, read from the Gateway.
    *
