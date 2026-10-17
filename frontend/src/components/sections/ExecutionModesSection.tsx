@@ -87,9 +87,16 @@ function FamilyCard(props: { family: ModeFamily; onOpenView: (view: string) => v
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
           {family.facts.map((f) => (
             <div key={f.label} className="flex justify-between gap-2 min-w-0">
-              <dt className="text-muted-foreground truncate">{f.label}</dt>
+              {/*
+                The label wraps rather than truncating. `truncate` here rendered
+                "Profile · stand..." - an ambiguous name, because the value beside
+                it ("5 competitors, wave 4") does not identify which profile.
+                The value still shrinks first, so a long value cannot push the
+                label out of the row.
+              */}
+              <dt className="text-muted-foreground">{f.label}</dt>
               <dd
-                className={`shrink-0 tabular-nums ${f.value === null ? "text-muted-foreground/60" : "text-foreground"}`}
+                className={`shrink-0 tabular-nums text-right ${f.value === null ? "text-muted-foreground/60" : "text-foreground"}`}
                 title={f.value === null ? "The Gateway did not report this value" : undefined}
               >
                 {factValue(f.value)}
