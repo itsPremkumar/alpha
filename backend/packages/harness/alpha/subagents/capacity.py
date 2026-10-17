@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import threading
 from collections import deque
 from collections.abc import AsyncIterator
@@ -31,16 +32,44 @@ class SubagentCapacitySnapshot:
     max_queued: int
     queued: int
     admission_policy: str
+    #: Waiters ordered ahead of the oldest, i.e. `queued - fifo_position_of_oldest`.
+    #: `0` means the queue is still effectively FIFO, which is what every
+    #: caller that does not pass a priority produces.
+    priority_preemptions: int = 0
 
 
 class SubagentExecutionCapacity:
-    """FIFO async capacity controller; queued work never owns a thread."""
+    """Async capacity controller; queued work never owns a thread.
+
+    Admission is **priority-ordered with a FIFO tiebreak**. Every waiter carries
+    a `(priority, sequence)` pair: a released slot goes to the highest priority
+    waiting, and among equal priorities to the longest-waiting. A caller that
+    passes no priority therefore sees exactly the previous FIFO behaviour, which
+    is why enabling the mechanism changes nothing until a call site opts in.
+
+    Why priority rather than plain FIFO: the pool is shared by every mechanism
+    that runs through `SubagentExecutor` (ordinary `task`, durable batches, Arena
+    competitors and GRO candidate lanes), so a cheap background batch can
+    currently sit ahead of a run the operator is waiting on. Priority is the
+    mechanism for "background yields to foreground" without a second pool.
+
+    Every boundedness rule is unchanged: `max_running`, `max_queued`, the
+    `reject` policy, `queue_timeout_seconds`, and the cancellation/timeout
+    transfer nuance where a release and an expiry race.
+    """
 
     def __init__(self, config: SubagentRuntimeConfig) -> None:
         self._config = config
         self._lock = asyncio.Lock()
         self._running = 0
-        self._waiters: deque[asyncio.Future[None]] = deque()
+        # (priority, sequence, future). Ordered by `(-priority, sequence)` when a
+        # slot frees up; kept in arrival order otherwise so `len()` stays a
+        # truthful queue depth.
+        self._waiters: deque[tuple[float, int, asyncio.Future[None]]] = deque()
+        self._sequence = itertools.count()
+        #: Cumulative count of slots handed to a waiter that was not the
+        #: longest-waiting. A real contention signal, not a per-run tally.
+        self._preemptions = 0
 
     def snapshot(self) -> SubagentCapacitySnapshot:
         # snapshot() is read from non-loop threads (notably
@@ -56,19 +85,35 @@ class SubagentExecutionCapacity:
             max_queued=self._config.max_queued,
             queued=len(self._waiters),
             admission_policy=self._config.admission_policy,
+            priority_preemptions=self._preemptions,
         )
 
-    async def _acquire(self) -> None:
+    def _next_waiter_locked(self) -> asyncio.Future[None] | None:
+        """Pick the highest-priority pending waiter, FIFO on ties.
+
+        Returns ``None`` when nothing is pending. Cancelled/done futures are
+        dropped, so a waiter that timed out but has not yet removed itself does
+        not receive a slot it will never use.
+        """
+
+        pending = [entry for entry in self._waiters if not entry[2].done()]
+        if not pending:
+            return None
+        # `min` on (-priority, sequence): highest priority first, then oldest.
+        return min(pending, key=lambda entry: (-entry[0], entry[1]))[2]
+
+    async def _acquire(self, priority: float = 0.0) -> None:
         waiter: asyncio.Future[None] | None = None
+        sequence = next(self._sequence)
         async with self._lock:
             if self._running < self._config.max_running:
                 self._running += 1
                 return
-            queued = sum(not candidate.done() for candidate in self._waiters)
+            queued = sum(not entry[2].done() for entry in self._waiters)
             if self._config.admission_policy == "reject" or queued >= self._config.max_queued:
                 raise SubagentCapacityRejected(f"Subagent execution capacity is full ({self._config.max_running} running, {queued} queued)")
             waiter = asyncio.get_running_loop().create_future()
-            self._waiters.append(waiter)
+            self._waiters.append((priority, sequence, waiter))
 
         try:
             await asyncio.wait_for(
@@ -77,23 +122,37 @@ class SubagentExecutionCapacity:
             )
         except (TimeoutError, asyncio.CancelledError) as exc:
             async with self._lock:
-                try:
-                    self._waiters.remove(waiter)
-                except ValueError:
+                entry = next((item for item in self._waiters if item[2] is waiter), None)
+                if entry is None:
                     # A release transferred the slot just as the timeout fired.
                     # If the future completed, this caller owns that transfer and
                     # must release it before reporting the timeout.
                     if waiter.done() and not waiter.cancelled():
                         self._release_locked()
+                else:
+                    self._waiters.remove(entry)
             if isinstance(exc, asyncio.CancelledError):
                 raise
             raise SubagentCapacityTimeout(f"Timed out after {self._config.queue_timeout_seconds}s waiting for a subagent execution slot") from exc
 
     def _release_locked(self) -> None:
-        while self._waiters:
-            waiter = self._waiters.popleft()
-            if waiter.done():
-                continue
+        # Drop already-finished waiters first, then hand the slot to the
+        # highest-priority pending one. `min` scans instead of popping, so the
+        # deque itself keeps arrival order for the depth count.
+        for entry in [item for item in self._waiters if item[2].done()]:
+            try:
+                self._waiters.remove(entry)
+            except ValueError:  # pragma: no cover - removed concurrently under the lock
+                pass
+        waiter = self._next_waiter_locked()
+        if waiter is not None:
+            for index, (priority, sequence, candidate) in enumerate(self._waiters):
+                if candidate is waiter:
+                    if index != 0:
+                        # The slot went to someone who was not the longest
+                        # waiter: a real contention signal for the snapshot.
+                        self._preemptions += 1
+                    break
             # Transfer the existing slot; _running intentionally stays flat.
             waiter.set_result(None)
             return
@@ -106,8 +165,14 @@ class SubagentExecutionCapacity:
             self._release_locked()
 
     @asynccontextmanager
-    async def slot(self) -> AsyncIterator[None]:
-        await self._acquire()
+    async def slot(self, priority: float = 0.0) -> AsyncIterator[None]:
+        """Hold one execution slot.
+
+        `priority` orders admission only; it never changes how many slots exist.
+        Higher runs first on release, and an equal priority preserves FIFO.
+        """
+
+        await self._acquire(priority)
         try:
             yield
         finally:

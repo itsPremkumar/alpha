@@ -116,6 +116,43 @@ be reached via `importlib.import_module`; and `tests/conftest.py` stubs
 
 ## 2. Phase 2 — Unified budget and priority admission
 
+### 2.0 Correction to this section (measured 2026-10-17)
+
+The original text said Arena, swarms and `task` all contend for the same three
+slots. **That is only partly true, and the difference matters.**
+
+`SubagentExecutionCapacity.slot()` has exactly **one** production call site
+(`subagents/executor.py`). So the pool *is* shared by ordinary `task`, durable
+`batch_task` items, Arena competitors and GRO candidate lanes — all of which run
+through `SubagentExecutor`.
+
+The **dynamic-workflow engine does not use it.** `workflow/runtime.py` runs its own
+bounded wave pool and measures `peak_in_flight` itself, and
+`tests/test_workflow_wave_peak_in_flight.py` asserts `.slot()` is *absent* from that
+source, with the comment "the engine must not pretend to acquire the governor it
+never uses". That is a deliberate invariant, not an oversight.
+
+**Consequence:** unifying the workflow pool means overriding a stated invariant,
+so it is split out as its own decision (2.4) rather than swept into this phase.
+The honest scope of 2.1–2.3 is the shared pool plus the budget counters.
+
+### 2.0.1 DONE — priority admission
+
+`_waiters` now carry `(priority, sequence)`; a release serves the highest
+priority with FIFO on ties; `slot(priority=0.0)` keeps today's behaviour exactly
+for every caller that does not opt in. `SubagentCapacitySnapshot` gains
+`priority_preemptions` — a cumulative count of slots that went to a waiter who was
+not the longest-waiting, so contention is measured rather than only felt.
+
+Pinned by `tests/test_subagent_capacity_priority.py` (9 tests, of which 6 are new
+behaviour). The timeout/cancel transfer paths stay pinned by the pre-existing
+`tests/test_subagent_execution_capacity.py`.
+
+**Not yet done: nothing passes a non-default priority.** The mechanism is inert
+until a call site adopts it — deliberately, so enabling it changes nothing on its
+own. Adopting it (foreground `task` over background batches, Arena over a
+low-confidence plan) is the next slice.
+
 **The one genuine architectural gap.** Today `task`, durable batches, Arena and
 workflow swarms each hold a private ceiling and all draw from the same
 `subagent_runtime.max_running: 3`. They **contend**; they do not multiply.
@@ -157,7 +194,24 @@ re-derives it.
 - Contention is observable: when Arena starves a `task` fan-out, the reason
   appears in the run record.
 
-### 2.4 Gate
+### 2.4 Separating decision — the workflow wave pool
+
+Whether `workflow/runtime.py` should join the shared admission controller.
+
+* **For:** one real ceiling; today a swarm can exceed the operator's
+  `max_running` by running on its own pool.
+* **Against:** an existing test deliberately asserts `.slot()` is absent there,
+  with the reason "the engine must not pretend to acquire the governor it never
+  uses". Unifying it also has to reconcile two different concurrency
+  measurements (`peak_in_flight` vs the pool's `running`/`queued`).
+
+This is a **decision, not a bug fix**, and it should not be done as a side effect
+of Phase 2. Options: (a) leave the pools separate and make the *combined*
+ceiling explicit in configuration and reported honestly; (b) unify and retire
+`peak_in_flight`; (c) give the workflow pool its own budget in the same accounting
+so the operator sees both numbers rather than one.
+
+### 2.5 Gate
 
 Arena at 64 concurrent with a swarm **demonstrably contend and both report it**,
 and neither can exceed `max_running` in aggregate. Plus: a scope change from
