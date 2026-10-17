@@ -39,6 +39,7 @@ import {
   ScrollText,
   ListOrdered,
   ClipboardCheck,
+  Route,
 } from "lucide-react";
 
 // Every member of this union is one quarter of the four-place wiring rule: a
@@ -85,6 +86,13 @@ export type WorkspaceView =
   | "protocols"
   | "apex"
   | "intelligence"
+  // The execution/delegation mode catalogue: Arena, council, tier and
+  // orchestration modes, each stating whether the Gateway measured its value.
+  // It goes HERE rather than at the end because `workspace-nav.test.mjs` pins
+  // the four members above as a contiguous, adjacent run, so nothing may be
+  // interleaved into it. (No quoted ids in here: `unionIds()` reads every quoted
+  // token between the union and the first semicolon.)
+  | "execution-modes"
   // The Alpha Mod Kernel's operator surface. It sits *here* rather than at the
   // end for two reasons: `reliability-view.test.mjs` pins reliability as the
   // terminal member of this union, and `sentinel-view.test.mjs` plus
@@ -141,6 +149,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "memory", label: "Memory", icon: <Brain className="size-3.5" />, blurb: "What the agent remembers", category: "operations" },
   { id: "agents", label: "Agents", icon: <Sparkles className="size-3.5" />, blurb: "Custom personas", category: "operations" },
   { id: "workflows", label: "Workflows", icon: <Workflow className="size-3.5" />, blurb: "Dynamic flows, goals, checkpoints & jobs", category: "operations" },
+  { id: "execution-modes", label: "Execution modes", icon: <Route className="size-3.5" />, blurb: "Arena, council, tier and orchestration modes - and which values the Gateway actually reports", category: "operations" },
   { id: "forge", label: "Forge", icon: <Hammer className="size-3.5" />, blurb: "Skill workshop, evolution, policy & benchmarks", category: "operations" },
 
   { id: "vitals", label: "Vitals", icon: <Gauge className="size-3.5" />, blurb: "Internet speed, memory, CPU, disks and every subsystem reading in full", category: "system" },

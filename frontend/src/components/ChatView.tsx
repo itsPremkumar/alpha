@@ -396,6 +396,15 @@ const WorkflowsSection = dynamic(
     })),
   { loading: () => <SectionFallback /> },
 );
+// The execution/delegation mode catalogue. Read-only by construction: every row
+// states whether the Gateway measured its value, and none offers a write.
+const ExecutionModesSection = dynamic(
+  () =>
+    import("@/components/sections/ExecutionModesSection").then((m) => ({
+      default: m.ExecutionModesSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
 const ForgeSection = dynamic(
   () =>
     import("@/components/sections/ForgeSection").then((m) => ({
@@ -3676,6 +3685,10 @@ export default function ChatView({
             ) : view === "forge" ? (
               <Suspense fallback={<SectionFallback />}>
                 <ForgeSection />
+              </Suspense>
+            ) : view === "execution-modes" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <ExecutionModesSection onOpenView={(target) => setView(target as WorkspaceView)} />
               </Suspense>
             ) : view === "supervisor" ? (
               <Suspense fallback={<SectionFallback />}>

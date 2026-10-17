@@ -69,6 +69,12 @@ export const WORKSPACE_VIEW_IDS = [
   // without this entry `?view=mods` silently falls back to `chat` while the
   // nav offers a tab that appears to go nowhere.
   "mods",
+  // The catalogue that names every execution and delegation mode and states,
+  // per row, whether its value is measured by the Gateway or merely configured.
+  // Declared for the same reason as the ids above: without this entry
+  // `?view=execution-modes` silently falls back to `chat` while the nav offers a
+  // tab that appears to go nowhere.
+  "execution-modes",
 ] as const;
 
 export type WorkspaceView = (typeof WORKSPACE_VIEW_IDS)[number];
