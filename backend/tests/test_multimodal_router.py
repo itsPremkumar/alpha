@@ -614,6 +614,26 @@ def test_voice_ws_connect_sends_capabilities_then_pong(monkeypatch):
     assert pong == {"type": "status", "state": "idle", "event": "pong"}
 
 
+@pytest.mark.asyncio
+async def test_voice_ws_client_disconnect_during_capabilities_send_is_normal(monkeypatch):
+    _patch_ws(monkeypatch, VoiceConfig())
+    monkeypatch.setattr(multimodal_router, "_ws_origin_allowed", lambda _ws: True)
+
+    class _DisconnectedOnSend:
+        async def accept(self):
+            pass
+
+        async def send_text(self, _payload):
+            raise WebSocketDisconnect(code=1001)
+
+    limiter = multimodal_router._VOICE_SESSION_LIMITER
+    assert limiter.active == 0
+
+    await multimodal_router.voice_websocket(_DisconnectedOnSend())
+
+    assert limiter.active == 0, "a normal client disconnect must still release its voice session slot"
+
+
 def test_voice_ws_rejects_audio_frames_before_arm(monkeypatch):
     _patch_ws(monkeypatch, VoiceConfig())
     with TestClient(_ws_app()) as client:

@@ -293,7 +293,9 @@ are never downloaded implicitly by a request. Client TTS input is a safe voice I
 an arbitrary model path. `voice.enabled=false`, WebSocket authentication/origin checks,
 `runs:create`, session/frame/utterance limits, and stale-partial suppression apply to every
 speech operation including direct PTT transcription; PTT, wake-word, and real-time
-conversation may share the socket only through explicit state transitions.
+conversation may share the socket only through explicit state transitions. A client
+disconnect during either receive or event send is normal navigation: release the
+process-local voice-session slot without logging an unhandled ASGI failure.
 
 **TTS engine selection.** `voice.tts.engine` is `piper` (the real-time default) or
 `kokoro` (more natural, much slower on CPU), and `run_t3` dispatches on that field. Measured

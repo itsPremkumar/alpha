@@ -804,5 +804,12 @@ async def voice_websocket(websocket: WebSocket) -> None:
                     "message": f"unknown message type {kind!r}; expected arm|disarm|audio|transcribe|conversation_start|conversation_stop|ping",
                 }
             )
+    except WebSocketDisconnect:
+        # A client may close the socket while the initial capability probe is
+        # running, or between any later event and its send. The receive loop
+        # handles disconnects while waiting for a frame; this outer guard covers
+        # disconnects raised by ``send_text`` so normal navigation does not
+        # become an unhandled ASGI error.
+        return
     finally:
         _VOICE_SESSION_LIMITER.release()
