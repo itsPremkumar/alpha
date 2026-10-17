@@ -87,6 +87,28 @@ def test_sql_signature_detects_update_behind_existing_max_timestamp(sql_store):
     assert sql_store.signature() != before
 
 
+def test_sql_signature_carries_definition_content_not_only_clock(sql_store):
+    """A timestamp-only signature cannot see an update whose new stamp reads
+    identical to the old one — datetime resolution on some hosts is coarser
+    than a fast read-modify-write (two writes inside one clock tick, measured
+    live on Windows). The peer-process invalidation tag must commit to the
+    definition content itself, so write behind the store and hold the clock."""
+    sql_store.create(_definition("writer"))
+    before = sql_store.signature()
+
+    with sql_store._Session() as session:
+        row = session.execute(select(ManagedSubagentRow).where(ManagedSubagentRow.name == "writer")).scalar_one()
+        # Reassign the mapping — a plain JSON column does not track in-place
+        # mutations, so a bare `row.definition["description"] = ...` would
+        # silently persist nothing.
+        row.definition = {**row.definition, "description": "Rewritten without touching updated_at"}
+        session.commit()
+        assert row.updated_at is not None
+
+    after = sql_store.signature()
+    assert after != before, "a content-only change must invalidate the signature"
+
+
 @pytest.mark.parametrize("store_fixture", ["file_store", "sql_store"])
 def test_duplicate_create_is_a_conflict(request, store_fixture):
     store = request.getfixturevalue(store_fixture)

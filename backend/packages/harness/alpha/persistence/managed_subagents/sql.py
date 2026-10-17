@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from collections.abc import Hashable
 
@@ -74,7 +76,18 @@ class SqlManagedSubagentStore(ManagedSubagentStore):
     def signature(self) -> Hashable:
         with self._Session() as session:
             # COUNT + MAX(updated_at) misses an update from a node whose clock
-            # trails the current maximum. Preserve each row's timestamp so any
-            # definition change invalidates peer-process registry snapshots.
-            rows = session.execute(select(ManagedSubagentRow.id, ManagedSubagentRow.updated_at).order_by(ManagedSubagentRow.id.asc())).all()
-        return tuple((row_id, updated_at) for row_id, updated_at in rows)
+            # trails the current maximum, and a timestamp-only tag misses an
+            # update whose new stamp reads identical to the old one — datetime
+            # resolution on some hosts is coarser than a fast read-modify-write
+            # (two writes inside one clock tick). Commit to each row's
+            # definition content as well, so ANY definition change invalidates
+            # peer-process registry snapshots regardless of what the clock did.
+            rows = session.execute(select(ManagedSubagentRow.id, ManagedSubagentRow.updated_at, ManagedSubagentRow.definition).order_by(ManagedSubagentRow.id.asc())).all()
+        return tuple(
+            (
+                row_id,
+                updated_at,
+                hashlib.sha256(json.dumps(definition, sort_keys=True, ensure_ascii=True).encode("utf-8") if isinstance(definition, dict) else b"").hexdigest(),
+            )
+            for row_id, updated_at, definition in rows
+        )
