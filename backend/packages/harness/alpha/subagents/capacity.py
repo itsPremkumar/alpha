@@ -248,3 +248,17 @@ def configured_subagent_max_running() -> int:
     """Return the startup snapshot without requiring an event loop."""
     with _state_lock:
         return _config.max_running
+def configured_subagent_admission_schedule() -> SubagentRuntimeConfig:
+    """Return the armed admission schedule without requiring an event loop.
+
+    Callers that must **disclose** what the admission plane can realize at
+    plan time (the swarm coordinator's advisory) want the *schedule* — the
+    startup-frozen ``subagent_runtime`` snapshot every ``SubagentExecutor``
+    inherits — not a live busy/queued count, which answers the different
+    question of what this instant is running, and not a hot-reloadable config
+    read, which could disagree with the cluster the process actually armed.
+    The return is a copy: the schedule is disclosed state, and a caller that
+    mutates it must not re-arm the process.
+    """
+    with _state_lock:
+        return _config.model_copy(deep=True)

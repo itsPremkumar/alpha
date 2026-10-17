@@ -168,6 +168,11 @@ def swarm_tool(
         # included with successful plan creation so the caller can decide
         # whether to explicitly start execution.
         projection = SwarmTelemetry.cost_projection(plan)
+        # The same plan-time disclosure the coordinator stamped into the plan:
+        # what the process admission plane will actually realize for this
+        # plan's declared concurrency. Advisory, never a gate.
+        advisory = plan.metrics.get("admission_advisory") or {}
+        advisory_lines = f"- **Process admission (advisory)**: {advisory.get('note')}\n- **Admission schedule snapshot** (advisory, never enforced): `{json.dumps(advisory, sort_keys=True)}`\n\n" if advisory else ""
         tasks_summary = "\n".join(f"  - `[{task.task_id}]` {task.objective} (deps: {task.dependencies or 'none'})" for task in plan.tasks.values())
         return (
             "### Autonomous Swarm Successfully Spawned (plan created; execution is explicit)\n"
@@ -176,7 +181,8 @@ def swarm_tool(
             f"- **Mode**: `{plan.mode.value}`\n"
             f"- **Tasks**: {len(plan.tasks)}\n"
             f"- **Task DAG**:\n{tasks_summary}\n"
-            f"- **Projected cost**: `{json.dumps(projection, sort_keys=True)}`\n\n"
+            f"- **Projected cost**: `{json.dumps(projection, sort_keys=True)}`\n"
+            f"{advisory_lines}"
             f"Run it with `swarm(action='run_async', swarm_id='{plan.swarm_id}')`; `step` only dispatches work."
         )
 

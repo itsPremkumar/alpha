@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from alpha.config import limits
+from alpha.swarm.admission import admission_advisory_metrics
 from alpha.swarm.aggregator import SwarmAggregator
 from alpha.swarm.cnp_auction import LeaderCandidate, LeaderElection, elect_leader
 from alpha.swarm.communication import SwarmMessage, SwarmMessageBus
@@ -298,6 +299,13 @@ class SwarmCoordinator:
                 "Raise max_wall_seconds or reduce/split the goal. Token and tool-call "
                 "projections are unmeasured, so they cannot be used for admission."
             )
+        # Plan-time admission advisory (disclosure, never a gate): the plan can
+        # declare up to MAX_SWARM_PLAN_CONCURRENCY workers, but every worker
+        # executes through the process-wide subagent admission controller, so
+        # realized parallelism is bounded by the armed `subagent_runtime`
+        # schedule.  Wide plans are accepted; the risk flag is a labelled
+        # warning.  The refusal above stays governed only by the wall budget.
+        plan.metrics["admission_advisory"] = admission_advisory_metrics(plan.max_concurrency)
         # Compose the team BEFORE leader election, so the election ranks
         # candidates by a declared capability instead of by worker kind, and
         # before `validate_graph`, so an assignment can never produce a plan

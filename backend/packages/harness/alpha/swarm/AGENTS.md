@@ -32,6 +32,32 @@ invented figure. A projection that quietly guessed would be worse than no
 projection. `SwarmBudget` still bounds the run while it runs and `budget_pressure`
 still reports the ratio after spend; the projection is the third, earlier answer.
 
+**Plan-time admission advisory (disclosure, never a gate).**
+`swarm/admission.py` writes `plan.metrics["admission_advisory"]` at
+`create_swarm`, after the projection refusal and before registration, because
+the plan's declared `max_concurrency` (up to
+`limits.MAX_SWARM_PLAN_CONCURRENCY`) is not what a deployment can realize:
+every swarm worker executes through `SubagentExecutor` — the pool is inherited
+from the process-wide admission controller (`swarm/worker.py` passes no
+`execution_capacity`), so realized parallelism is bounded by the armed
+`subagent_runtime` schedule (default 3 running, 64 queued, `queue` policy,
+300s queue timeout). The block carries `max_running`, `max_queued`,
+`admission_policy`, `queue_timeout_seconds`, `expected_realized_concurrency`
+(`min(plan_concurrency, max_running)`), `inflight_capacity`
+(pool + queue under `queue`; pool alone under `reject`), `wide_plan_risk`
+(true when the declared width exceeds the in-flight ceiling — such bursts are
+refused admission and retried, not executed faster) and a bounded `note` for
+model- and human-facing surfaces (`swarm` tool spawn response includes both
+lines). Three rules hold: the advisory is **advisory** — a wide plan is still
+accepted, and the wall-budget refusal above is untouched; an **unresolvable
+schedule is `None`, never `0`**, the same unknown ≠ absent rule telemetry
+follows; and the figures come from the **startup schedule**
+(`alpha.subagents.capacity.configured_subagent_admission_schedule()`, a copy —
+disclosure must never re-arm the process), not the live busy/queued count and
+not a hot-reloadable config read. The projection keys are unchanged: the
+projection answers the declared budget; the advisory answers the process.
+Tests: `tests/test_swarm_admission_advisory.py`.
+
 **The governor does not route models.** `SwarmResourceGovernor` adapts concurrency
 after 429s and reports which models a swarm used. It used to carry a `MODEL_TIERS`
 table of four hardcoded names plus a `resolve_model_for_role` substring matcher;
