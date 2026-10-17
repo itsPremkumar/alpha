@@ -124,6 +124,14 @@ export interface SwarmTaskRow {
   /** Only set when the server wrote something a person could read. */
   summary: string | null;
   summaryNote: string;
+  /** Verbatim Gateway acceptance state; it is not a synonym for task state. */
+  acceptanceStatus: string | null;
+  /** Criteria count, or null when the Gateway omitted the field. */
+  acceptanceCriteriaCount: number | null;
+  /** Server-derived verification verdict, or null when absent. */
+  acceptanceVerified: boolean | null;
+  /** Plain-language distinction between execution completion and acceptance. */
+  acceptanceNote: string;
 }
 
 function stateTone(state: string | null): Tone {
@@ -178,6 +186,27 @@ export function swarmTaskRows(tasks: unknown): SwarmTaskRow[] {
 
     const summaryText = t.result_summary;
     const displayable = isDisplayableSummary(summaryText);
+    const acceptanceStatus = typeof t.acceptance_status === "string" && t.acceptance_status.trim()
+      ? t.acceptance_status
+      : null;
+    const acceptanceCriteriaCount = Array.isArray(t.acceptance_criteria)
+      ? t.acceptance_criteria.length
+      : null;
+    const verification = objectOr(t.verification);
+    const acceptanceVerified = typeof verification.verified === "boolean"
+      ? verification.verified
+      : null;
+    const acceptanceNote = acceptanceCriteriaCount === 0
+      ? "No acceptance criteria were declared. Completed means execution ended; the result was not verified."
+      : acceptanceVerified === true
+        ? "Gateway acceptance checks passed."
+        : acceptanceVerified === false
+          ? "Gateway acceptance checks failed."
+          : acceptanceCriteriaCount !== null && acceptanceCriteriaCount > 0
+            ? "Acceptance criteria were declared, but no verification verdict was reported."
+            : acceptanceStatus
+              ? `Gateway acceptance status: ${acceptanceStatus}; verification was not inferred.`
+              : "Acceptance criteria and verification were not reported by the Gateway.";
 
     const error = typeof t.error_message === "string" && t.error_message.trim() ? t.error_message : null;
 
@@ -221,6 +250,10 @@ export function swarmTaskRows(tasks: unknown): SwarmTaskRow[] {
           typeof summaryText === "string" && summaryText.trim().length > 0
           ? "the server stored raw model output here, not a summary written for display"
           : "no result recorded",
+      acceptanceStatus,
+      acceptanceCriteriaCount,
+      acceptanceVerified,
+      acceptanceNote,
     };
   });
 }

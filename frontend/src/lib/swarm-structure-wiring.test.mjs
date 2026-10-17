@@ -84,6 +84,11 @@ test("the section imports the pure view module rather than re-deriving sentences
   assert.match(section, /swarmStructureView\(/);
 });
 
+test("the structure panel renders Gateway acceptance separately from execution state", () => {
+  assert.match(section, /\{t\.acceptanceNote\}/);
+  assert.match(view, /Completed means execution ended; the result was not verified/);
+});
+
 // ---------------------------------------------------------------------------
 // The panel is reachable
 // ---------------------------------------------------------------------------

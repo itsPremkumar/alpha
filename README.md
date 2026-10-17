@@ -536,6 +536,9 @@ make doctor    # verify the environment
 - **Typed communication & consensus** — a bounded blackboard of untrusted
   observations; evidence-backed votes, leader election, and acceptance
   verification that separates *execution success* from *verified delivery*.
+- **Swarm acceptance in Team Ops** — each task shows the Gateway's typed
+  acceptance verdict. A completed task with no declared criteria is explicitly
+  labeled unverified; task completion alone is never presented as proof.
 - **Swarm operations surface** — REST + SSE for claims, leases, revisions, events,
   messages, replans, progress, and leader/resource telemetry; the `swarm` tool
   exposes the same to authorized agents, plus `strategy` (why this mode was
@@ -1207,7 +1210,7 @@ cd backend && make lint              # ruff check
 cd backend && make format            # ruff format
 
 # Frontend
-cd frontend && pnpm verify           # typecheck + unit tests
+cd frontend && pnpm verify           # route typegen + clean typecheck + unit tests
 cd frontend && pnpm dev              # dev server (Webpack; --turbopack for Turbopack)
 
 # Repository-level contracts

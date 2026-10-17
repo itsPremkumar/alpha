@@ -94,7 +94,7 @@ source for exact route mappings and honest display states.
 | Completion gates | `components/sections/CompletionSection.tsx`, `lib/completion.ts` | `lib/completion.test.mjs`, `lib/completion-view.test.mjs` |
 | Mod kernel | `components/sections/ModsSection.tsx`, `lib/mods.ts` | `lib/mods.test.mjs`, `lib/mods-view.test.mjs` |
 | Memory overview, extraction health and L1 capture status | `components/sections/MemorySection.tsx`, `lib/memory.ts` | `lib/memory.test.mjs` |
-| Specialist catalog and orchestration controls | subagent catalog and composer selectors | `lib/subagent-catalog-view.test.mjs`, `lib/swarm-structure-view.test.mjs`, `lib/swarm-structure-wiring.test.mjs` |
+| Specialist catalog and orchestration controls | subagent catalog, composer selectors, Team Ops swarm DAG and per-task acceptance display | `lib/subagent-catalog-view.test.mjs`, `lib/swarm-structure-view.test.mjs`, `lib/swarm-structure-wiring.test.mjs` |
 | Projects and group tree | project/group section clients and views | matching `lib/projects*.test.mjs`, `lib/groups*.test.mjs` |
 | Alpha peer network | peer client and network panel | `lib/peer-network*.test.mjs`, `lib/qr-decode.test.mjs` |
 | Message projections and tags | `lib/messages-view.ts`, tag palette | `lib/messages-view.test.mjs`; tag editing is covered by the composer/UI suite. |
@@ -130,6 +130,9 @@ pnpm test
 `test:extra`, `test:branding`, or `verify` scripts when the change reaches those
 surfaces, and ensure the corresponding CI job runs any new suite. No test is a
 substitute for exercising the affected UI and API path end to end.
+`pnpm typecheck` disables TypeScript incremental state after Next route type
+generation so stale `.tsbuildinfo` entries cannot turn deleted `.next/dev`
+route files into false missing-file errors.
 
 ## Bot detail route (`/bots/[name]`)
 

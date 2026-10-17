@@ -149,6 +149,9 @@ budgets and explicit `budget_exhausted` and `stalled` states.
 The chat's live subagent progress cards project task-event status, a readable
 latest step or tool-call summary, reported step counts and measured usage;
 structured messages remain intact in durable run receipts.
+Team Ops shows each swarm task's typed Gateway acceptance state. A completed
+task without declared acceptance criteria is explicitly unverified; completion
+records execution state, not proof that the result is correct.
 The [Workforce selection guide](https://github.com/itsPremkumar/alpha/blob/main/docs/WORKFORCE.md#choosing-a-method-and-its-size-in-the-ui)
 explains the eight swarm topologies and distinguishes a swarm's concurrency
 ceiling from subagent delegation limits and Arena's actual competitor count.

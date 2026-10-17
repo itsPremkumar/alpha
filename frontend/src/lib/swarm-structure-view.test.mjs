@@ -58,6 +58,7 @@ const mapTask = (over = {}) => ({
   token_usage: { input_tokens: 234, output_tokens: 50, total_tokens: 284 },
   tool_calls: 1,
   acceptance_status: "not_required",
+  acceptance_criteria: [],
   estimated_seconds: 15.0,
   ...over,
 });
@@ -398,6 +399,37 @@ test("the real payload renders three task rows with their real structure", () =>
   assert.equal(reduce.worker, "architect");
   assert.equal(reduce.workerType, "permanent_bot");
   assert.equal(reduce.dependsOn.length, 4);
+});
+
+test("task completion without acceptance criteria is explicitly not verification", () => {
+  const [row] = swarmTaskRows({
+    done: mapTask({ state: "completed", acceptance_status: "not_required", acceptance_criteria: [], verification: {} }),
+  });
+  assert.equal(row.acceptanceStatus, "not_required");
+  assert.equal(row.acceptanceCriteriaCount, 0);
+  assert.equal(row.acceptanceVerified, null);
+  assert.match(row.acceptanceNote, /Completed means execution ended; the result was not verified/);
+});
+
+test("task acceptance UI uses only the Gateway's typed verification verdict", () => {
+  const [passed] = swarmTaskRows({
+    done: mapTask({ acceptance_status: "passed", acceptance_criteria: [{ kind: "exact_text" }], verification: { verified: true } }),
+  });
+  assert.equal(passed.acceptanceCriteriaCount, 1);
+  assert.equal(passed.acceptanceVerified, true);
+  assert.equal(passed.acceptanceNote, "Gateway acceptance checks passed.");
+
+  const [failed] = swarmTaskRows({
+    done: mapTask({ acceptance_status: "failed", acceptance_criteria: [{ kind: "artifact" }], verification: { verified: false } }),
+  });
+  assert.equal(failed.acceptanceVerified, false);
+  assert.equal(failed.acceptanceNote, "Gateway acceptance checks failed.");
+
+  const [unknown] = swarmTaskRows({
+    done: mapTask({ acceptance_status: "running", acceptance_criteria: [{ kind: "unsupported" }], verification: {} }),
+  });
+  assert.equal(unknown.acceptanceVerified, null);
+  assert.match(unknown.acceptanceNote, /no verification verdict was reported/);
 });
 
 test("a swarm with no tasks says the plan is empty rather than rendering nothing", () => {

@@ -43,6 +43,7 @@ Operator console: the Mods workspace view renders the ordered chain and each mod
 - [Skills](SKILLS.md): skill packages, the curator lifecycle, quarantine trust tiers, and the 24 public skills.
 - [Voice conversation](VOICE_CONVERSATION.md): the real-time local voice loop (Whisper + Piper, no paid speech API).
 - [Workforce](WORKFORCE.md): bot roster, SOUL protocol, DMs, swarm DAG runtime, projects with owner-scoped per-run project instructions, Kanban, Bot Forge, and UI guidance for choosing subagent limits, swarm topologies, Arena competitor counts, and when each fits.
+- Swarm task results display the Gateway's acceptance status in Team Ops; task completion without declared acceptance criteria is explicitly unverified.
 - [Per-bot model configuration](BOT_MODEL_CONFIG.md): each bot's primary model, fallback chain, counselling and mixture panels, named only from `config.yaml` `models[]`.
 - [Lion companion](LION_COMPANION.md): the local-first Milo companion and its presentation contract.
 - [Run recovery](RUN_RECOVERY.md): durable checkpoints, lease fencing, and safe replay.
