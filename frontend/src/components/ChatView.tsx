@@ -64,7 +64,6 @@ import { DEFAULT_AGENT_NAME } from "@/lib/default-agent";
 import { initialSelectedModel } from "@/lib/model-menu";
 import { freeCatalogHeadline } from "@/lib/freeCatalogView";
 import { currentOperatorIdentity, subscribeOperatorName } from "@/lib/operator";
-import { BrandLogo } from "@/components/BrandLogo";
 import { LionPet, useLionPetActivity } from "@/components/lion-pet";
 import { WorkspaceVitals } from "@/components/WorkspaceVitals";
 import { fetchBots, fetchBotsResult, touchBot } from "@/lib/bots";
@@ -3906,22 +3905,24 @@ export default function ChatView({
                                 .slice(0, 2)
                                 .toUpperCase()}
                           </div>
-                          <span className="min-w-0">
-                            Chatting as{" "}
-                            <strong>
-                              {activeBot.display_name || activeBot.name}
-                            </strong>
-                            <span className="text-muted-foreground">
-                              {" "}
-                              — {activeBot.role}
-                            </span>
-                          </span>
+                          {/* Name only. The role used to be printed inline here
+                              AND in the empty-state sentence below, so the same
+                              "System Architect & Technical Lead" appeared twice
+                              in one viewport. It now lives on hover, where a
+                              reader who wants it can get it without it costing
+                              every reader a line of width. */}
+                          <strong
+                            title={activeBot.role || undefined}
+                            className="min-w-0 truncate"
+                          >
+                            {activeBot.display_name || activeBot.name}
+                          </strong>
                           <button
                             type="button"
                             onClick={() => rememberBot(null)}
                             className="ml-auto text-[11px] font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted shrink-0"
                           >
-                            Reset to {DEFAULT_AGENT_NAME}
+                            Use default
                           </button>
                         </div>
                       </div>
@@ -3984,49 +3985,13 @@ export default function ChatView({
                             className="h-full flex flex-col items-center justify-center text-center max-w-2xl mx-auto space-y-4 w-full px-2"
                             aria-label={branding.name}
                           >
-                            <h2 className="text-lg font-semibold text-foreground tracking-tight">
-                              <BrandLogo
-                                logoSize={44}
-                                textClassName="text-lg text-foreground"
-                                priority
-                              />
-                            </h2>
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                              {activeBot
-                                ? `Talking to ${activeBot.display_name || activeBot.name} (${activeBot.role}). Switch specialists anytime from the Bots tab.`
-                                : branding.intro}
-                            </p>
-                            {bots.length > 0 && (
-                              <div className="flex flex-wrap justify-center gap-1.5 pt-1">
-                                {bots.slice(0, 5).map((b) => (
-                                  <button
-                                    key={b.name}
-                                    type="button"
-                                    onClick={() => rememberBot(b)}
-                                    className={`text-[11px] px-2.5 py-1.5 rounded-lg border font-medium transition-colors ${
-                                      activeBot?.name === b.name
-                                        ? "border-primary bg-primary/10 text-primary"
-                                        : "border-border/70 hover:border-primary/40 text-muted-foreground hover:text-foreground"
-                                    }`}
-                                  >
-                                    {b.avatar ? `${b.avatar} ` : ""}
-                                    {b.display_name || b.name}
-                                  </button>
-                                ))}
-                                <button
-                                  type="button"
-                                  onClick={() => setView("bots")}
-                                  className="text-[11px] px-2.5 py-1.5 rounded-lg border border-dashed border-border/70 text-muted-foreground hover:text-foreground font-medium"
-                                >
-                                  View all {bots.length} →
-                                </button>
-                              </div>
-                            )}
-                            {/* Added beneath the existing welcome block, not in place of
-                        it: the logo, the intro sentence and the bot chips above
-                        are all still here. This adds the one line that names the
-                        bot and the project, and the starter actions, each of
-                        which is a real request to this Gateway. */}
+                            {/* No wordmark here any more. The landing below draws
+                                the agent's own avatar directly beneath it, so the
+                                product logo stacked on top of the specialist's face
+                                was two identities for one empty screen — and the
+                                wordmark repeats what the sidebar rail and browser
+                                tab already say. The container keeps `aria-label`,
+                                so this region is still named for assistive tech. */}
                             <div className="w-full pt-1">
                               <ChatShellEmptyState
                                 botName={

@@ -425,7 +425,8 @@
 .lion-pet-settings-hint {
   position: absolute;
   top: 0.2rem;
-  right: 0.2rem;
+  /* Clear of the close button, which occupies the corner itself. */
+  right: 2.15rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -444,6 +445,40 @@
 .lion-pet-hit-area:focus-visible .lion-pet-settings-hint {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* The pet's own close control. Absolutely positioned so it never contributes to
+   the shell's measured box: placement escapes the keep-out regions by testing
+   that box, and a close button that grew the shell would push the companion out
+   of legal positions. */
+.lion-pet-close-button {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 1.65rem = 26.4px, over the 24px target-size floor. */
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 1px solid rgb(120 53 15 / 0.15);
+  border-radius: 999px;
+  background: rgb(255 251 235 / 0.72);
+  color: #92400e;
+  opacity: 0;
+  transform: translateY(-3px);
+  /* `opacity: 0` alone leaves the button clickable, so an invisible control
+     would sit over the pet's corner eating clicks. These go live only while it
+     is actually shown. */
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.lion-pet-shell:hover .lion-pet-close-button,
+.lion-pet-close-button:focus-visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 .lion-pet-heart {

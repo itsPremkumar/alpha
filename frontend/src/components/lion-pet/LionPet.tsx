@@ -888,6 +888,29 @@ export function LionPet({ state, message, onOpenChat }: LionPetProps) {
         <span className="lion-pet-settings-hint" aria-hidden="true"><Settings2 className="size-3.5" /></span>
       </button>
 
+      {/* Close the pet from the pet itself.
+          Hiding used to live two clicks deep — pet → settings menu → Hide —
+          which is a long way to go for the one thing you want when the
+          companion is in the way. This sits on the companion and appears on
+          hover/focus, so dismissing it is one click.
+
+          It is a SIBLING of the pet's own hit-area button, never a child of it:
+          a button inside a button is invalid HTML and would also make the
+          dismissal fire the "pet the lion" handler on the way out. */}
+      <button
+        type="button"
+        className="lion-pet-close-button"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          toggleVisible();
+        }}
+        title="Hide the lion for now"
+        aria-label="Hide the Alpha lion companion"
+      >
+        <X className="size-3" aria-hidden="true" />
+      </button>
+
       {menuOpen && (
         <div className="lion-pet-menu" role="dialog" aria-label="Lion companion settings" onPointerDown={(event) => event.stopPropagation()}>
           <div className="flex items-center justify-between gap-3">

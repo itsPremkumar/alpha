@@ -1,21 +1,32 @@
+// ChatShellLanding.tsx — the empty-chat landing.
+//
+// WHAT THIS SURFACE IS FOR: it is the screen you see before the first message,
+// so it has one job — say hello and get out of the way. It used to also carry a
+// paragraph naming the operator, the specialist and the project, a "How can I
+// help you today?" line, and four starter cards. Together those took the whole
+// viewport and pushed the transcript and composer below the fold, while the
+// agent's name and role were printed two or three times in the same screen (the
+// chat header already names the specialist, and the starter block named it
+// again). The sentences also carried a setup instruction aimed at a developer
+// ("Set your name in Settings to be greeted by it") and jargon ("standalone
+// mode") that meant nothing to the person reading it.
+//
+// So the landing is now the avatar and the greeting, nothing else. Switching
+// specialists lives in the chat header, where the specialist is already named.
 "use client";
 
 import React from "react";
 import { DEFAULT_AGENT_AVATAR, DEFAULT_AGENT_NAME } from "@/lib/default-agent";
-import {
-  Code2,
-  FileText,
-  FolderCheck,
-  HelpCircle,
-  ChevronRight,
-  Sparkles,
-  Bot,
-} from "lucide-react";
-import { contextSentence } from "@/lib/chat-shell";
-import { ANONYMOUS_LABEL, landingGreeting, operatorIdentity } from "@/lib/operator";
-import { Btn } from "@/components/ui";
+import { landingGreeting, operatorIdentity } from "@/lib/operator";
 
 export interface ChatShellLandingProps {
+  /**
+   * The specialist in play, or `null` for the default agent.
+   *
+   * These props are still accepted because the caller passes them, but this
+   * surface no longer narrates them: the chat header names the specialist and
+   * the composer is the only thing an empty chat needs to offer.
+   */
   botName: string | null;
   botRole?: string | null;
   botAvatar?: string | null;
@@ -40,44 +51,32 @@ export interface ChatShellLandingProps {
    * default can never overstate familiarity.
    */
   returning?: boolean;
-  /** Called with the prompt the user picked, so the composer can be seeded. */
+  /** Accepted and ignored: starter prompts are no longer offered here. */
   onPickStarter?: (prompt: string) => void;
+  /** Accepted and ignored: the project inspector is reachable from elsewhere. */
   onReviewProject?: () => void;
 }
 
 export function ChatShellLanding(props: ChatShellLandingProps) {
-  const {
-    botName,
-    botRole,
-    botAvatar,
-    projectId,
-    projectName,
-    userName = null,
-    returning = false,
-    onPickStarter,
-    onReviewProject,
-  } = props;
-
-  const sentence = contextSentence({
-    botName,
-    projectName,
-    conversationTitle: null,
-  });
+  const { botAvatar, userName = null, returning = false } = props;
 
   return (
     /* `justify-center` was the clipping cause, not `my-*`. A flex container
        taller than its scroller centres its content by overflowing *both* ends,
        and the top overflow is unreachable — the transcript scroller is
-       `flex-1 overflow-y-auto`, so the greeting and "How can I help you today?"
-       were sliced in half on any viewport where the landing block exceeds the
-       available height. Measured: scroller clientH 219 vs scrollH 652.
+       `flex-1 overflow-y-auto`, so the greeting was sliced in half on any
+       viewport where the landing block exceeded the available height. Measured:
+       scroller clientH 219 vs scrollH 652.
 
        `my-auto` on a column flex item resolves to 0 in the cross axis (height is
        not stretched), so it centres nothing and the `py-8` already present keeps
        the spacing the design intends. `justify-start` keeps the top reachable and
        `my-auto` centres when there *is* spare room. */
-    <div className="max-w-2xl mx-auto w-full flex flex-col items-center justify-start text-center py-8 space-y-6 select-none my-auto" data-shell="landing">
-      {/* ── 1. Hero Avatar Icon with Subtle Glow ─────────────────────── */}
+    <div
+      className="max-w-2xl mx-auto w-full flex flex-col items-center justify-start text-center py-8 space-y-6 select-none my-auto"
+      data-shell="landing"
+    >
+      {/* ── Hero Avatar Icon with Subtle Glow ─────────────────────── */}
       <div className="relative group">
         <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 opacity-40 blur-lg group-hover:opacity-75 transition-opacity" />
         {/* `size-18` is NOT in Tailwind's default spacing scale (it steps
@@ -94,157 +93,21 @@ export function ChatShellLanding(props: ChatShellLandingProps) {
           ) : (
             /* No specialist picked: the default agent's own face, not a
                generic code glyph. */
-            <img src={DEFAULT_AGENT_AVATAR} alt={DEFAULT_AGENT_NAME} className="size-full rounded-md object-cover" />
+            <img
+              src={DEFAULT_AGENT_AVATAR}
+              alt={DEFAULT_AGENT_NAME}
+              className="size-full rounded-md object-cover"
+            />
           )}
         </div>
       </div>
 
-      {/* ── 2. Greeting & Context ────────────────────────────────────── */}
-      <div className="space-y-1.5 max-w-lg">
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-          {landingGreeting(operatorIdentity(userName), returning)}
-        </h2>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          {userName ? (
-            <>
-              Signed in as{" "}
-              <span className="text-foreground font-semibold">{userName}</span>.
-            </>
-          ) : (
-            <>
-              Running as the local {ANONYMOUS_LABEL.toLowerCase()}. Set your name in{" "}
-              <span className="text-foreground font-semibold">Settings</span> to be greeted by it.
-            </>
-          )}{" "}
-          You are working with{" "}
-          <span className="text-foreground font-semibold">{botName || DEFAULT_AGENT_NAME}</span>
-          {projectName ? (
-            <>
-              {" "}on the <span className="text-foreground font-semibold">{projectName}</span> project.
-            </>
-          ) : (
-            " in standalone mode."
-          )}
-        </p>
-        <p className="text-sm font-medium text-foreground/90 pt-1">
-          How can I help you today?
-        </p>
-      </div>
-
-      {/* ── 3. 2x2 Feature Discovery Card Grid (from Reference Mockup) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl text-left pt-1">
-        {/* Card 1: Create a new plan.
-
-            These cards used to seed the composer with raw internal command
-            strings — `"/plan "` with a trailing space, and
-            `"Write or improve code for "` with a dangling preposition. So a
-            button labelled in friendly prose dropped a CLI invocation into the
-            input box, and an unresolvable command produced a command error from
-            a card that had promised a conversation. Each now seeds a complete,
-            self-contained prompt the agent can answer as written, and the
-            composer shows the operator the text before they send it. */}
-        <button
-          type="button"
-          onClick={() =>
-            onPickStarter?.(
-              "Create a plan for this work. Break it into concrete steps, call out anything you need from me, and tell me what to start with.",
-            )
-          }
-          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between elev-1 hover:elev-2 cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20 group-hover:bg-primary/20 transition-colors">
-              <FileText className="size-5" />
-            </div>
-            <div>
-              <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
-                Create a new plan
-              </span>
-              <span className="block text-[11px] text-muted-foreground">
-                Plan your project step by step
-              </span>
-            </div>
-          </div>
-          <ChevronRight className="size-4 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-1" />
-        </button>
-
-        {/* Card 2: Write or improve code */}
-        <button
-          type="button"
-          onClick={() =>
-            onPickStarter?.(
-              "Write or improve some code. Show me the code, explain what it does, and point out anything you would do differently.",
-            )
-          }
-          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between elev-1 hover:elev-2 cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors">
-              <Code2 className="size-5" />
-            </div>
-            <div>
-              <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
-                Write or improve code
-              </span>
-              <span className="block text-[11px] text-muted-foreground">
-                Generate, debug or refactor code
-              </span>
-            </div>
-          </div>
-          <ChevronRight className="size-4 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-1" />
-        </button>
-
-        {/* Card 3: Review the project */}
-        <button
-          type="button"
-          onClick={() => {
-            if (onReviewProject) {
-              onReviewProject();
-            } else {
-              onPickStarter?.("Review the current project status, files and logic.");
-            }
-          }}
-          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between elev-1 hover:elev-2 cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-500 border border-purple-500/20 group-hover:bg-purple-500/20 transition-colors">
-              <FolderCheck className="size-5" />
-            </div>
-            <div>
-              <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
-                Review the project
-              </span>
-              <span className="block text-[11px] text-muted-foreground">
-                Check files, logic or progress
-              </span>
-            </div>
-          </div>
-          <ChevronRight className="size-4 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-1" />
-        </button>
-
-        {/* Card 4: Ask a question */}
-        <button
-          type="button"
-          onClick={() => onPickStarter?.("")}
-          className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all flex items-center justify-between elev-1 hover:elev-2 cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 group-hover:bg-emerald-500/20 transition-colors">
-              <HelpCircle className="size-5" />
-            </div>
-            <div>
-              <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
-                Ask a question
-              </span>
-              <span className="block text-[11px] text-muted-foreground">
-                Get help with anything
-              </span>
-            </div>
-          </div>
-          <ChevronRight className="size-4 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-1" />
-        </button>
-      </div>
-
+      {/* The greeting is the whole message. Whether it says "Welcome back" is
+          decided by `landingGreeting`, which only claims a previous session when
+          one is real. */}
+      <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+        {landingGreeting(operatorIdentity(userName), returning)}
+      </h2>
     </div>
   );
 }
