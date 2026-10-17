@@ -90,7 +90,7 @@ DEFAULT_CONCURRENT_NATIVE_SUBAGENTS = 3
 
 #: Schema ceiling on ``subagent_runtime.max_running`` — a deployment may raise
 #: the running count, but never past this.
-MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD = 64
+MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD = 300
 
 # --------------------------------------------------------------------------
 # Workflow wave axis — dynamic workflow graph execution
@@ -147,4 +147,4 @@ MAX_GROUP_PARALLEL_MEMBERS = 3
 #: This is a *plan* worker budget, a separate domain from the workflow
 #: ``SWARM`` node's member fan-out (``MAX_WAVE_CONCURRENCY_CEILING``), so the
 #: two numbers legitimately differ.
-MAX_SWARM_PLAN_CONCURRENCY = 64
+MAX_SWARM_PLAN_CONCURRENCY = 300

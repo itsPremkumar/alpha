@@ -131,7 +131,7 @@ export function SwarmModeControl({
             className="max-w-16 bg-transparent text-[10px] focus:outline-none"
             title="Maximum concurrent workers in a swarm wave"
           >
-            {[2, 3, 4, 6, 8, 12].map((n) => (
+            {[2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 100, 150, 200, 300].map((n) => (
               <option key={n} value={n}>
                 {n} workers
               </option>
