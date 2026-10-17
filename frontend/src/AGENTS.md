@@ -96,6 +96,7 @@ source for exact route mappings and honest display states.
 | Memory overview, extraction health and L1 capture status | `components/sections/MemorySection.tsx`, `lib/memory.ts` | `lib/memory.test.mjs` |
 | Specialist catalog and orchestration controls | subagent catalog, composer selectors, Team Ops swarm DAG, per-task acceptance and receipt-citation audit display | `lib/subagent-catalog-view.test.mjs`, `lib/swarm-structure-view.test.mjs`, `lib/swarm-structure-wiring.test.mjs` |
 | Delegation scenario catalogue + advisory plan preview | `lib/subagent-scenarios.ts`, `components/DelegationPlanPreview.tsx`, mounted in `Composer` beside the delegation controls | `lib/subagent-scenarios.test.mjs` |
+| Swarm mode on/off control | `lib/swarm-preference.ts`, `components/SwarmModeControl.tsx`, mounted in `Composer` beside the delegation controls | `lib/swarm-preference.test.mjs` |
 | Projects and group tree | project/group section clients and views | matching `lib/projects*.test.mjs`, `lib/groups*.test.mjs` |
 | Alpha peer network | peer client and network panel | `lib/peer-network*.test.mjs`, `lib/qr-decode.test.mjs` |
 | Message projections and tags | `lib/messages-view.ts`, tag palette | `lib/messages-view.test.mjs`; tag editing is covered by the composer/UI suite. |
