@@ -556,6 +556,98 @@ with reason", not success.
 **Refusals.** No assertions about model quality inside the probe; it measures
 *plumbing*, not intelligence. No new runtime dependency.
 
+#### W1 implementation record (measured 2026-10-17)
+
+**Status: implemented; live evidence recorded; all 11 catalogue scenarios
+measured at least once.** Six live runs produced reports — two full-catalogue
+attempts were interrupted mid-flight by host events (below), and the remaining
+scenarios were measured in chunks. Reports are written under
+`backend/.alpha/subagent_probe/<run-id>/` (gitignored); run inventory, all
+times UTC:
+
+| tag | run id | note |
+| --- | --- | --- |
+| R-pre | `20261017T141735Z-18e92662` | before the `autonomous` opt-in (verdict `complete`) |
+| R-sub | `20261017T142149Z-007ab1a7` | post-opt-in subset, 2 scenarios (verdict `complete`) |
+| R-a | `20261017T150649Z-78928464` | full catalogue attempt 1 — killed at scenario 8 (verdict `incomplete`) |
+| R-b | `20261017T152159Z-060ca2ad` | full catalogue attempt 2 — killed at scenario 7 (verdict `incomplete`) |
+| R-c | `20261017T160443Z-dab4acc7` | light chunk (verdict `incomplete`) |
+| R-d | `20261017T160558Z-a2ecfe6d` | tail chunk, 3 scenarios (verdict `complete`, exit 0) |
+
+**Artifacts.** Probe `backend/scripts/subagent_delegation_probe.py` (attach
+mode: `--base-url`, default `http://127.0.0.1:8001`); pure report schema
+`backend/scripts/support/subagent_probe_report.py`; offline suite
+`backend/tests/test_subagent_delegation_probe_schema.py` (35 tests); operator
+guide `backend/scripts/AGENTS.md`. One command from `backend/`:
+`uv run --no-sync python scripts/subagent_delegation_probe.py`;
+`--scenarios <keys>` runs a chunk; `--list` prints the catalogue. Exit codes:
+`0` complete, `1` incomplete, `2` schema violations. `queue_wait_seconds` stays
+`null` everywhere (`UNINSTRUMENTED_FIELDS`) until W3.a instruments it.
+
+**The `autonomous` opt-in is load-bearing.** R-pre measured **0 delegations**
+on `single_delegation`: without `autonomous=true` the server never applies
+`subagent_enabled` (it is sanitised out of ordinary client context), so the
+`task` tool is absent and a zero-delegation measurement is a property of the
+request, not of the model. Every later run opts in; R-sub then met both
+`direct_answer` (0 delegations) and `single_delegation` (1 delegation,
+`alpha-free`, 22 089 tokens, 157.8 s).
+
+**Measured per scenario** (best verdict across runs; a finding, not an
+endorsement):
+
+| scenario | verdict | measured notes |
+| --- | --- | --- |
+| `direct_answer` | met / unmet | met with 0 delegations (R-sub); unmet with exactly 1 delegation in both full attempts (R-a, R-b) — over-delegation on an explicitly direct prompt is model behaviour, not plumbing |
+| `single_delegation` | met | 1 delegation; the child reported provider usage; model `alpha-free` |
+| `parallel_fanout_3` | met | 3 delegations completed; measured overlap: 3 task pairs with intersecting event windows |
+| `quick_category` | met | quick-category delegation completed via `alpha-free` |
+| `turn_capped` | met | `stop_reasons=['turn_capped']` with run status `error` — the cap fired and is attributable |
+| `acceptance_tests_pass` | unmet | `tests_passed` landed UNVERIFIED (`checked=false`): "no matching bash execution recorded"; R-b also hit the 420 s stream/poll deadline with the run possibly non-terminal |
+| `acceptance_tests_fail` | unmet | the delegation ledger carried no acceptance verdict (2 delegations, R-a) |
+| `acceptance_file_pass` | unmet | artifact `probe_accept_pass.txt` was **created** (artifacts row) yet `file_written` landed UNVERIFIED: "file size could not be established by a bounded probe; content not read" (R-d) |
+| `acceptance_file_fail` | unmet | same UNVERIFIED shape for the negative case (R-d) |
+| `batch_flush_cancel` | refused | batches disabled on this deployment (`{"enabled": false, "repository_available": true, "worker_running": false, "max_running": 3}`); `refused` is recorded and never changes the exit code (R-c) |
+| `control_plane_spawn` | met | terminal control record (`completed`, result summary `CONTROL-PROBE`), visible in the control listing (R-d) |
+
+**D1** — live runs recorded (R-sub, R-a, R-b, R-c, R-d above). **D3** —
+offline: 35 tests pass (`uv run --no-sync pytest
+tests/test_subagent_delegation_probe_schema.py -q`), covering the schema
+round-trip, `null`-vs-`0` honesty, outcome/expectation consistency, exit-code
+mapping, the delete-a-captured-field negative control, the evaluators, and the
+crash path; `ruff check` / `ruff format --check` clean.
+
+**D4 — target death mid-probe (satisfied by live kills).** Three unplanned
+kills hit the probe mid-run; each produced a written `incomplete` report naming
+a transport reason with exit `1` — never success, never a probe-bug `error`:
+
+1. the self-healing watchdog killing the port-8001 tree (20:47:35 local) —
+   R-a `acceptance_file_pass`: "event stream … broke mid-run: `ReadError`";
+2. a host network event plus stack restart (21:12) — R-b
+   `acceptance_tests_fail`: "POST /api/threads transport failure: `ReadError`";
+3. a launcher/watchdog port crossfire (21:34) — R-c `control_plane_spawn`:
+   "`RemoteProtocolError`: Server disconnected without sending a response".
+
+The first full-catalogue attempt died differently, and that is the finding that
+mattered: the trailing `GET /api/ops/version` was not transport-guarded, so a
+dead target turned the run into a traceback with nothing on disk (host TCP
+ephemeral-port exhaustion; Windows Tcpip event 4231 at 20:00:34). The version
+read is now best-effort and a dead target always yields a written report —
+pinned by `test_d4_a_target_that_dies_mid_probe_still_yields_a_written_report`
+— and every later kill produced one. The synthetic variant (an isolated second
+Gateway `taskkill`ed mid-stream) was prepared but not run: the organic kills
+are the stronger evidence, and a second Gateway on this host would have
+duplicated the operator's IM channel connections for the duration.
+
+**Handed to the next workstreams.** (a) Over-delegation on a direct prompt is
+measurable and belongs in the W5/W9 evidence base. (b) The acceptance plane's
+evidence gap is symmetric: positive and negative `file_written` and
+`tests_passed` criteria all land UNVERIFIED — in one case the artifact exists
+while the verifier cannot bound-check it — which is W8's mandate. (c)
+Free-router provider failures surface inside scenarios as
+`model_failure_recovery` / `delivery_incomplete` SSE error frames and can push
+a run past the probe's stream/poll deadline; scenario verdicts must keep
+distinguishing that from plumbing failure.
+
 ---
 
 ### W2 — One delegation read model (Phase 1)
