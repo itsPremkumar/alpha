@@ -70,6 +70,16 @@ npm-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 .eslintcache
+# Local Next.js output snapshots made while swapping dev/production builds.
+# These are regenerated from source and are never deployment artifacts.
+/frontend/.next.codex-backup-*/
+/frontend/.next.previous-prod/
+
+# ── Local test / debugging scratch ──────────────────────────────────────────
+# Pytest's per-file timing cache and one-off middleware debug scripts are local
+# diagnostics, not test sources. Keep the patterns scoped to the backend root.
+/backend/.test_durations
+/backend/.tmp_dbg_*.py
 
 # ── Alpha runtime state (the `.alpha` data directory) ──────────────────────
 # Everything below is machine state, never source: checkpoints, the SQLite /
