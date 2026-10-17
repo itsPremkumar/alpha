@@ -23,6 +23,12 @@ const read = (relative) =>
 
 const chat = read("../components/ChatView.tsx");
 const composer = read("../components/Composer.tsx");
+// The mode/preset/worker rows moved out of JSX into a projection module when the
+// picker was grouped (see `delegation-mode-view.test.mjs`). These assertions
+// follow them there rather than being dropped: the values are still the wire
+// contract with the Gateway, and pinning them only in the composer would have
+// silently stopped testing them the day they moved.
+const modeView = read("./delegation-mode-view.ts");
 
 // ---------------------------------------------------------------------------
 // The flag reaches the server
@@ -85,16 +91,32 @@ test("the selector exposes real worker and category choices", () => {
     /listSubagentCatalog\(\)/,
     "worker choices must come from the Gateway catalog",
   );
-  assert.match(composer, /category:research/);
-  assert.match(composer, /category:quick/);
-  assert.match(composer, /Quick · 15 turns \/ 2 min/);
-  assert.match(composer, /limited to 15 turns and 120 seconds per delegated task/);
-  assert.match(composer, /category:deep-research/);
-  assert.match(composer, /type:\$\{choice\.name\}/);
+  // The composer must actually render the groups it builds. A projection that
+  // is computed and never rendered is the dead-control defect.
+  assert.match(composer, /buildDelegationGroups\(\{/);
+  assert.match(composer, /<optgroup key=\{group\.id\} label=\{group\.label\}>/);
+  assert.match(composer, /optionText\(option\)/);
+
+  // The choice values themselves, wherever they now live.
+  assert.match(modeView, /`category:\$\{p\.name\}`/);
+  assert.match(modeView, /research/);
+  assert.match(modeView, /quick/);
+  assert.match(modeView, /deep-research/);
+  assert.match(modeView, /quick: "15 turns · 2 min cap"/);
+  assert.match(modeView, /`type:\$\{choice\.name\}`/);
+
+  assert.match(
+    composer,
+    /limited to 15 turns and 120 seconds per delegated task/,
+    "the selected Quick mode must still state its real ceiling",
+  );
   assert.match(composer, /Concurrent subagents/);
   assert.match(composer, /Total subagents/);
   assert.match(chat, /max_total_subagents/);
+  // Arena is not offered here; a fabricated option would be a claim no request
+  // can honour. Checked in both files because the rows now live in one of them.
   assert.doesNotMatch(composer, /<option disabled>Arena/);
+  assert.doesNotMatch(modeView, /Arena/);
 });
 
 test("the control is disabled while a run is in flight", () => {

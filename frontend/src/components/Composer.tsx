@@ -38,6 +38,7 @@ import { InsertMenu } from "@/components/InsertMenu";
 import { ModelMenu } from "@/components/ModelMenu";
 import { QUICK_KEY_PROVIDERS } from "@/lib/model-menu";
 import { listSubagentCatalog, type SubagentDef } from "@/lib/subagents";
+import { buildDelegationGroups, optionText } from "@/lib/delegation-mode-view";
 import {
   concurrencyForTotal,
   concurrencyOptionsForTotal,
@@ -391,6 +392,16 @@ export function Composer({
     });
     return () => { active = false; };
   }, []);
+  /**
+   * The subagent picker, grouped by what the choice actually is.
+   *
+   * Memoised on the catalog itself rather than recomputed per render, so the
+   * grouping cannot reshuffle between keystrokes while a run streams.
+   */
+  const delegationGroups = useMemo(
+    () => buildDelegationGroups({ choices: subagentChoices, error: subagentCatalogError }),
+    [subagentChoices, subagentCatalogError],
+  );
   /**
    * The scroll container holding the palette rows.
    *
@@ -1226,20 +1237,28 @@ export function Composer({
                 onChange={(event) => onDelegationModeChange(event.target.value)}
                 aria-label="Subagent mode"
                 title={subagentCatalogError ? `Subagent catalog unavailable: ${subagentCatalogError}` : delegationMode === "category:quick" ? "Quick is limited to 15 turns and 120 seconds per delegated task" : "Choose whether and how Alpha delegates this message"}
-                className={`max-w-44 rounded-lg border border-border/70 bg-muted/60 px-2 py-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 ${delegationMode !== "off" ? "border-primary/40 text-primary" : "text-muted-foreground"}`}
+                className={`max-w-56 rounded-lg border border-border/70 bg-muted/60 px-2 py-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 ${delegationMode !== "off" ? "border-primary/40 text-primary" : "text-muted-foreground"}`}
               >
-                <option value="off">Subagents: Off</option>
-                <option value="auto">Subagents: Auto</option>
-                <option value="category:general">General · standard bounded helper</option>
-                <option value="category:research">Research · multi-source specialist</option>
-                <option value="category:quick">Quick · 15 turns / 2 min</option>
-                <option value="category:deep-research">Deep research · five-pass evidence workflow</option>
-                {subagentCatalogError && <option disabled>Worker catalog unavailable · see details</option>}
-                {subagentChoices?.length === 0 && <option disabled>No named workers reported</option>}
-                {(subagentChoices ?? []).map((choice) => (
-                  <option key={`${choice.source}:${choice.name}`} value={`type:${choice.name}`}>
-                    {`${choice.displayName || choice.name} · ${(choice.description || "specialist worker").replace(/\s+/g, " ").slice(0, 72)}`}
-                  </option>
+                {/*
+                  Grouped, not flat. The three kinds of choice were previously
+                  interleaved in one run: how much to delegate (`off`/`auto`),
+                  which INTENT to delegate with (`category:*`), and WHICH NAMED
+                  WORKER to run (`type:*`). `<optgroup>` separates them without
+                  giving up the keyboard and screen-reader behaviour a
+                  div-built menu would have to re-earn.
+
+                  `value=""` rows are the two failure answers the Gateway can
+                  return for the catalog. They are unreachable by keyboard, so
+                  the select's own `value` can never be stranded on one.
+                */}
+                {delegationGroups.map((group) => (
+                  <optgroup key={group.id} label={group.label}>
+                    {group.options.map((option) => (
+                      <option key={`${group.id}:${option.value}`} value={option.value} disabled={option.value === ""}>
+                        {optionText(option)}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             )}
