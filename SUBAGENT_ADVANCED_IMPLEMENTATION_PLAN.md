@@ -361,8 +361,50 @@ Four bugs this suite caught in its own first draft, all real:
 4. `consumed` was not recorded at all, so a tournament request answered by
    `direct` was indistinguishable from a correct plan.
 
-**Still to do:** the Gateway catalogue/plan routes and the composer preview
-(Phase 5 §5.1). Nothing in this slice changes dispatch — that is the point.
+**Still to do:** turning shadow off, which is a separate decision and the only
+thing that would change dispatch.
+
+### 3.1.2 DONE — routes and composer preview (2026-10-17)
+
+The planner now has a consumer, and an operator can see what a draft *would*
+take before sending it.
+
+| Piece | File |
+| --- | --- |
+| `GET /api/subagents/scenarios` | the shape catalogue plus `shadow_default` |
+| `POST /api/subagents/plan` | resolves a prompt to an advisory plan |
+| Client | `frontend/src/lib/subagent-scenarios.ts` |
+| UI | `frontend/src/components/DelegationPlanPreview.tsx`, mounted in `Composer` |
+
+The plan route has **no `shadow` field**. `alpha.subagents.plan` has no dispatch
+path, so accepting a client's `shadow: false` would hand out a flag that changes
+nothing while looking like an opt-in; `extra="forbid"` makes that a 422 rather
+than an accepted-then-ignored write. Capability fields are tri-state, so a client
+that never measured Arena gets *"could not be read, so it is unknown rather than
+absent"* instead of a fabricated `false`.
+
+**A real bug, found by checking the browser rather than the suite.** The preview's
+render gate was `scenario !== "direct" || degradations.length > 0`. But a skipped
+scenario lands in **`considered`** — only an explicit request or a budget cut
+populates `degradations`. So the single most informative case, *"you asked for a
+tournament, Arena could not be read, so this runs directly"*, was precisely the
+case that rendered nothing. Unit tests passed throughout, because the bug was in a
+`.tsx` that `pnpm test` does not run.
+
+The fix moved the predicate to `planIsNoteworthy` in the lib, where the suite
+actually executes it, with a regression test asserting the precondition that the
+old gate would have hidden.
+
+Verified live on a fresh build:
+
+```
+Planned: tournament
+(preview only - nothing is dispatched by this)
+the request names a contest, an arena or competing approaches · about 3 of 8 children
+'tournament' asks for about 8 children but this run has a budget of 3, so the plan was reduced to 3
+```
+
+Turning delegation off removes the strip and leaves the draft intact.
 
 ### 3.2 `ExecutionPlan` is immutable and inspectable
 
