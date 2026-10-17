@@ -72,7 +72,40 @@ The test passes against **today's** behaviour and names it in a module docstring
 A green suite that asserts the wrong contract is worse than no suite, so the
 docstring records the measurement date.
 
-### 1.4 Decision this unblocks
+### 1.4 MEASURED ANSWER (2026-10-17, `main`) — phase complete
+
+**Both, in different directions, and that is the useful part.**
+
+| Question | Answer | Evidence |
+| --- | --- | --- |
+| Do sibling children overlap? | **Yes** | `task_tool` submits `executor.execute_async(prompt, task_id=tool_call_id)` and receives an `execution_id`, so each child takes a real slot in the process-wide admission controller |
+| Does the parent's turn block? | **Yes** | the tool then `await asyncio.shield(_await_subagent_terminal(...))`, polling every `_SUBAGENT_POLL_INTERVAL_SECONDS` (5.0s) |
+| Does the model get a handle mid-flight? | **No** | the tool returns no handle until the child is terminal |
+
+So the fan-out that matters **already works**; the missing piece is ergonomics —
+steering a running child, or continuing the turn — not parallelism.
+
+**Consequence for Phase 2:** it is **ergonomics plus budget**, not a
+parallelism build. Concretely:
+
+1. Surface the existing `execution_id` (steer / cancel / inspect), which is what
+   Claude Code's `background: true` and Hermes' `task_id` give the operator.
+2. Add the unified budget and priority admission, which is still genuinely
+   absent — Arena, swarms and `task` each hold a private ceiling and contend for
+   the same three slots.
+
+**Pinned by** `backend/tests/test_task_tool_blocking_behaviour.py` (9 tests). The
+blocking shape is a source pin rather than a timing assertion because a timing
+test would be flaky and would assert the *hoped-for* contract; the poll loop's
+boundedness (poll count, wall clock, unreadable status) is tested for real. A
+green suite asserting the wrong contract would be worse than none, so the pins
+name today's behaviour and its date.
+
+Two environment constraints that cost time and are worth recording:
+`alpha.tools.builtins` re-exports the **tool** as `task_tool`, so the module must
+be reached via `importlib.import_module`; and `tests/conftest.py` stubs
+`alpha.subagents.executor`, so `SubagentStatus` has no members here and
+`_is_subagent_terminal` cannot execute — it is pinned by source instead.
 
 | If `task` blocks | If `task` returns a handle |
 | --- | --- |
