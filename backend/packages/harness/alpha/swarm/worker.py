@@ -22,8 +22,11 @@ from typing import Any, Protocol
 from alpha.agents.middlewares.receipt_verification import verify_receipt_citations
 from alpha.bots.health import get_health_monitor
 from alpha.bots.registry import BotRegistry
+from alpha.mcp.untrusted import UNTRUSTED_DESCRIPTION_PREFIX
 from alpha.sandbox.worktrees import WorktreeManager
+from alpha.subagents.workspace_version import WORKSPACE_WRITE_TOOLS
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode
+from alpha.tools.governance import GovernanceError, GovernanceRegistry, RiskClass
 
 
 def _as_int(value: Any, default: int = 0) -> int:
@@ -34,6 +37,86 @@ def _as_int(value: Any, default: int = 0) -> int:
 
 
 logger = logging.getLogger(__name__)
+
+
+#: Risk classes that make a tool unusable on a read-only task (G7): mutation,
+#: arbitrary code execution, and destructive effects. ``external`` stays: a
+#: research fan-out that could not reach the web would not be a fan-out.
+_WRITE_CLASS_RISK: frozenset[RiskClass] = frozenset({RiskClass.WRITE, RiskClass.EXECUTE, RiskClass.DESTRUCTIVE})
+
+#: First-party tools whose mutation surface is structural to this deployment,
+#: caught by name even when nothing declared a governance class (no first-party
+#: builtin declares ``governance_*`` metadata today). The workspace write trio
+#: is the versioner's own write tool vocabulary; ``python_repl`` executes
+#: arbitrary in-process code and could write anything through it. Operator
+#: entries and declared classes cover everything beyond these.
+_READ_ONLY_DENY_TOOLS: frozenset[str] = frozenset(WORKSPACE_WRITE_TOOLS | {"python_repl"})
+
+
+def read_only_tool_pool(pool: list[Any] | tuple[Any, ...] | None) -> tuple[list[Any], list[str]]:
+    """Filter a specialist tool pool for a read-only task (G7).
+
+    Returns ``(kept_tools, dropped_tool_names)``. The worker must not rely on
+    prompt language to stay read-only — the promise is structural: tool
+    objects that could write, execute, or destructively act are absent from
+    the pool the executor binds.
+
+    Classification precedence, fail-closed at every step:
+
+    1. **An operator entry** (``config.yaml -> tool_governance``) is
+       authoritative; a ``write``/``execute``/``destructive`` class drops the
+       tool, and an operator ``read`` may keep one the denylist would drop.
+    2. **First-party declared metadata** (``governance_risk_class`` on the
+       tool) drops write-class tools.
+    3. **The structural denylist** (``_READ_ONLY_DENY_TOOLS``) drops the
+       workspace write trio and in-process code execution by name, because a
+       read-only promise cannot depend on declarations that do not exist.
+    4. **Untrusted-source tools** — MCP tools, identified by the neutralized
+       untrusted description marker — always drop: they may not classify
+       themselves, exactly as the governance registry already refuses to read
+       their self-declared metadata.
+    """
+
+    if not pool:
+        return [], []
+    try:
+        from alpha.config import get_app_config
+
+        registry = GovernanceRegistry.from_mapping(getattr(get_app_config(), "tool_governance", None))
+    except Exception as exc:  # config is advisory here: an unreadable config must not *loosen* the filter
+        logger.warning("Could not read tool_governance for the read-only pool filter; applying the denylist only", exc_info=exc)
+        registry = GovernanceRegistry()
+
+    kept: list[Any] = []
+    dropped: list[str] = []
+    for tool in pool:
+        name = str(getattr(tool, "name", "") or "")
+        metadata = getattr(tool, "metadata", None)
+        if not isinstance(metadata, Mapping):
+            metadata = None
+        description = str(getattr(tool, "description", "") or "")
+        untrusted = description.startswith(UNTRUSTED_DESCRIPTION_PREFIX)
+        try:
+            entry = registry.entry_for(name, untrusted_source=untrusted, metadata=metadata)
+        except (GovernanceError, ValueError):
+            # A malformed declaration fails closed: an unparsable tool cannot
+            # plead its way onto a read-only worker. Plain names are returned
+            # on purpose: they are machine identifiers, and the refuse-list
+            # downstream compares exactly these.
+            dropped.append(name)
+            continue
+        if entry.provenance == "operator":
+            # The operator's own decision outranks the denylist and the
+            # declared metadata: they classified this tool for this
+            # deployment on purpose.
+            if entry.risk_class in _WRITE_CLASS_RISK:
+                dropped.append(name)
+                continue
+        elif untrusted or name in _READ_ONLY_DENY_TOOLS or entry.risk_class in _WRITE_CLASS_RISK:
+            dropped.append(name)
+            continue
+        kept.append(tool)
+    return kept, dropped
 
 
 class SwarmWorkerBackend(Protocol):
@@ -208,6 +291,7 @@ class SpecialistSubagentWorker:
         tool_pool_error: str | None = None,
         thread_id: str | None = None,
         run_id: str | None = None,
+        read_only: bool = False,
     ):
         self.specialist = str(specialist)
         self.agent_type = agent_type
@@ -215,6 +299,18 @@ class SpecialistSubagentWorker:
         self.skills = list(skills) if skills is not None else None
         self.system_prompt = str(system_prompt).strip() if system_prompt else None
         self.model = model
+        self.read_only = bool(read_only)
+        # G7: the read-only promise is enforced at construction, not in the
+        # prompt. A worker built from a read-only task keeps only pool tools
+        # that provably cannot write, and every dropped name also travels on
+        # the subagent's own refuse-list (``disallowed_tools``), so the
+        # executor gate independently refuses a call even if a pool change
+        # ever re-introduced such a tool object. ``tool_pool_error`` stays
+        # authoritative when set: a pool that failed to assemble must not be
+        # rescued by a filtered subset.
+        self.read_only_dropped_tools: list[str] = []
+        if self.read_only and tool_pool is not None and tool_pool_error is None:
+            tool_pool, self.read_only_dropped_tools = read_only_tool_pool(tool_pool)
         self.tool_pool = tool_pool
         self.tool_pool_error = tool_pool_error
         self.thread_id = thread_id
@@ -223,6 +319,17 @@ class SpecialistSubagentWorker:
 
     def set_context(self, context: object) -> None:
         self.context = context
+
+    def _disallowed_tools(self, base_disallowed: list[str] | tuple[str, ...]) -> list[str]:
+        """The refuse-list for this specialist's executor: the underlying
+        configuration's own denies plus, on a read-only task, every tool the
+        construction-time filter dropped. Two gates total — the filtered pool
+        can no longer bind them, and even a pool change cannot rebind what the
+        executor refuses by name."""
+
+        names = [str(name) for name in (base_disallowed or [])]
+        names.extend(self.read_only_dropped_tools)
+        return list(dict.fromkeys(names))
 
     def _resolve_agent_config(self):
         """Return the ``SubagentConfig`` this specialist executes as.
@@ -250,7 +357,7 @@ class SpecialistSubagentWorker:
                 system_prompt=self.system_prompt or chosen.system_prompt,
                 tools=list(self.tools) if self.tools is not None else (list(chosen.tools) if chosen.tools is not None else None),
                 inherit_all=False if self.tools is not None else bool(chosen.inherit_all),
-                disallowed_tools=list(chosen.disallowed_tools or []),
+                disallowed_tools=self._disallowed_tools(chosen.disallowed_tools or []),
                 skills=list(self.skills) if self.skills is not None else (list(chosen.skills) if chosen.skills else None),
                 model=self.model or "inherit",
                 max_turns=chosen.max_turns,
@@ -264,7 +371,7 @@ class SpecialistSubagentWorker:
             system_prompt=self.system_prompt or base.system_prompt,
             tools=list(self.tools) if self.tools is not None else (list(base.tools) if base.tools is not None else None),
             inherit_all=False if self.tools is not None else bool(base.inherit_all),
-            disallowed_tools=list(base.disallowed_tools or []),
+            disallowed_tools=self._disallowed_tools(base.disallowed_tools or []),
             skills=list(self.skills) if self.skills is not None else (list(base.skills) if base.skills else None),
             model=self.model or "inherit",
             max_turns=base.max_turns,
@@ -337,6 +444,10 @@ class SpecialistSubagentWorker:
                 "agent_type": config.name,
                 "system_prompt_source": "catalogue" if self.system_prompt else ("builtin" if self.agent_type else "builtin_default"),
                 "turn_budget": config.max_turns,
+                # Recorded when the constructed task shipped a read-only
+                # promise: what was withheld, so the audit shows the
+                # enforcement rather than just the outcome.
+                **({"task_assurance": "read_only", "read_only_dropped_tools": list(self.read_only_dropped_tools)} if self.read_only else {}),
             }
         ]
         citation_audit: dict[str, Any] | None = None

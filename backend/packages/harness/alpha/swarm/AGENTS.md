@@ -120,6 +120,25 @@ can distinguish execution success from acceptance success. Regression coverage:
 `backend/tests/test_swarm_engine.py`, `test_swarm_advanced_features.py`,
 `test_swarm_worker_execution.py`, `test_swarm_v2_runtime.py`.
 
+**Read-only worker tool isolation (G7).** A specialist task whose capability
+tags are all read-only (`alpha.sandbox.worktree_strategy._READ_ONLY_CAPABILITY_TAGS`)
+runs on a worker that physically cannot write: `read_only_tool_pool` filters the
+specialist tool pool before the executor binds it, dropping every tool that is
+class-mutating under the governance registry (`write`/`execute`/`destructive`,
+operator `tool_governance` entries authoritative, declared `governance_risk_class`
+metadata next), the structural denylist (`WORKSPACE_WRITE_TOOLS` plus
+`python_repl`), and every untrusted-source (MCP) tool — an MCP tool may not
+classify itself, exactly as `GovernanceRegistry` already refuses its
+self-declared metadata. Every dropped name also lands on the worker's
+`disallowed_tools`, so the executor gate independently refuses calls even if a
+pool change re-introduced an object. `External` tools stay: a research fan-out
+that could not reach the web would not be a fan-out. The sampled derivation is
+the same single `task_signals_for()` the worktree branch uses — never a second
+opinion that could disagree with the isolation decision. `tool_pool_error`
+stays authoritative when set: a pool that failed to assemble is never rescued
+by a filtered subset. Regression coverage:
+`backend/tests/test_swarm_read_only_worker_tool_isolation.py`.
+
 ### Adaptive mode selection, deliberation, and failure-aware telemetry
 
 `SwarmMode.AUTO` is resolved by `alpha.swarm.strategy.resolve_strategy`, never

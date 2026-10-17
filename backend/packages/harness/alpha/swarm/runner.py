@@ -124,6 +124,17 @@ class AsyncSwarmRunner:
                 missing_tools = sorted(set(profile.tools or []) - available_tools)
                 if missing_tools:
                     raise RuntimeError(f"assigned specialist {profile.name!r} declares configured tools that are unavailable in the assembled pool: {', '.join(missing_tools)}")
+            if task_node.capability_tags:
+                # G7: a task whose capability tags are all read-only gets a
+                # worker structurally unable to write — the same measured
+                # signals the worktree branch routes isolation from, and the
+                # same single derivation (`task_signals_for`), never a second
+                # opinion that could disagree with the isolation decision.
+                from alpha.sandbox.worktree_strategy import task_signals_for
+
+                read_only = task_signals_for(task_node).read_only
+            else:
+                read_only = False
             return SpecialistSubagentWorker(
                 task_node.assigned_worker,
                 agent_type=profile.agent_type or (task_node.result_payload or {}).get("specialist_agent_type") or None,
@@ -135,6 +146,7 @@ class AsyncSwarmRunner:
                 tool_pool_error=self._specialist_tool_pool_error,
                 thread_id=self.thread_id,
                 run_id=None,
+                read_only=read_only,
             )
         if task_node.worker_type == "permanent_bot" and task_node.assigned_worker:
             return SpecialistBotWorker(task_node.assigned_worker)
