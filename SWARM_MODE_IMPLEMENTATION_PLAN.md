@@ -262,6 +262,50 @@ cannot write.
 bug**: a system can pass every test and still be broken in production. Every
 phase above should be verified by *running* a swarm, not by reading the source.
 
+### Completion state (updated 2026-10-17, after implementation)
+
+Status against the phases above, evidence-tagged:
+
+- **Phase A — shipped.** G4: the governor reports `models_requested` /
+  `models_used` measured from the plan and worker evidence — no hardcoded
+  table, no name outside `config.yaml -> models[]`. G6:
+  `SwarmTelemetry.cost_projection` refuses a doomsday plan before it is
+  registered; only wall-clock is projected, token/tool figures stay `None`.
+- **Phase B — shipped.** G2: `score_plan` builds
+  `dependency_critical_path_plus_capacity_v1` per candidate.
+  G3: `parallelism_realised` (serial collapse) and
+  `subtask_completion_ratio` (spurious parallelism) are advisory telemetry —
+  missing measurements report `unknown`, never `collapsed`.
+- **Phase C — shipped.** G1: real `TaskSignals` from task shape via the single
+  `task_signals_for()`. G7: read-only workers are enforced structurally —
+  `read_only_tool_pool` filters the specialist pool before the executor binds
+  it and every dropped tool also lands on the worker's `disallowed_tools`
+  (regressions: `backend/tests/test_swarm_read_only_worker_tool_isolation.py`).
+  G5: specialist requirements match the live roster off capability tags with a
+  hard capability floor.
+- **Phase D — item 9 shipped; 10 and 11 not implemented.** `read_fanout` and
+  `critical_path_split` exist with UI rows in all three surfaces (Team Ops
+  selector, composer `SwarmModeControl`, the structure panel's topology badge)
+  and the chat-side read-only `SwarmRunBoard` monitors coordinator swarms
+  (regressions: `swarm-structure-view.test.mjs`, `lib/swarm-run-board.test.mjs`).
+  `sharded_context` (10) is still a gap; `adversarial_review` (11) stays
+  unwritten until DEBATE is measurably insufficient, as the plan required.
+- **Capacity ceiling — measured live on a fresh Gateway (2026-10-17).** The
+  scheduler fan-in ceiling is authority-owned in `alpha.config.limits`
+  (`MAX_SWARM_TASK_DEPENDENCIES = MAX_SWARM_PLAN_ITEMS`), so a 1000-item
+  map/reduce is legal. Live `POST /api/swarms`: complex → 8, 7 items → 7,
+  simple → 2, explicit 50 → 50, explicit 1000 → 1000 (1001-task plan built in
+  1.7s), `max_concurrency=1001` → HTTP 422 refused, never clamped. `0` is the
+  auto-size sentinel end-to-end (router `ge=0`, coordinator passes it through,
+  decomposer picks from the situation: batch → one worker per item capped at
+  the ceiling; complexity ≥ 0.7 → 8; ≥ 0.4 → 4; otherwise 2).
+- **Phase E — partially served.** The live sweep above measured the *sizing*
+  decision at plan level on every case; predicted-vs-realised makespan per new
+  mode (item 12) has not been recorded against a real run yet — execution-level
+  realised concurrency this session is covered by the runtime suites, not a
+  fresh 1000-specialist spend. Item 13 (tuning `score_plan`, learned routing)
+  remains untouched until that recording exists.
+
 ---
 
 ## 5. What I deliberately did not propose
