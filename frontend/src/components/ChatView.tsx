@@ -21,6 +21,7 @@ import { ActivityStatus } from "@/components/ActivityStatus";
 import { NetworkWaitBubbles } from "@/components/NetworkWaitBubbles";
 import { SubagentList } from "@/components/SubagentList";
 import { SwarmBoard } from "@/components/agent-ui/SwarmBoard";
+import { SwarmRunBoard } from "@/components/SwarmRunBoard";
 import { TranscriptSearch } from "@/components/TranscriptSearch";
 import { WorkspaceSheet } from "@/components/WorkspaceSheet";
 import { findTranscriptMatches, toSearchable } from "@/lib/transcript-search";
@@ -4168,6 +4169,13 @@ export default function ChatView({
                             <SubagentList tasks={subagentTasks} />
                           </div>
                         )}
+                        {/* Coordinator swarms run in the Gateway's swarm runtime,
+                    not as in-turn delegation, so no stream event describes
+                    them — this board reads the owner-scoped swarm list the
+                    same way Team Ops does and stays a read-only monitor. */}
+                        <div className="max-w-4xl mx-auto">
+                          <SwarmRunBoard onOpenTeamOps={() => handleViewChange("team")} />
+                        </div>
                         {/* The "Latest" pill: sticky to the scroller's bottom edge,
                     visible only while auto-follow is disarmed. One click
                     re-arms following and jumps to the live tail. */}
