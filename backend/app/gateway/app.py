@@ -628,7 +628,44 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 app.state.mcp_tasks_available = True
 
         from alpha.subagents.batch_runtime import set_subagent_batch_submitter
+        from alpha.subagents.deep_runner import DeepAgentSubagentRunner
+        from alpha.subagents.hierarchical_delegator import set_deep_agent_runner
         from app.subagent_batches import SubagentBatchService
+
+        # Hierarchical delegation is implemented (`alpha.subagents.
+        # hierarchical_delegator`) but reaches nothing until a runner is
+        # registered on its module-level seam - which only tests ever did, so
+        # every `delegate` call answered `UNRECOVERABLE_ERROR`. Registering the
+        # real subagent runner here is what makes the feature reachable.
+        #
+        # The tool pool is resolved lazily per child rather than assembled here:
+        # `get_available_tools()` needs MCP initialization, and the lifespan runs
+        # before the MCP subsystem is live. An unresolvable pool therefore
+        # refuses that one child with a named reason instead of failing startup.
+        # Children take real slots from the same process-wide admission
+        # controller, so this cannot exceed the operator's subagent ceiling.
+        def _resolve_deep_agent_tools() -> list:
+            try:
+                from alpha.tools.tools import get_available_tools
+
+                return list(
+                    get_available_tools(
+                        subagent_enabled=True,
+                        model_name=getattr(startup_config, "default_model", None),
+                        app_config=startup_config,
+                    )
+                )
+            except Exception:  # a child refusing is honest; failing startup is not
+                logger.warning("Deep agent tool pool unavailable; hierarchical delegation will refuse children", exc_info=True)
+                return []
+
+        set_deep_agent_runner(
+            DeepAgentSubagentRunner(
+                tools_supplier=_resolve_deep_agent_tools,
+                app_config=startup_config,
+            )
+        )
+        logger.info("Registered the deep agent execution seam for hierarchical delegation")
 
         batch_repo = getattr(app.state, "subagent_batch_repo", None)
         app.state.subagent_batches_available = False
