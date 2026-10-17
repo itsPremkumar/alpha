@@ -177,6 +177,82 @@ def _catalog(include_system_prompt: bool) -> SubagentsListResponse:
     return SubagentsListResponse(subagents=items)
 
 
+class SubagentScenariosResponse(BaseModel):
+    """The delegation-shape catalogue, as plain data.
+
+    `shadow_default` travels with it so a client can tell whether a plan it
+    resolved is advisory without hard-coding a second copy of the policy.
+    """
+
+    scenarios: list[dict[str, Any]]
+    shadow_default: bool
+
+
+class ExecutionPlanRequest(BaseModel):
+    """Inputs to `alpha.subagents.plan.resolve`.
+
+    Every capability field is **optional and tri-state**: omitted stays `None`,
+    which means *unknown* rather than *absent*. A client that measured
+    `GET /arena/config` may pass the answer; one that did not gets the honest
+    "could not be read" wording instead of a fabricated `false`.
+
+    There is deliberately no `shadow` field. The planner is advisory and the
+    route cannot make it executable, so accepting a client's `shadow: false`
+    would hand out a flag that changes nothing while looking like an opt-in.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str = Field(min_length=1, max_length=8000)
+    delegation_enabled: bool = False
+    arena_configured: bool | None = None
+    council_configured: bool | None = None
+    workflow_configured: bool | None = None
+    child_budget: int | None = Field(default=None, ge=0, le=64)
+    scenario: str | None = Field(default=None, max_length=64)
+
+
+@router.get("/scenarios", response_model=SubagentScenariosResponse, summary="Delegation Scenario Catalogue")
+async def list_scenarios() -> SubagentScenariosResponse:
+    """The shapes a request could take, and what each one requires.
+
+    Declared before the `/{name}` CRUD routes so a future single-segment
+    catch-all cannot swallow it - the same registration-order rule the skills and
+    workflow routers follow.
+    """
+
+    from alpha.subagents.plan import SHADOW_BY_DEFAULT
+    from alpha.subagents.scenarios import catalogue
+
+    return SubagentScenariosResponse(scenarios=catalogue(), shadow_default=SHADOW_BY_DEFAULT)
+
+
+@router.post("/plan", summary="Resolve an advisory execution plan")
+async def resolve_execution_plan(body: ExecutionPlanRequest) -> dict[str, Any]:
+    """Preview what a prompt *would* take. Dispatches nothing, ever.
+
+    The response always carries `shadow: true`. `alpha.subagents.plan` has no
+    dispatch path — it imports no engine — so a resolved plan here is a
+    recommendation for the composer to show, and the only honest answer to
+    "did this run it?" is always no.
+    """
+
+    from alpha.subagents.plan import PlanContext, resolve
+
+    plan = resolve(
+        body.prompt,
+        context=PlanContext(
+            delegation_enabled=body.delegation_enabled,
+            arena_configured=body.arena_configured,
+            council_configured=body.council_configured,
+            workflow_configured=body.workflow_configured,
+            child_budget=body.child_budget,
+        ),
+        scenario=body.scenario,
+    )
+    return plan.to_dict()
+
+
 @router.get("", response_model=SubagentsListResponse, summary="List Subagents")
 async def list_subagents(request: Request) -> SubagentsListResponse:
     """List the runtime catalog; prompts remain visible only to admins."""
