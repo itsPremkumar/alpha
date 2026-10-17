@@ -38,7 +38,7 @@ import { InsertMenu } from "@/components/InsertMenu";
 import { ModelMenu } from "@/components/ModelMenu";
 import { QUICK_KEY_PROVIDERS } from "@/lib/model-menu";
 import { listSubagentCatalog, type SubagentDef } from "@/lib/subagents";
-import { buildDelegationGroups, optionText } from "@/lib/delegation-mode-view";
+import { buildDelegationGroups, optionText, selectedDetail } from "@/lib/delegation-mode-view";
 import {
   concurrencyForTotal,
   concurrencyOptionsForTotal,
@@ -402,6 +402,19 @@ export function Composer({
     () => buildDelegationGroups({ choices: subagentChoices, error: subagentCatalogError }),
     [subagentChoices, subagentCatalogError],
   );
+  /**
+   * The tooltip for the closed control.
+   *
+   * Popup rows are deliberately short so the OS-drawn list stays a scannable
+   * width; the unabridged description of the *selected* choice is shown here
+   * instead, so shortening the row costs the operator no information. A failed
+   * catalog read outranks it, because the reason is the only thing that matters
+   * then.
+   */
+  const delegationTitle = subagentCatalogError
+    ? `Subagent catalog unavailable: ${subagentCatalogError}`
+    : (selectedDetail(delegationGroups, delegationMode) ||
+      "Choose whether and how Alpha delegates this message");
   /**
    * The scroll container holding the palette rows.
    *
@@ -1236,7 +1249,7 @@ export function Composer({
                 disabled={isLoading}
                 onChange={(event) => onDelegationModeChange(event.target.value)}
                 aria-label="Subagent mode"
-                title={subagentCatalogError ? `Subagent catalog unavailable: ${subagentCatalogError}` : delegationMode === "category:quick" ? "Quick is limited to 15 turns and 120 seconds per delegated task" : "Choose whether and how Alpha delegates this message"}
+                title={delegationTitle}
                 className={`max-w-56 rounded-lg border border-border/70 bg-muted/60 px-2 py-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 ${delegationMode !== "off" ? "border-primary/40 text-primary" : "text-muted-foreground"}`}
               >
                 {/*

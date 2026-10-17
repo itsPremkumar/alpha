@@ -30,7 +30,23 @@
 export interface DelegationOption {
   value: string;
   label: string;
+  /**
+   * The short secondary line shown **in the popup row**.
+   *
+   * Kept short on purpose. The popup is drawn by the OS and is only as wide as
+   * its widest row, so a full sentence per row stretched the whole list to
+   * roughly 750px of near-unreadable one-line-per-worker text floating over the
+   * composer. The full text is not discarded - it is in `detail`.
+   */
   hint: string;
+  /**
+   * The unabridged description, shown as the control's tooltip for the
+   * *selected* option, so nothing is lost when the row is shortened.
+   *
+   * `""` means the server reported no description at all; `hint` then says so
+   * rather than this inventing one.
+   */
+  detail: string;
 }
 
 /** A titled run of options, rendered as one `<optgroup>`. */
@@ -38,6 +54,48 @@ export interface DelegationGroup {
   id: string;
   label: string;
   options: DelegationOption[];
+}
+
+/**
+ * Connectives that must never end a label.
+ *
+ * Cutting at a word boundary is necessary but not sufficient: it happily leaves
+ * "...regression, and" or "...bounded shell workflows with", which reads as a
+ * broken sentence and tells the operator less than simply stopping one word
+ * earlier. Measured against the real catalog, every one of these cuts landed on
+ * exactly one of these words.
+ */
+const DANGLING = new Set([
+  "and", "or", "but", "nor", "the", "a", "an", "with", "of", "to", "in", "on",
+  "for", "at", "by", "from", "as", "into", "per", "via", "that", "which", "is",
+  "are", "was", "were", "be", "been", "than", "then", "over", "under",
+  "there", "here", "where", "when", "while", "whose", "whom", "after",
+  "before", "during", "about", "against", "between", "through", "without",
+  "within", "upon", "onto", "off", "out", "up", "down", "again", "also",
+  "such", "both", "each", "any", "all", "its", "their", "our", "your", "his",
+  "her", "my", "so",
+]);
+
+/**
+ * Tidy the tail of a cut label: drop an orphaned bracket clause and a dangling
+ * connective, repeatedly, because dropping one can expose the other.
+ */
+function trimLabelTail(kept: string): string {
+  let out = kept.trim();
+  for (let pass = 0; pass < 4; pass += 1) {
+    const before = out;
+    // An unclosed bracket means the last space fell INSIDE a clause, so the
+    // "word boundary" was not a clause boundary. The whole tail goes.
+    out = out.replace(/\s*[([][^()[\]]*$/, "").trim();
+    const words = out.split(" ");
+    if (words.length > 1 && DANGLING.has((words[words.length - 1] || "").toLowerCase())) {
+      words.pop();
+      out = words.join(" ");
+    }
+    out = out.replace(/[\s,;:·/—-]+$/, "");
+    if (out === before) break;
+  }
+  return out;
 }
 
 /**
@@ -58,17 +116,7 @@ export function firstSentence(text: string | null | undefined, max = 88): string
   // No sentence end inside the budget: cut on the last whole word.
   const head = (sentence || flat).slice(0, max);
   const cut = head.lastIndexOf(" ");
-  const kept = (cut > max * 0.6 ? head.slice(0, cut) : head).trim().replace(/[,;:]$/, "");
-  // Drop a trailing fragment that hangs off an UNCLOSED bracket.
-  //
-  // Measured against the real Gateway catalog: `deep-code-reviewer` describes
-  // itself as "...and convention checks (verdict ...)", so cutting at the last
-  // space left the row reading "…and convention checks (verdict…". That is the
-  // exact mid-word cut this function exists to prevent, just wearing a bracket:
-  // the last space fell *inside* a parenthesised clause, so "word boundary"
-  // was not "clause boundary". An orphaned fragment is worse than a shorter
-  // label, so the whole bracket tail goes.
-  const closed = kept.replace(/\s*[([][^()[\]]*$/, "").trim();
+  const closed = trimLabelTail(cut > max * 0.6 ? head.slice(0, cut) : head);
   return closed.length < (sentence || flat).length ? `${closed}…` : closed;
 }
 
@@ -107,6 +155,15 @@ function presetGroups(): DelegationGroup[] {
         value: `category:${p.name}`,
         label: p.label,
         hint: [p.blurb, PRESET_BUDGET[p.name]].filter(Boolean).join(" · "),
+        detail: [
+          p.blurb,
+          PRESET_BUDGET[p.name],
+          // Never let a preset read as costless when it is the one preset whose
+          // ceiling the configuration states and the model honours per task.
+          p.name === "quick" ? "ceiling applies per delegated task" : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
       })),
     },
   ];
@@ -114,17 +171,21 @@ function presetGroups(): DelegationGroup[] {
 
 /** How much to delegate at all — separate from which worker runs. */
 function modeGroups(): DelegationGroup[] {
+  const rows = [
+    { value: "off", label: "Off", hint: "answer without delegating" },
+    { value: "auto", label: "Auto", hint: "Alpha decides whether to delegate" },
+  ];
   return [
     {
       id: "delegation",
       label: "Delegation",
-      options: [
-        { value: "off", label: "Off", hint: "answer without delegating" },
-        { value: "auto", label: "Auto", hint: "Alpha decides whether to delegate" },
-      ],
+      options: rows.map((r) => ({ ...r, detail: r.hint })),
     },
   ];
 }
+
+/** How many characters of description a popup row may show. */
+const ROW_HINT_MAX = 64;
 
 /** The worker catalog, grouped by the source the server reported. */
 function workerGroups(
@@ -136,12 +197,16 @@ function workerGroups(
     // A worker with no reported source is grouped under "reported source", not
     // dropped and not folded into "builtin".
     const source = choice.source?.trim() || "source not reported";
-    const blurb = firstSentence(choice.description) || "description not reported";
+    const flat = (choice.description ?? "").replace(/\s+/g, " ").trim();
+    const blurb = firstSentence(choice.description, ROW_HINT_MAX) || "description not reported";
     const list = bySource.get(source) ?? [];
     list.push({
       value: `type:${choice.name}`,
       label: choice.displayName?.trim() || choice.name,
       hint: blurb,
+      // The full text rides along for the tooltip; `""` truthfully means the
+      // server sent no description, which `hint` already discloses.
+      detail: flat,
     });
     bySource.set(source, list);
   }
@@ -173,13 +238,29 @@ export function buildDelegationGroups(input: {
     groups.push({
       id: "catalog-error",
       label: "Worker catalog",
-      options: [{ value: "", label: "Unavailable", hint: input.error }],
+      options: [
+        {
+          value: "",
+          label: "Unavailable",
+          hint: input.error,
+          // The popup row is a place, not a place to read a stack trace in; the
+          // tooltip carries the server's full reason.
+          detail: `Subagent catalog could not be read: ${input.error}`,
+        },
+      ],
     });
   } else if (input.choices && input.choices.length === 0) {
     groups.push({
       id: "catalog-empty",
       label: "Worker catalog",
-      options: [{ value: "", label: "No named workers reported", hint: "the server returned an empty catalog" }],
+      options: [
+        {
+          value: "",
+          label: "No named workers reported",
+          hint: "the server returned an empty catalog",
+          detail: "The Gateway reported no named subagent workers. Delegation modes and intent presets are still available.",
+        },
+      ],
     });
   }
   return groups;
@@ -188,4 +269,21 @@ export function buildDelegationGroups(input: {
 /** `label · hint` is what a native `<select>` row can actually render. */
 export function optionText(option: DelegationOption): string {
   return option.hint ? `${option.label} · ${option.hint}` : option.label;
+}
+
+/**
+ * The full description of whichever option is currently selected, for the
+ * control's `title`.
+ *
+ * This is what keeps the shortened popup rows from costing any information: the
+ * row is scannable, and hovering the closed control still explains the current
+ * choice in full. An unknown `value` (a persisted mode from a newer Gateway)
+ * yields `""` rather than a guess about what it means.
+ */
+export function selectedDetail(groups: DelegationGroup[], value: string): string {
+  for (const group of groups) {
+    const found = group.options.find((o) => o.value === value);
+    if (found) return found.detail || found.hint;
+  }
+  return "";
 }

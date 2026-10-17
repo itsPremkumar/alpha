@@ -41,7 +41,19 @@ const code = ts.transpileModule(source, {
   },
 }).outputText;
 
-const { firstSentence, buildDelegationGroups, optionText } = await import(toDataUrl(code));
+const { firstSentence, buildDelegationGroups, optionText, selectedDetail } = await import(toDataUrl(code));
+
+/** The words a shortened label must never end on. Mirrors the module's own set. */
+const DANGLING_WORDS = new Set([
+  "and", "or", "but", "nor", "the", "a", "an", "with", "of", "to", "in", "on",
+  "for", "at", "by", "from", "as", "into", "per", "via", "that", "which", "is",
+  "are", "was", "were", "be", "been", "than", "then", "over", "under",
+  "there", "here", "where", "when", "while", "whose", "whom", "after",
+  "before", "during", "about", "against", "between", "through", "without",
+  "within", "upon", "onto", "off", "out", "up", "down", "again", "also",
+  "such", "both", "each", "any", "all", "its", "their", "our", "your", "his",
+  "her", "my", "so",
+]);
 
 const ids = (groups) => groups.map((g) => g.id);
 const values = (groups) => groups.flatMap((g) => g.options.map((o) => o.value));
@@ -60,7 +72,11 @@ const catalog = [
   {
     name: "deep-code-reviewer",
     displayName: null,
-    description: "Autonomous patch gatekeeper with API, type, regression, and convention checks.",
+    // As measured from the live Gateway. Only the opening of the parenthetical
+    // is knowable from the rendered popup, so the fixture stops where the
+    // evidence stops rather than inventing the tail.
+    description:
+      "Autonomous patch gatekeeper with API, type, regression, and convention checks (verdict ...",
     source: "config",
   },
   {
@@ -284,16 +300,56 @@ test("no catalog at all still offers delegation and presets", () => {
 // Rendering: the row text the operator actually reads
 // ---------------------------------------------------------------------------
 
-test("a worker row is a label and a complete sentence, never a fragment", () => {
+test("a worker row is a label and a short hint, never a fragment", () => {
   const option = buildDelegationGroups({ choices: catalog })
     .find((g) => g.id === "worker:config")
     .options.find((o) => o.value === "type:deep-code-reviewer");
   // `displayName: null` falls back to `name` — `null` is not "unnamed".
   assert.ok(option.label.length > 0);
   assert.equal(optionText(option), `${option.label} · ${option.hint}`);
-  // This fixture's description already ends in a full sentence, so it must be
-  // used whole. The old `.slice(0, 72)` produced "…with convention c…" here.
-  assert.equal(option.hint, "Autonomous patch gatekeeper with API, type, regression, and convention checks.");
+  // The row is short so the OS-drawn popup is scannable; the unabridged text is
+  // not lost, it moved to `detail`.
+  assert.ok(option.hint.length <= 65, `popup row too wide: ${JSON.stringify(option.hint)}`);
+  assert.ok(
+    option.detail.length > option.hint.length,
+    `detail must carry the full text: ${JSON.stringify(option.detail)}`,
+  );
+  assert.match(option.detail, /convention checks \(verdict/);
+});
+
+test("a cut label never ends on a dangling connective", () => {
+  // Cutting at a word boundary alone leaves "...regression, and" / "...with",
+  // which reads as a broken sentence and carries less than stopping a word
+  // earlier. Every real catalog cut landed on one of these words.
+  assert.equal(
+    firstSentence("Autonomous patch gatekeeper with API, type, regression, and convention checks.", 64),
+    "Autonomous patch gatekeeper with API, type, regression…",
+  );
+  assert.equal(
+    firstSentence("Command execution specialist for bounded shell workflows with clear delegation benefit.", 64),
+    "Command execution specialist for bounded shell workflows…",
+  );
+  assert.equal(
+    firstSentence("Autonomous root-cause analysis with fault localization and candidate patch synthesis.", 64),
+    "Autonomous root-cause analysis with fault localization…",
+  );
+  assert.equal(
+    firstSentence("A capable agent for bounded exploration and action when there is clear delegation benefit.", 64),
+    "A capable agent for bounded exploration and action…",
+  );
+  for (const description of [
+    "Autonomous multi-file refactoring specialist with AST impact analysis and atomic edits per file.",
+    "Autonomous profiling, bottleneck detection, and benchmark tooling (verification claimed only when a measurement exists).",
+    "Autonomous taint analysis, credential scanning, and sanitization-guard remediation.",
+    "Autonomous property-based test generation (mutation validation claimed only when a harness runs).",
+  ]) {
+    const out = firstSentence(description, 64);
+    const body = out.endsWith("…") ? out.slice(0, -1) : out;
+    assert.ok(
+      !DANGLING_WORDS.has((body.split(" ").pop() || "").toLowerCase()),
+      `label ends on a dangling connective: ${JSON.stringify(out)}`,
+    );
+  }
 });
 
 test("a worker with no reported description is labelled unreported, not filled in", () => {
@@ -310,4 +366,21 @@ test("every option carries a non-empty label and hint", () => {
     assert.ok(option.label.trim().length > 0, `empty label for ${option.value}`);
     assert.ok(option.hint.trim().length > 0, `empty hint for ${option.value}`);
   }
+});
+
+test("the selected option's full description is recoverable for the tooltip", () => {
+  const groups = buildDelegationGroups({ choices: catalog });
+  // Shortening the popup row must cost no information: the unabridged text is
+  // what the closed control's `title` shows.
+  assert.match(selectedDetail(groups, "type:deep-code-reviewer"), /convention checks \(verdict/);
+  assert.match(selectedDetail(groups, "category:quick"), /15 turns/);
+  assert.ok(selectedDetail(groups, "off").length > 0);
+});
+
+test("an unknown persisted mode yields no tooltip text, not a guess", () => {
+  // A mode saved by a newer Gateway must not be described as something this
+  // build has never heard of.
+  const groups = buildDelegationGroups({ choices: catalog });
+  assert.equal(selectedDetail(groups, "category:from-the-future"), "");
+  assert.equal(selectedDetail(groups, "type:nope"), "");
 });

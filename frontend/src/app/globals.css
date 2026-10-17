@@ -122,6 +122,51 @@
   }
 }
 
+/* ── Native select popup theming ────────────────────────────────────────
+ *
+ * ## Why this block exists
+ *
+ * A native `<select>` renders its closed control from CSS, but the **open popup
+ * list is drawn by the OS**, and it does not inherit the closed control's
+ * background. Measured on the running app in dark mode:
+ *
+ *     select         background-color: rgba(29, 34, 42, 0.6)   <- themed
+ *     option         background-color: rgba(0, 0, 0, 0)        <- transparent
+ *     option         color:            rgb(148, 163, 184)       <- slate-400
+ *     --popover:     224 25% 9%      --foreground: 210 40% 98%
+ *
+ * A *transparent* option background is the whole defect. The popup paints its
+ * own default surface when the option has no background of its own, so the list
+ * came up in the operating system's LIGHT surface while keeping the app's
+ * dark-theme muted text - a light-grey panel of blue-grey rows floating over a
+ * near-black UI. Giving `option` and `optgroup` an explicit opaque background
+ * and foreground is what makes Chrome/Edge honour the app theme, because the
+ * popup then has a colour to draw instead of falling back to its own.
+ *
+ * These use the theme variables rather than literals, so light mode follows
+ * automatically and this block cannot become a second, frozen palette. It is
+ * deliberately global: every native select in the app had the same transparent
+ * popup, and they are all fixed by the same rule.
+ */
+select option,
+select optgroup {
+  background-color: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+}
+
+/* A group heading should read as a heading, not as another selectable row. */
+select optgroup {
+  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+}
+
+/* An unreported or failed row is dimmed, never hidden - it still carries the
+ * reason the operator needs. */
+select option:disabled {
+  color: hsl(var(--muted-foreground));
+  opacity: 0.75;
+}
+
 /* ── Interaction affordances ───────────────────────────────────────────────
  *
  * ## Why this block exists

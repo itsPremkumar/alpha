@@ -105,11 +105,11 @@ test("the selector exposes real worker and category choices", () => {
   assert.match(modeView, /quick: "15 turns · 2 min cap"/);
   assert.match(modeView, /`type:\$\{choice\.name\}`/);
 
-  assert.match(
-    composer,
-    /limited to 15 turns and 120 seconds per delegated task/,
-    "the selected Quick mode must still state its real ceiling",
-  );
+  // The Quick ceiling must still be disclosed somewhere the operator reads it.
+  // It moved from the composer's `title` into the option's `detail` when popup
+  // rows were shortened, so assert the disclosure rather than its old address.
+  assert.match(modeView, /ceiling applies per delegated task/);
+  assert.match(composer, /selectedDetail\(delegationGroups, delegationMode\)/);
   assert.match(composer, /Concurrent subagents/);
   assert.match(composer, /Total subagents/);
   assert.match(chat, /max_total_subagents/);
