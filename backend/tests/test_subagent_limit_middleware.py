@@ -18,6 +18,7 @@ from alpha.agents.thread_state import DelegationEntry
 from alpha.apex.contract import narrow_contract, profile_for
 from alpha.apex.mode import ApexModeStore
 from alpha.apex.store import ApexSessionState, ApexStore
+from alpha.config.limits import MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD
 
 
 def _make_runtime(run_id: str = "run-1"):
@@ -60,8 +61,10 @@ class TestClampSubagentLimit:
         # MIN lowered from 2 to 1 so a user asking for a single subagent gets 1.
         # Both consumers (SubagentLimitMiddleware.__init__ and the prompt path)
         # share this floor via clamp_subagent_concurrency in subagents_config.py.
+        # The ceiling is the alpha.config.limits authority (1000): re-typing a
+        # hard 64 here once silently truncated admissions the schema allowed.
         assert MIN_SUBAGENT_LIMIT == 1
-        assert MAX_SUBAGENT_LIMIT == 64
+        assert MAX_SUBAGENT_LIMIT == MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD
 
     def test_below_min_clamped_to_one(self):
         assert _clamp_subagent_limit(0) == 1
@@ -74,8 +77,12 @@ class TestClampSubagentLimit:
     def test_above_hard_max_clamped(self):
         assert _clamp_subagent_limit(5) == 5
         assert _clamp_subagent_limit(10) == 10
-        assert _clamp_subagent_limit(65) == MAX_SUBAGENT_LIMIT
-        assert _clamp_subagent_limit(100) == MAX_SUBAGENT_LIMIT
+        # Within the authority ceiling the requested value passes through —
+        # clamping only the over-ceiling tail keeps a 65-request honest
+        # instead of truncating it to the old re-typed 64.
+        assert _clamp_subagent_limit(65) == 65
+        assert _clamp_subagent_limit(100) == 100
+        assert _clamp_subagent_limit(1001) == MAX_SUBAGENT_LIMIT
 
     def test_within_range_unchanged(self):
         assert _clamp_subagent_limit(2) == 2
@@ -93,7 +100,11 @@ class TestSubagentLimitMiddlewareInit:
         mw = SubagentLimitMiddleware(max_concurrent=1)
         assert mw.max_concurrent == MIN_SUBAGENT_LIMIT
 
-        mw = SubagentLimitMiddleware(max_concurrent=100)
+        # A full-capacity admission passes through; above the authority
+        # ceiling the clamp is the ceiling itself.
+        mw = SubagentLimitMiddleware(max_concurrent=1000)
+        assert mw.max_concurrent == MAX_SUBAGENT_LIMIT == MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD
+        mw = SubagentLimitMiddleware(max_concurrent=1001)
         assert mw.max_concurrent == MAX_SUBAGENT_LIMIT
 
 

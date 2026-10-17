@@ -4,6 +4,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
+from alpha.config.limits import MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD
 from alpha.config.token_budget_config import TokenBudgetConfig
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,11 @@ DEFAULT_MAX_TOTAL_SUBAGENTS_PER_RUN = 6
 MIN_TOTAL_SUBAGENTS_PER_RUN = 1
 MAX_TOTAL_SUBAGENTS_PER_RUN = 50
 MIN_CONCURRENT_SUBAGENT_CALLS = 1
-MAX_CONCURRENT_SUBAGENT_CALLS = 64
+# Request-path ceiling — the SAME authority the config schema's
+# ``max_running <= le`` derives from.  A re-typed ``64`` here sat behind a
+# schema that already admitted 1000 and silently truncated every larger
+# admission the operator configured.
+MAX_CONCURRENT_SUBAGENT_CALLS = MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD
 
 
 def clamp_subagent_concurrency(value: int, *, execution_capacity: int | None = None) -> int:

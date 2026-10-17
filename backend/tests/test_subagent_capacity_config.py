@@ -19,8 +19,11 @@ def test_subagent_runtime_defaults_are_safe_and_bounded() -> None:
 
     with pytest.raises(ValidationError):
         SubagentRuntimeConfig(max_running=0)
+    # The schema ceiling IS the authority's hard ceiling (1000), raised with
+    # the swarm-capacity work: 65 is a legal admission now; 1001 refuses.
+    assert SubagentRuntimeConfig(max_running=1000).max_running == 1000
     with pytest.raises(ValidationError):
-        SubagentRuntimeConfig(max_running=65)
+        SubagentRuntimeConfig(max_running=1001)
     with pytest.raises(ValidationError):
         SubagentRuntimeConfig(max_queued=10_001)
 

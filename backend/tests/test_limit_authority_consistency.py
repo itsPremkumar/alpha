@@ -129,6 +129,19 @@ def test_runtime_schema_reads_the_authority():
     assert _field_ceiling(field) == limits.MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD
 
 
+def test_request_path_clamp_reads_the_authority():
+    """The per-run request clamp shares the schema ceiling's authority.
+
+    ``alpha.config.subagents_config`` used to re-type ``64`` here: the config
+    schema admitted 1000 and the runtime clamp silently truncated it, so an
+    operator who configured 100 ran 64 without any refusal — exactly the
+    boundary drift this module exists to catch.
+    """
+    from alpha.config.subagents_config import MAX_CONCURRENT_SUBAGENT_CALLS
+
+    assert MAX_CONCURRENT_SUBAGENT_CALLS == limits.MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD
+
+
 # --------------------------------------------------------------------------- #
 # Workflow wave axis: execution pool and the SWARM node share one fan-out
 # --------------------------------------------------------------------------- #

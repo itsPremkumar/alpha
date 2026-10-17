@@ -38,7 +38,7 @@ _APEX_WITHHELD_MSG = "[APEX DELEGATION LIMIT] This session's APEX policy withhol
 
 
 def _clamp_subagent_limit(value: int) -> int:
-    """Clamp subagent limit to the hard safety range [1, 64]."""
+    """Clamp subagent limit to the authority-owned hard range (alpha.config.limits)."""
     return clamp_subagent_concurrency(value)
 
 
