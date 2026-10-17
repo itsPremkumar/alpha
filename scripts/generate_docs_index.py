@@ -200,6 +200,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "plans",
         "Research-backed blueprint for a hybrid, graph-governed, event-driven multi-agent runtime: separating reasoning, orchestration, execution, evidence and governance across every existing Alpha mode.",
     ),
+    "ALPHA_SUBAGENT_SYSTEM_ADVANCED_IMPROVEMENT_PLAN.md": DocumentSpec(
+        "plans",
+        "Deep research plus phased improvement plan for the subagent system: current-plane code analysis, 2026 state of the art, gap matrix, MAST failure mapping, and thirteen gated workstreams with honesty boundaries.",
+    ),
     "ALPHA_ACTIVE_MEMORY_IMPLEMENTATION_GUIDE.md": DocumentSpec(
         "plans",
         "Implementation guide for the active-memory feature: host activation over the existing fusion package, the single memory.fusion.enabled gate, runtime-home path pinning, relevance-vs-truth separation, and the memory_search wiring.",
