@@ -35,6 +35,7 @@ import {
   type EffortChoice,
 } from "@/lib/reasoning-effort";
 import { InsertMenu } from "@/components/InsertMenu";
+import { DelegationPlanPreview } from "@/components/DelegationPlanPreview";
 import { ModelMenu } from "@/components/ModelMenu";
 import { QUICK_KEY_PROVIDERS } from "@/lib/model-menu";
 import { listSubagentCatalog, type SubagentDef } from "@/lib/subagents";
@@ -1367,6 +1368,24 @@ export function Composer({
                   {[3, 6, 10, 15, 20, 30, 50].map((count) => <option key={count} value={count}>{count} total</option>)}
                 </select>
               </div>
+            )}
+            {/*
+              The advisory plan preview. Placed with the delegation controls
+              because it only says something when delegation is on - and it is
+              labelled a preview in its own markup, because
+              `alpha.subagents.plan` has no dispatch path and a strip that
+              implied the plan had been applied would be the lie the shadow
+              flag exists to prevent.
+            */}
+            {onDelegationModeChange && (
+              <DelegationPlanPreview
+                draft={input}
+                delegationEnabled={delegationMode !== "off"}
+                /* Already tri-state: `null` after a failed read, which the plan
+                   reports as unknown rather than absent. */
+                arena={arenaEnabled}
+                childBudget={subagentTotal}
+              />
             )}
             <VoiceControls
               onTranscript={(text) => {
