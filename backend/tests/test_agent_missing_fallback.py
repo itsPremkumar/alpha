@@ -94,6 +94,14 @@ class _FakeRegistry:
     def list_bots(self):
         return [_FakeBot(n) for n in self._names]
 
+    def get_bot(self, name):
+        """Mirror ``BotRegistry.get_bot``: case-insensitive key lookup."""
+        key = str(name).lower().strip()
+        for bot in self.list_bots():
+            if bot.name.lower() == key:
+                return bot
+        return None
+
 
 def test_missing_agent_degrades_to_the_default_lead(monkeypatch, caplog):
     """FileNotFoundError must not abort assembly; the identity is cleared."""

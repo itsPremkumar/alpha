@@ -631,6 +631,29 @@ async def get_bot(name: str) -> dict:
     return _bot_to_response(bot)
 
 
+@router.get("/{name}/mode", summary="The effective bot-mode contract (what this bot may do right now)")
+async def get_bot_mode(name: str) -> dict:
+    """One answer for "what may this bot do right now".
+
+    Server-side resolution only: capabilities come from the roster profile
+    intersected with the server-owned ceiling — never from a request payload.
+    The response carries per-field provenance plus an ``enforcement``
+    disclosure, so a declared-but-unwired scope never reads as a restriction
+    that exists.
+    """
+    key = _validate_bot_name(name)
+
+    def _mode():
+        from alpha.bots.mode import resolve_bot_mode
+
+        return resolve_bot_mode(bot_name=key, registry=_registry())
+
+    mode = await asyncio.to_thread(_mode)
+    if mode is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    return mode.to_dict()
+
+
 @router.post("/{name}/ensure", status_code=200, summary="Get or auto-provision bot")
 async def ensure_bot(name: str, request: Request, body: BotEnsureRequest | None = None) -> dict:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
