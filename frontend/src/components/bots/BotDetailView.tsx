@@ -37,6 +37,7 @@ import { elapsedWords, type FleetHealthSummary } from "@/lib/bot-working-status"
 import { kanbanStatusLabel, type KanbanTask } from "@/lib/kanban";
 import { workspaceViewUrl, type WorkspaceView } from "@/lib/workspace-view";
 import { BotModelConfigPanel } from "./BotModelConfigPanel";
+import { CapabilityScopePanel } from "./CapabilityScopePanel";
 import { Modal } from "@/components/ui";
 import { BotDetailPanel } from "@/components/chat-shell/BotDetailPanel";
 import {
@@ -294,6 +295,15 @@ export function BotDetailView({ name }: { name: string }) {
                 <p className="mb-1.5 text-xs text-muted-foreground">Responsibilities</p>
                 <TagList items={b.responsibilities} empty="None recorded." />
               </div>
+              {/* The scoping read is its own route with its own failure, so it
+                  renders from the bundle's `capabilities` slot — never from the
+                  profile above (a failed profile read must not silently scope
+                  this panel out of existence, and vice versa). */}
+              <CapabilityScopePanel
+                name={name}
+                state={bundle?.capabilities ?? { state: "loading" }}
+                onSaved={load}
+              />
             </div>
           )}
         </Section>

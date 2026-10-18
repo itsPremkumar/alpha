@@ -101,6 +101,12 @@ function unMojibake(run) {
 function* sourceFiles(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === ".next") continue;
+    // `rendered-honesty-markup.test.mjs` writes `__render_stub_*.mjs` modules
+    // into `src/lib` during its own run and deletes them at process exit. Node
+    // runs test FILES in parallel, so this walk can snapshot a stub that is
+    // already gone by read time (ENOENT) or hold a mid-life copy that was never
+    // shipped source. Debris by name is never a file this suite audits.
+    if (entry.name.startsWith("__render_stub_")) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) yield* sourceFiles(full);
     else if (/\.(ts|tsx|mjs|js|css)$/.test(entry.name)) yield full;

@@ -57,6 +57,18 @@ def _validation_error(detail: str) -> HTTPException:
     return HTTPException(status_code=422, detail=detail)
 
 
+def _authority_refusal(exc) -> HTTPException:
+    """A ceiling refusal travels as a structured 422, not a bare string.
+
+    ``AuthorityViolation.to_dict()`` carries the per-rule ``violations``, and
+    the scoping UI lists every one of them so the operator reads *why* a grant
+    was refused — over-ceiling, outside the creator's grant, empirically
+    empty — instead of a generic rejection. The status stays a refusal: the
+    profile was not written.
+    """
+    return HTTPException(status_code=422, detail=exc.to_dict())
+
+
 def _bot_to_response(profile) -> dict:
     data = profile.to_dict()
     stats = data.get("task_stats") or {}
@@ -303,6 +315,33 @@ class BotUpdateRequest(BaseModel):
     # PATCH. It has its own validated route (``PUT /{name}/model-config``) so a
     # fail-closed validation result (422 + ``detail.issues``) is the only write
     # path; a name that is not in ``config.yaml models[]`` must never land here.
+    #
+    # ``capabilities`` and ``toolsets`` stay DECLARED on this model (the field
+    # list is what the client transcribes) but are refused at runtime by the
+    # route: capabilities have their own ceiling-checked, recorded write path
+    # (``PUT /{name}/capabilities``), and toolsets have no PATCH surface. A
+    # scoping mutation must not have a side door.
+
+
+class BotCapabilityScopeRequest(BaseModel):
+    """THE write contract for a capability grant (``PUT /{name}/capabilities``).
+
+    ``capabilities`` is the requested grant, enforced through
+    ``registry.rescope_bot``: a leader actor, the live ceiling and the
+    profile's recorded creator grant have to admit every entry, and a request
+    that exceeds any of them is REFUSED — never silently trimmed — so the
+    profile is left untouched and the operator reads the refusal.
+
+    ``reason`` is recorded verbatim on the profile's ``last_rescope`` so the
+    audit trail carries the stated intent.
+    """
+
+    capabilities: list[str] = Field(..., max_length=100)
+    reason: str = Field(
+        default="Operator re-scope via the capability panel",
+        min_length=1,
+        max_length=500,
+    )
 
 
 class BotModelConfigRequest(BaseModel):
@@ -825,6 +864,144 @@ async def get_bot_mode(name: str) -> dict:
     return mode.to_dict()
 
 
+def _capability_scope_view(key: str) -> dict | None:
+    """The scoping read behind ``GET /{name}/capabilities``.
+
+    Built on ``resolve_bot_mode`` so this view and ``GET /{name}/mode`` cannot
+    disagree about the grant: ``requested_capabilities`` is what the profile
+    stores, ``capabilities`` is what survived the live ceiling, and the denied
+    difference is disclosed rather than folded away. What this view adds is
+    what a scoping *decision* needs: the ceiling itself, the known-capability
+    catalog with ranks (so the editor can mark a pick the ceiling would refuse
+    before the save does), the last recorded re-scope, and the declared surface
+    the grant sits beside.
+    """
+    from alpha.bots.authority_ceiling import CAPABILITY_RANKS
+    from alpha.bots.mode import BOT_MODE_ENFORCEMENT, resolve_bot_mode
+
+    registry = _registry()
+    mode = resolve_bot_mode(bot_name=key, registry=registry)
+    if mode is None:
+        return None
+    bot = registry.get_bot(key)
+    metadata = getattr(bot, "metadata", None)
+    metadata = metadata if isinstance(metadata, dict) else {}
+    last_rescope = metadata.get("last_rescope")
+    last_rescope = dict(last_rescope) if isinstance(last_rescope, dict) else None
+    demoted = metadata.get("demoted_capabilities")
+    demoted = sorted(str(c) for c in demoted) if isinstance(demoted, list) else []
+    try:
+        ceiling = registry.ceiling().to_dict()
+    except Exception:  # noqa: BLE001 — an unreadable ceiling must not fail the read
+        logger.warning("Capability view: ceiling read failed for %r.", key, exc_info=True)
+        ceiling = None
+    return {
+        "bot": mode.bot_name,
+        "requested_capabilities": list(mode.requested_capabilities),
+        "effective_capabilities": list(mode.capabilities),
+        "denied_capabilities": list(mode.denied_capabilities),
+        "demoted_capabilities": demoted,
+        "last_rescope": last_rescope,
+        "ceiling": ceiling,
+        "known_capabilities": [{"name": str(name), "rank": rank} for name, rank in sorted(CAPABILITY_RANKS.items(), key=lambda item: (item[1], item[0]))],
+        "declared": {
+            "toolsets": list(mode.toolsets),
+            "skills": list(mode.skills),
+            "mcp_servers": list(mode.mcp_servers),
+            "memory_scope": mode.memory_scope,
+            "model": mode.model,
+        },
+        "epoch": mode.epoch,
+        "version": int(getattr(bot, "version", 1) or 1),
+        "enforcement": dict(BOT_MODE_ENFORCEMENT),
+        "provenance": dict(mode.provenance),
+    }
+
+
+@router.get(
+    "/{name}/capabilities",
+    summary="Capability scoping view: requested vs effective grant, the ceiling, the declared surface",
+)
+async def get_bot_capabilities(name: str) -> dict:
+    """One answer for "what may this bot hold, and what does it hold right now".
+
+    Read-only and server-side: the effective grant is the profile's stored
+    grant intersected with the live ceiling, never a client-supplied value.
+    ``known_capabilities`` carries the server's own vocabulary with ranks, so
+    the operator sees the shape of the ceiling before requesting a change.
+    """
+    key = _validate_bot_name(name)
+    view = await asyncio.to_thread(_capability_scope_view, key)
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    return view
+
+
+@router.put(
+    "/{name}/capabilities",
+    summary="Re-scope a bot's capability grant (refused over the ceiling, never trimmed)",
+)
+async def rescope_bot_capabilities(name: str, request: Request, body: BotCapabilityScopeRequest) -> dict:
+    """THE write path for a capability grant.
+
+    Delegates to ``registry.rescope_bot`` — a leader actor, the live ceiling
+    and the profile's recorded creator grant all have to admit the request, and
+    a request that exceeds any of them is REFUSED (422, with every violation)
+    rather than silently trimmed: the profile is left untouched and the
+    operator reads why. ``PATCH /{name}`` refuses ``capabilities`` and
+    ``toolsets`` for the same reason this route exists — the scoping flow must
+    not have a side door.
+
+    The response is the scoping view plus a ``changed`` record: the previous
+    grant, the epoch and version movement, and — because ``capabilities`` is
+    deliberately not an epoch input (the fingerprint covers the run-shaping
+    surface; pinned by ``test_bots_selfservice``) — a grant-only save reports
+    ``epoch_moved: false`` with the reason instead of implying a new epoch.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+
+    def _rescope() -> dict | None:
+        from alpha.bots.authority_ceiling import AuthorityViolation
+
+        registry = _registry()
+        before = registry.get_bot(key)
+        if before is None:
+            return None
+        change = {
+            "previous_capabilities": sorted(str(c) for c in before.capabilities),
+            "epoch_before": before.capability_fingerprint(),
+            "version_before": int(before.version or 1),
+        }
+        try:
+            registry.rescope_bot(
+                key,
+                actor="server",
+                reason=body.reason.strip(),
+                new_capabilities=list(body.capabilities),
+            )
+        except AuthorityViolation as exc:
+            raise _authority_refusal(exc) from exc
+        return change
+
+    change = await asyncio.to_thread(_rescope)
+    if change is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    view = await asyncio.to_thread(_capability_scope_view, key)
+    if view is None:  # the profile vanished between the write and the read
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    epoch_moved = view["epoch"] != change["epoch_before"]
+    view["changed"] = {
+        "previous_capabilities": change["previous_capabilities"],
+        "effective_capabilities": view["effective_capabilities"],
+        "epoch_before": change["epoch_before"],
+        "epoch_moved": epoch_moved,
+        "version_before": change["version_before"],
+        "note": (None if epoch_moved else "capabilities is descriptive, not epoch-bearing: only toolsets/skills/model change the fingerprint"),
+    }
+    return view
+
+
 @router.post("/{name}/ensure", status_code=200, summary="Get or auto-provision bot")
 async def ensure_bot(name: str, request: Request, body: BotEnsureRequest | None = None) -> dict:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
@@ -896,6 +1073,16 @@ async def clone_bot(name: str, request: Request, body: BotCloneRequest) -> dict:
 async def update_bot(name: str, request: Request, body: BotUpdateRequest) -> dict:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
+    if body.capabilities is not None or body.toolsets is not None:
+        # Refused, not ignored: a scoping mutation has exactly one write path,
+        # and a silently dropped key would let a caller believe it scoped a bot.
+        # The fields stay on the request model for the field-list transcription;
+        # they are refused here so the capability flow cannot be bypassed.
+        raise _validation_error(
+            "capabilities and toolsets are not writable through PATCH: capabilities go through "
+            f"PUT /api/bots/{key}/capabilities (ceiling-checked, recorded on the profile's "
+            "last_rescope); toolsets are declared at creation and have no PATCH surface."
+        )
 
     def _update():
         try:

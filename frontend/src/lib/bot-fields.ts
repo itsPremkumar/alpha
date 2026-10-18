@@ -42,6 +42,14 @@ export interface BotFieldSpec {
    * the panel stops describing them as measurements - see `isOperatorSet`.
    */
   readonly measured?: boolean;
+  /**
+   * True for a field the server's PATCH route refuses (422). The panel renders
+   * it locked instead of offering a control that can never save; the hint
+   * names the real write path. `capabilities`/`toolsets` are the live cases:
+   * the grant is scoped through `PUT /{name}/capabilities`, and a generic
+   * PATCH must not be a side door around that flow.
+   */
+  readonly readOnly?: boolean;
   /** One line explaining what the server does with this field. */
   readonly hint: string;
 }
@@ -109,7 +117,8 @@ export const BOT_FIELDS: readonly BotFieldSpec[] = [
     key: "capabilities",
     label: "Capabilities",
     kind: "stringlist",
-    hint: "What this bot claims it can do. Add and remove rows.",
+    readOnly: true,
+    hint: "The capability grant. Scoped through the Capabilities panel on this bot's page — ceiling-checked, refused when over it, recorded on save. PATCH rejects it.",
   },
   {
     key: "responsibilities",
@@ -122,7 +131,8 @@ export const BOT_FIELDS: readonly BotFieldSpec[] = [
     label: "Toolsets",
     kind: "stringlist",
     maxItems: 50,
-    hint: "Declared tool groups. A wildcard such as 'all' is a sentinel, not a list of tools.",
+    readOnly: true,
+    hint: "Declared at creation — no PATCH surface. Shown read-only in the capability view; a wildcard such as 'all' is a sentinel, not a list of tools.",
   },
   {
     key: "skills",
