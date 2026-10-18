@@ -14,6 +14,7 @@ import logging
 import re
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -428,6 +429,23 @@ class KillSwitchRequest(BaseModel):
 
 class BotPauseRequest(BaseModel):
     reason: str = Field(default="Operator paused", max_length=500)
+
+
+class BotRoutineCreateRequest(BaseModel):
+    """One routine: a scheduled task bound to the bot's canonical chat thread.
+
+    The scheduled-task surface owns schedules; this is the bot-shaped entry
+    that binds ``assistant_id=<bot>`` and the canonical thread so the run's
+    result lands in the bot's own conversation (and the task id is recorded on
+    the profile routine, so both stores stay addressable from either end).
+    """
+
+    name: str = Field(min_length=1, max_length=64)
+    action: str = Field(min_length=1, max_length=16000)
+    schedule_type: str
+    schedule_spec: dict[str, Any]
+    timezone: str
+    title: str | None = Field(default=None, max_length=200)
 
 
 @router.post("", status_code=200, summary="Forge a new bot (transactional)")
@@ -1589,6 +1607,242 @@ async def bot_chat(name: str, limit: int = 20) -> dict:
     if result is None:
         raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Routines — scheduled work that lands in the bot's own chat (Bot Mode 2.4)
+# ---------------------------------------------------------------------------
+
+
+def _routine_schedule_label(task: dict) -> str:
+    """Human label for a created task — the routine's ``schedule`` field."""
+    schedule_type = str(task.get("schedule_type") or "")
+    spec = task.get("schedule_spec") if isinstance(task.get("schedule_spec"), dict) else {}
+    if schedule_type == "cron":
+        return f"cron: {spec.get('cron')}"
+    if schedule_type == "interval":
+        return f"every {spec.get('every_seconds')}s"
+    if schedule_type == "once":
+        return f"once at {spec.get('run_at')}"
+    return schedule_type or "manual"
+
+
+async def _ensure_bot_chat_thread(request: Request, thread_id: str, bot_name: str) -> None:
+    """Idempotently open the canonical bot-chat thread record.
+
+    A ``reuse_thread`` scheduled task may only target an existing thread, and
+    that thread is where the routine's result will be visible, so the request
+    that creates the routine also opens the conversation. The record is
+    created *unowned* — one shared canonical conversation per bot, not a
+    personal thread, matching "opening this id always lands in the same
+    conversation" — and carries ``botName`` so every consumer of thread
+    metadata reads it as a bot chat.
+    """
+    from app.gateway.deps import get_thread_store
+
+    store = get_thread_store(request)
+    if await store.get(thread_id, user_id=None) is not None:
+        return
+    try:
+        await store.create(thread_id, user_id=None, metadata={"botName": bot_name})
+    except Exception:
+        # Lost an insert race with another opener (the UI, another routine):
+        # the idempotent end state is the shared row existing.
+        if await store.get(thread_id, user_id=None) is None:
+            raise
+
+
+@router.get("/{name}/routines", summary="A bot's routines with their live task state")
+async def list_bot_routines(name: str, request: Request) -> dict:
+    """Profile routines joined with the scheduled task each one is bound to.
+
+    The profile owns the routine (name, schedule label, action, task id); the
+    scheduler owns the task (status, next run, last run/error). One joined
+    read so the page never has to stitch two stores client-side, and a
+    routine whose task is missing reports ``task: null`` with the read's own
+    reason rather than pretending the schedule is blank.
+    """
+    key = _validate_bot_name(name)
+
+    def _routines():
+        bot = _registry().get_bot(key)
+        return None if bot is None else [dict(r) for r in bot.routines]
+
+    routines = await asyncio.to_thread(_routines)
+    if routines is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    if not routines:
+        return {"bot_name": key, "routines": []}
+
+    from app.gateway.deps import get_scheduled_task_repo
+
+    repo = get_scheduled_task_repo(request)
+    joined = []
+    for routine in routines:
+        entry = dict(routine)
+        task_id = routine.get("task_id")
+        owner = routine.get("owner_user_id")
+        if isinstance(task_id, str) and isinstance(owner, str):
+            try:
+                entry["task"] = await repo.get(task_id, user_id=owner)
+            except Exception as exc:  # noqa: BLE001 — one bad task read must not blank the table
+                entry["task"] = None
+                entry["task_error"] = f"task read failed: {exc}"
+        else:
+            # A routine written by hand (or by an older surface) has no
+            # backing task id: report that honestly instead of inventing one.
+            entry["task"] = None
+        joined.append(entry)
+    return {"bot_name": key, "routines": joined}
+
+
+@router.post("/{name}/routines", summary="Create a bot routine (scheduled run in the bot's chat)")
+async def create_bot_routine(name: str, request: Request, body: BotRoutineCreateRequest) -> dict:
+    """One routine = one scheduled task bound to the bot and its chat thread.
+
+    A duplicate name is REFUSED (409), never silently replaced: a routine
+    name must not point at two schedules or orphan the previous task. Change
+    a routine by deleting it and creating the replacement, so every step has
+    exactly one owner.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+    owner = getattr(getattr(request, "state", None), "user", None)
+    owner_user_id = str(owner.id) if getattr(owner, "id", None) is not None else None
+    if owner_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    def _lookup():
+        bot = _registry().get_bot(key)
+        if bot is None:
+            return None, None
+        return bot, bot.get_routine(body.name)
+
+    bot, existing = await asyncio.to_thread(_lookup)
+    if bot is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Routine '{body.name.strip()}' already exists on '{key}'. Delete it first to change it.",
+        )
+
+    from alpha.bots.dm import canonical_bot_chat_id
+    from app.gateway.deps import get_scheduled_task_repo
+    from app.gateway.routers.scheduled_tasks import ScheduledTaskCreateRequest, create_scheduled_task
+
+    thread_id = canonical_bot_chat_id(key)
+    await _ensure_bot_chat_thread(request, thread_id, key)
+    # The scheduled-task surface owns schedule validation (type, timezone,
+    # interval bounds, next-run computation) AND the bot-name acceptance added
+    # for ``assistant_id`` — one implementation, reached through its own route
+    # function, so this entry cannot drift from the canonical one.
+    task = await create_scheduled_task(
+        request,
+        ScheduledTaskCreateRequest(
+            thread_id=thread_id,
+            context_mode="reuse_thread",
+            assistant_id=key,
+            title=(body.title or f"Routine: {body.name.strip()} ({key})"),
+            prompt=body.action,
+            schedule_type=body.schedule_type,
+            schedule_spec=body.schedule_spec,
+            timezone=body.timezone,
+        ),
+    )
+
+    def _store():
+        return _registry().add_routine(
+            key,
+            body.name,
+            _routine_schedule_label(task),
+            body.action,
+            task_id=task.get("id"),
+            schedule_type=task.get("schedule_type"),
+            schedule_spec=task.get("schedule_spec"),
+            timezone=task.get("timezone"),
+            owner_user_id=owner_user_id,
+            created_at=datetime.now(UTC).isoformat(),
+        )
+
+    routine = await asyncio.to_thread(_store)
+    if routine is None:
+        # The bot vanished between the existence check and here: do not leave
+        # a scheduled task nobody points at (or would retire).
+        try:
+            await get_scheduled_task_repo(request).delete_with_queue_cancellation(
+                str(task.get("id")),
+                user_id=owner_user_id,
+                error="routine creation rolled back: bot no longer exists",
+                now=datetime.now(UTC),
+            )
+        except Exception:  # noqa: BLE001 — the 404 verdict below stands regardless
+            logger.warning("Routine task %s could not be rolled back after the bot vanished.", task.get("id"), exc_info=True)
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    return {"bot_name": key, "routine": routine, "task": task}
+
+
+@router.delete("/{name}/routines/{routine_name}", summary="Remove a bot routine and retire its scheduled task")
+async def delete_bot_routine(name: str, routine_name: str, request: Request) -> dict:
+    """Delete the routine record and retire its task, in that order of proof.
+
+    The task is deleted first; a task that is launching or running refuses
+    (409) and the routine stays whole, because a half-deleted routine would
+    keep firing with no record. A backing task that is already gone is not an
+    error — deleting the dangling record is the clean end state — and the
+    response says which case happened.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+    cleaned = (routine_name or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="Routine name must not be empty.")
+
+    def _lookup():
+        bot = _registry().get_bot(key)
+        if bot is None:
+            return "bot-missing", None
+        return "found", bot.get_routine(cleaned)
+
+    state, routine = await asyncio.to_thread(_lookup)
+    if state == "bot-missing":
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    if routine is None:
+        raise HTTPException(status_code=404, detail=f"Routine '{cleaned}' not found on bot '{key}'.")
+
+    task_id = routine.get("task_id")
+    task_owner = routine.get("owner_user_id")
+    task_deletion = "no_task_recorded"
+    if isinstance(task_id, str):
+        if isinstance(task_owner, str):
+            from app.gateway.deps import get_scheduled_task_repo
+
+            task_deletion = await get_scheduled_task_repo(request).delete_with_queue_cancellation(
+                task_id,
+                user_id=task_owner,
+                error="bot routine deleted",
+                now=datetime.now(UTC),
+            )
+            if task_deletion == "executing":
+                raise HTTPException(
+                    status_code=409,
+                    detail="The routine's task is launching or running; retry after the active execution finishes",
+                )
+        else:
+            # A hand-edited routine: the task exists but its owner was never
+            # recorded, so the owner-scoped delete cannot prove it may remove
+            # it. Leave the task, remove the record, and say so.
+            task_deletion = "owner_not_recorded"
+
+    removed = await asyncio.to_thread(_registry().remove_routine, key, cleaned)
+    return {
+        "bot_name": key,
+        "routine": cleaned,
+        "removed": bool(removed),
+        # "not_found" here means the backing task was already gone before this
+        # call; "deleted" is a real retirement; the rest disclose themselves.
+        "task_deletion": task_deletion,
+    }
 
 
 @router.post("/{name}/soul/backfill", summary="Backfill DM protocol into roster SOULs")

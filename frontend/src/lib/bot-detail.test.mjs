@@ -19,15 +19,15 @@ import ts from "typescript";
  * payloads drive opposite operator conclusions and must never render alike.
  *
  * LOADER NOTE. `bot-detail.ts` imports `./api-client`, `./bots`,
- * `./bot-working-status`, `./kanban` and `./bot-capabilities` with extensionless
- * specifiers, so the repo's `data:text/javascript` trick cannot resolve them. It
- * is transpiled through `ts.transpileModule` and loaded with an injected
- * `require` that only satisfies those known dependencies and asserts on anything
- * else — the same pattern as `bots-activity-client.test.mjs`.
+ * `./bot-working-status`, `./kanban`, `./bot-capabilities` and `./bot-routines`
+ * with extensionless specifiers, so the repo's `data:text/javascript` trick
+ * cannot resolve them. It is transpiled through `ts.transpileModule` and loaded
+ * with an injected `require` that only satisfies those known dependencies and
+ * asserts on anything else — the same pattern as `bots-activity-client.test.mjs`.
  */
 
 const compiled = new Map(
-  ["api-client", "bots", "bot-working-status", "kanban", "bot-capabilities", "bot-detail"].map((name) => [
+  ["api-client", "bots", "bot-working-status", "kanban", "bot-capabilities", "bot-routines", "bot-detail"].map((name) => [
     name,
     ts.transpileModule(readFileSync(new URL(`./${name}.ts`, import.meta.url), "utf8"), {
       compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
@@ -74,6 +74,7 @@ const {
   },
   "./kanban": { listKanbanTasks: async () => [] },
   "./bot-capabilities": { normalizeCapabilityScope: (raw) => raw },
+  "./bot-routines": { normalizeBotRoutines: (raw) => raw },
 });
 
 /* -------------------------------------------------------------------------- */

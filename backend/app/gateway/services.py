@@ -2137,11 +2137,25 @@ async def launch_scheduled_thread_run(
             ),
             cookies={},
         )
+    run_metadata = dict(metadata) if isinstance(metadata, dict) else {}
+    if assistant_id:
+        # Bot-scoped launches carry the identity in the run metadata too. The
+        # lead agent's assembly re-homes a roster-bot ``agent_name`` onto the
+        # ``bot_name`` carriers (``_clear_dangling_agent_identity``), and the
+        # forked run record must agree about who ran: the runs API echoes this
+        # metadata verbatim and the group activity ledger reads the same
+        # fallback. Server-stamped and untouched by the client scrub (internal
+        # callers keep server-owned metadata).
+        from alpha.bots.mode import resolve_roster_bot
+
+        bot = await asyncio.to_thread(resolve_roster_bot, assistant_id)
+        if bot is not None:
+            run_metadata["botName"] = str(getattr(bot, "name", assistant_id))
     body = RunCreateRequest(
         assistant_id=assistant_id,
         input={"messages": [{"role": "user", "content": prompt}]},
         command=None,
-        metadata=metadata or {},
+        metadata=run_metadata,
         config={"recursion_limit": _resolve_scheduler_recursion_limit()},
         # ``user_id`` mirrors what IM channels put in ``body.context`` so
         # runtime-context consumers without a ContextVar fallback (e.g.
@@ -2163,7 +2177,7 @@ async def launch_scheduled_thread_run(
         if_not_exists="create",
         feedback_keys=None,
     )
-    scheduled_task_run_id = (metadata or {}).get("scheduled_task_run_id")
+    scheduled_task_run_id = run_metadata.get("scheduled_task_run_id")
     idempotency_key = f"scheduled-task:{scheduled_task_run_id}" if isinstance(scheduled_task_run_id, str) else None
     # Non-HTTP entry point: the lifespan scheduler calls this with a synthetic
     # request, so TraceMiddleware never runs. The scope is opened per launch,

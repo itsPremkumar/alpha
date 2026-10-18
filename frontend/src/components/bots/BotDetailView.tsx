@@ -37,6 +37,7 @@ import { elapsedWords, type FleetHealthSummary } from "@/lib/bot-working-status"
 import { kanbanStatusLabel, type KanbanTask } from "@/lib/kanban";
 import { workspaceViewUrl, type WorkspaceView } from "@/lib/workspace-view";
 import { BotModelConfigPanel } from "./BotModelConfigPanel";
+import { BotRoutinesPanel } from "./BotRoutinesPanel";
 import { CapabilityScopePanel } from "./CapabilityScopePanel";
 import { Modal } from "@/components/ui";
 import { BotDetailPanel } from "@/components/chat-shell/BotDetailPanel";
@@ -765,20 +766,8 @@ export function BotDetailView({ name }: { name: string }) {
         </Section>
 
         {/* ---- Routines ---- */}
-        <Section title="Routines" state={profile ?? { state: "loading" }}>
-          {(b) =>
-            b.routines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No routines recorded for this bot.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {b.routines.map((r, i) => (
-                  <li key={i} className="rounded-lg border border-border/60 p-2 text-xs font-mono">
-                    {JSON.stringify(r)}
-                  </li>
-                ))}
-              </ul>
-            )
-          }
+        <Section title="Routines" state={bundle?.routines ?? { state: "loading" }}>
+          {(routines) => <BotRoutinesPanel name={name} routines={routines} onChanged={load} />}
         </Section>
 
         {/* ---- Org position ---- */}
