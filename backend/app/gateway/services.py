@@ -670,6 +670,14 @@ _CONTEXT_INTERNAL_CALLER_KEYS: frozenset[str] = frozenset({"non_interactive"})
 #   ``channel_user_id``         — accepted only from trusted internal context.
 #   ``langgraph_auth_user*``    — populated only by LangGraph Server auth.
 #   ``sandbox_*_id``           — created only inside the run/subagent lifecycle.
+#   ``delegation``              — the child's parentage in the delegation
+#                                 graph, stamped by ``SubagentExecutor`` on
+#                                 spawn; a client-supplied copy would forge a
+#                                 parent edge the run never had (phase 3.4).
+#   ``swarm_id``                — which swarm a run belongs to; the task tool
+#                                 reads it for task-event attribution, so a
+#                                 client copy would fake the attribution
+#                                 (phase 3.4).
 _SERVER_OWNED_RUNTIME_CONTEXT_KEYS: frozenset[str] = (
     frozenset(
         {
@@ -682,6 +690,8 @@ _SERVER_OWNED_RUNTIME_CONTEXT_KEYS: frozenset[str] = (
             "run_id",
             "thread_id",
             "user_id",
+            "delegation",
+            "swarm_id",
             PROJECT_CONTEXT_RUNTIME_KEY,
             APEX_RUNTIME_SESSION_KEY,
         }

@@ -21,6 +21,8 @@ import { ActivityStatus } from "@/components/ActivityStatus";
 import { NetworkWaitBubbles } from "@/components/NetworkWaitBubbles";
 import { SubagentList } from "@/components/SubagentList";
 import { SwarmBoard } from "@/components/agent-ui/SwarmBoard";
+import { DelegationGraph } from "@/components/agent-ui/DelegationGraph";
+import { hasDelegationNesting } from "@/lib/delegation-graph";
 import { SwarmRunBoard } from "@/components/SwarmRunBoard";
 import { TranscriptSearch } from "@/components/TranscriptSearch";
 import { WorkspaceSheet } from "@/components/WorkspaceSheet";
@@ -4217,10 +4219,20 @@ export default function ChatView({
                             <SwarmBoard tasks={subagentTasks} />
                           </div>
                         )}
-                        {subagentTasks.length > 0 && (
+                        {/* Nested delegation renders as the tree the run
+                    reported — an edge only between task ids this stream saw,
+                    an unseen or missing parent at the top level. A flat run
+                    keeps the ordinary card list. */}
+                        {subagentTasks.length > 0 && hasDelegationNesting(subagentTasks) ? (
                           <div className="max-w-4xl mx-auto">
-                            <SubagentList tasks={subagentTasks} />
+                            <DelegationGraph tasks={subagentTasks} />
                           </div>
+                        ) : (
+                          subagentTasks.length > 0 && (
+                            <div className="max-w-4xl mx-auto">
+                              <SubagentList tasks={subagentTasks} />
+                            </div>
+                          )
                         )}
                         {/* Coordinator swarms run in the Gateway's swarm runtime,
                     not as in-turn delegation, so no stream event describes

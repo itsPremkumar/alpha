@@ -148,6 +148,17 @@ export type SubagentTask = {
   error?: string;
   /** Cumulative tokens the run reported. Absent = not reported, never zero. */
   usage?: SubagentUsage;
+  /**
+   * Delegation-graph identity (phase 3.4), copied only from validated wire
+   * values. Absent = the events never reported it; a task with no `parentId`
+   * renders as a graph root — the client never guesses an edge.
+   */
+  parentId?: string;
+  /** Server-reported delegation depth (1 = the lead's direct child). */
+  depth?: number;
+  agentName?: string;
+  subagentType?: string;
+  swarmId?: string;
 };
 
 /**
@@ -187,6 +198,36 @@ function taskUsage(value: unknown): SubagentUsage | undefined {
     output_tokens: output ?? 0,
     total_tokens: total ?? 0,
   };
+}
+
+/** Mirrors the backend's validated delegation-depth ceiling (`task_tool.py`). */
+const MAX_DELEGATION_DEPTH = 64;
+
+/**
+ * Delegation-graph identity (phase 3.4), read from the `task_*` event.
+ *
+ * The server always emits all six keys (`null` = "not reported"), so an absent
+ * or invalid value stays absent here: the client never guesses a parent edge,
+ * a depth, or an attribution the run did not report. Every key is optional —
+ * frames from a Gateway without phase 3.4 simply produce no fields.
+ *
+ * `run_id` is deliberately NOT folded: on the wire it is the stream frame's
+ * own run-framing key, present on every custom event since before phase 3.4,
+ * so reading it would dress envelope framing up as delegation data. A future
+ * surface that needs the run id can read the frame directly.
+ */
+function taskDelegationFields(data: Record<string, unknown>): Pick<SubagentTask, "parentId" | "depth" | "agentName" | "subagentType" | "swarmId"> {
+  const fields: Pick<SubagentTask, "parentId" | "depth" | "agentName" | "subagentType" | "swarmId"> = {};
+  const parentId = identifier(data.parent_id);
+  if (parentId) fields.parentId = parentId;
+  if (typeof data.depth === "number" && Number.isSafeInteger(data.depth) && data.depth >= 1 && data.depth <= MAX_DELEGATION_DEPTH) fields.depth = data.depth;
+  const agentName = identifier(data.agent_name);
+  if (agentName) fields.agentName = agentName;
+  const subagentType = identifier(data.subagent_type);
+  if (subagentType) fields.subagentType = subagentType;
+  const swarmId = identifier(data.swarm_id);
+  if (swarmId) fields.swarmId = swarmId;
+  return fields;
 }
 
 export function createSseState(runId?: string): SseState {
@@ -383,6 +424,9 @@ function withChannel(state: SseState, event: SseChannelEvent, data: unknown, eve
  *   status nobody reported.
  * - step numbers only move forward, so an out-of-order frame cannot rewind the
  *   progress the UI is showing.
+ * - delegation-graph fields are adopted only from validated wire values and
+ *   only once; a missing `parent_id` stays missing so the task renders as a
+ *   graph root — never a guessed edge.
  *
  * Returns `state` unchanged when there is nothing to add, which keeps the array
  * reference stable and lets React skip the re-render.
@@ -409,6 +453,16 @@ function withTaskEvent(state: SseState, data: Record<string, unknown>): SseState
   if (description) next.description = description;
   const model = boundedTaskText(data.model_name);
   if (model) next.modelName = model;
+
+  // Delegation-graph identity (phase 3.4): every `task_*` event carries it.
+  // A task's identity is fixed at spawn, so the first validated value wins and
+  // no later frame — replayed, delayed, or otherwise stray — rewrites it.
+  const delegation = taskDelegationFields(data);
+  if (next.parentId === undefined && delegation.parentId !== undefined) next.parentId = delegation.parentId;
+  if (next.depth === undefined && delegation.depth !== undefined) next.depth = delegation.depth;
+  if (next.agentName === undefined && delegation.agentName !== undefined) next.agentName = delegation.agentName;
+  if (next.subagentType === undefined && delegation.subagentType !== undefined) next.subagentType = delegation.subagentType;
+  if (next.swarmId === undefined && delegation.swarmId !== undefined) next.swarmId = delegation.swarmId;
 
   if (isStep) {
     const reportedIndex = typeof data.message_index === "number" && Number.isSafeInteger(data.message_index) && data.message_index > 0 ? data.message_index : undefined;

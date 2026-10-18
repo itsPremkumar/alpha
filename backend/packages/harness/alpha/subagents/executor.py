@@ -972,6 +972,7 @@ class SubagentExecutor:
         loop_detection_recorder: Any | None = None,
         tool_promotion_recorder: Any | None = None,
         context_snapshot: ParentContextSnapshot | None = None,
+        delegation_context: dict[str, Any] | None = None,
     ):
         """Initialize the executor.
 
@@ -1027,6 +1028,11 @@ class SubagentExecutor:
             context_snapshot: Optional immutable parent history captured by the
                 ordinary task tool at dispatch. Rendered as background data,
                 never as child execution evidence or inherited system authority.
+            delegation_context: Optional delegation-graph identity of this child
+                (``{task_id, depth, agent_name, swarm_id}``), stamped into the
+                child runtime context so a child that itself delegates names
+                this task as its parent. Absent for callers outside the task
+                tool; the child's context then reads as a graph root.
         """
         self.config = config
         self.app_config = app_config
@@ -1043,6 +1049,10 @@ class SubagentExecutor:
         self.thread_data = thread_data
         self.uploaded_files = deepcopy(uploaded_files) if uploaded_files is not None else None
         self.context_snapshot = context_snapshot
+        # Delegation-graph identity (phase 3.4): copied by value so a later
+        # caller-side mutation cannot rewrite what the child's task events
+        # report about their own parentage.
+        self.delegation_context = dict(delegation_context) if delegation_context is not None else None
         self.thread_id = thread_id
         # Generate trace_id if not provided (for top-level calls)
         self.trace_id = trace_id or str(uuid.uuid4())[:8]
@@ -1733,6 +1743,12 @@ class SubagentExecutor:
             context["oauth_provider"] = self.oauth_provider
             context["oauth_id"] = self.oauth_id
             context["run_id"] = self.run_id
+            if self.delegation_context is not None:
+                # Delegation-graph identity (phase 3.4): lets a child that
+                # itself delegates name this task as its parent instead of
+                # reading as a root. Written only when the caller supplied one,
+                # so a root context never carries the key at all.
+                context["delegation"] = dict(self.delegation_context)
             if self.apex_session_id:
                 # Import only for APEX-bound child runs. Ordinary subagent
                 # construction stays independent of the APEX control plane.

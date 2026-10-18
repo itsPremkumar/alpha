@@ -99,6 +99,91 @@ _explicit_app_config: ContextVar[Any | None] = ContextVar(
     default=None,
 )
 
+# Runtime-context key carrying one subagent's own delegation identity,
+# stamped by ``SubagentExecutor`` on spawn (phase 3.4 delegation graph). A
+# root run's context never carries it, so "no delegation block" is how a
+# graph root is recognized — never a guessed parent.
+_DELEGATION_CONTEXT_KEY = "delegation"
+
+# Bounds on a delegation block read back out of runtime context. The block is
+# written by our own spawn path, so exceeding these means the context was
+# corrupted or forged; the block is then dropped entirely (the caller reads as
+# a root) rather than partially trusted.
+_MAX_DELEGATION_DEPTH = 64
+_MAX_DELEGATION_ID_CHARS = 512
+
+
+def _read_delegation_context(parent_context: dict[str, Any]) -> dict[str, Any] | None:
+    """The delegating agent's own identity, as stamped by its spawner.
+
+    Returns ``None`` for a root caller (a lead run, or any context that never
+    carried a delegation block) *and* for a malformed one: an unreadable
+    parent id must not become an edge the run cannot stand behind. ``depth``
+    is the delegator's own; a child it delegates is always one below it.
+    """
+    raw = parent_context.get(_DELEGATION_CONTEXT_KEY)
+    if not isinstance(raw, dict):
+        return None
+    task_id = raw.get("task_id")
+    depth = raw.get("depth")
+    if not isinstance(task_id, str) or not task_id or len(task_id) > _MAX_DELEGATION_ID_CHARS:
+        return None
+    if not isinstance(depth, int) or isinstance(depth, bool) or not 0 <= depth < _MAX_DELEGATION_DEPTH:
+        return None
+    agent_name = raw.get("agent_name")
+    if not isinstance(agent_name, str) or not agent_name:
+        agent_name = None
+    swarm_id = raw.get("swarm_id")
+    if not isinstance(swarm_id, str) or not swarm_id:
+        swarm_id = None
+    return {"task_id": task_id, "depth": depth, "agent_name": agent_name, "swarm_id": swarm_id}
+
+
+def _read_swarm_id(parent_context: dict[str, Any], delegation: dict[str, Any] | None) -> str | None:
+    """Swarm attribution for one task event, from server-stamped context only.
+
+    Sources in order: the top-level ``swarm_id`` runtime-context key (how a
+    caller attributes a run to a swarm) and the validated delegation block
+    (how attribution survives a delegation chain). Neither being present
+    means the task is in no swarm — ``None`` is "not reported", never a
+    guessed id. Client-supplied copies of the top-level key through
+    ``body.config`` are scrubbed by
+    ``app.gateway.services.strip_internal_context_keys``.
+    """
+    raw = parent_context.get("swarm_id")
+    if isinstance(raw, str) and raw and len(raw) <= _MAX_DELEGATION_ID_CHARS:
+        return raw
+    if delegation is not None and delegation["swarm_id"]:
+        return delegation["swarm_id"]
+    return None
+
+
+def _delegation_event_fields(
+    delegation: dict[str, Any] | None,
+    *,
+    child_agent_name: str,
+    subagent_type: str,
+    run_id: str | None,
+    swarm_id: str | None,
+) -> dict[str, Any]:
+    """Delegation-graph fields carried by every ``task_*`` event.
+
+    The event set describes the child being spawned: its parent is whoever
+    delegated *this* call (``None`` = this run's lead = graph root) and its
+    depth is one below the delegator's. ``swarm_id`` is the attribution
+    resolved by ``_read_swarm_id`` — a task in no swarm reports ``None``,
+    never a guessed id. All six keys are always present so the wire shape is
+    stable; ``None`` means "not reported", never a fabricated zero.
+    """
+    return {
+        "parent_id": delegation["task_id"] if delegation else None,
+        "depth": (delegation["depth"] + 1) if delegation else 1,
+        "agent_name": child_agent_name,
+        "subagent_type": subagent_type,
+        "run_id": run_id if isinstance(run_id, str) and run_id else None,
+        "swarm_id": swarm_id,
+    }
+
 
 def _record_middleware_on_parent_loop(journal: Any, kwargs: dict[str, Any]) -> None:
     """Run one subagent middleware-journal append on the journal owner's loop."""
@@ -1071,6 +1156,20 @@ async def task_tool(
     if overrides:
         config = replace(config, **overrides)
 
+    # Delegation-graph identity for every task_* event this call emits (the
+    # fields describe the child being spawned): parent = whoever delegated
+    # *this* call from runtime context stamped by its own spawner; depth = one
+    # below the delegator's, and exactly 1 for a lead-spawned child. Missing or
+    # malformed context reads as root — never a guessed edge.
+    delegation = _read_delegation_context(parent_context)
+    delegation_fields = _delegation_event_fields(
+        delegation,
+        child_agent_name=config.name or subagent_type,
+        subagent_type=subagent_type,
+        run_id=run_id,
+        swarm_id=_read_swarm_id(parent_context, delegation),
+    )
+
     # Get available tools (excluding task tool to prevent nesting)
     # Lazy import to avoid circular dependency
     from alpha.tools import get_available_tools
@@ -1130,6 +1229,16 @@ async def task_tool(
         # only a framework-owned pointer note, so criterion text can never gain
         # system-channel authority over framework instructions.
         "acceptance_criteria": acceptance_criteria,
+        # Delegation-graph identity stamped into the child's runtime context
+        # (phase 3.4): if this child itself delegates, its own task events name
+        # this task as parent and continue one level deeper. A root context
+        # carries no block, so depth stays measured rather than guessed.
+        "delegation_context": {
+            "task_id": tool_call_id,
+            "depth": delegation_fields["depth"],
+            "agent_name": delegation_fields["agent_name"],
+            "swarm_id": delegation_fields["swarm_id"],
+        },
     }
     if context_snapshot is not None:
         executor_kwargs["context_snapshot"] = context_snapshot
@@ -1200,6 +1309,7 @@ async def task_tool(
                 "task_id": tool_call_id,
                 "description": description or prompt,
                 "model_name": effective_model,
+                **delegation_fields,
             },
             writer=writer,
         )
@@ -1210,7 +1320,7 @@ async def task_tool(
             if result is None:
                 logger.error(f"[trace={trace_id}] Task {tool_call_id} execution {execution_id} not found in background tasks")
                 await aemit_custom_event(
-                    {"type": "task_failed", "task_id": tool_call_id, "error": "Task disappeared from background tasks"},
+                    {"type": "task_failed", "task_id": tool_call_id, "error": "Task disappeared from background tasks", **delegation_fields},
                     writer=writer,
                 )
                 cleanup_background_task(execution_id)
@@ -1247,6 +1357,7 @@ async def task_tool(
                             "total_messages": current_message_count,
                             "usage": usage,
                             "model_name": effective_model,
+                            **delegation_fields,
                         },
                         writer=writer,
                     )
@@ -1272,6 +1383,7 @@ async def task_tool(
                         "result": result.result,
                         "usage": usage,
                         "model_name": effective_model,
+                        **delegation_fields,
                     },
                     writer=writer,
                 )
@@ -1364,6 +1476,7 @@ async def task_tool(
                         "error": result.error,
                         "usage": usage,
                         "model_name": effective_model,
+                        **delegation_fields,
                     },
                     writer=writer,
                 )
@@ -1390,6 +1503,7 @@ async def task_tool(
                         "error": result.error,
                         "usage": usage,
                         "model_name": effective_model,
+                        **delegation_fields,
                     },
                     writer=writer,
                 )
@@ -1412,6 +1526,7 @@ async def task_tool(
                         "error": result.error,
                         "usage": usage,
                         "model_name": effective_model,
+                        **delegation_fields,
                     },
                     writer=writer,
                 )
@@ -1444,6 +1559,7 @@ async def task_tool(
                         "task_id": tool_call_id,
                         "usage": usage,
                         "model_name": effective_model,
+                        **delegation_fields,
                     },
                     writer=writer,
                 )

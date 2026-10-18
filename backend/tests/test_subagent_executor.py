@@ -5144,3 +5144,33 @@ def test_utcnow_helper_returns_utc_aware_datetime(classes):
     assert now.tzinfo is not None
     assert now.utcoffset() is not None
     assert now.utcoffset().total_seconds() == 0.0
+
+
+# -----------------------------------------------------------------------------
+# Delegation-graph stamp (phase 3.4) — constructor contract
+# -----------------------------------------------------------------------------
+
+
+def test_executor_copies_the_delegation_stamp_by_value(classes, base_config):
+    """A caller-side mutation after dispatch cannot rewrite the child's parentage.
+
+    The task tool passes the child's delegation identity once at construction;
+    the executor keeps its own copy so the stamp reported by the child's
+    ``task_*`` events is the one that was validated at spawn time.
+    """
+    stamp = {"task_id": "call-1", "depth": 1, "agent_name": "general-purpose", "swarm_id": None}
+    executor = classes["SubagentExecutor"](config=base_config, tools=[], delegation_context=stamp)
+
+    assert executor.delegation_context == stamp
+    assert executor.delegation_context is not stamp
+
+    stamp["task_id"] = "mutated"
+    assert executor.delegation_context["task_id"] == "call-1"
+
+
+def test_executor_without_a_stamp_keeps_the_child_context_root_shaped(classes, base_config):
+    """No delegation_context means the child's context carries no ``delegation``
+    key at all, so a later task it spawns reads as a graph root — never a
+    guessed edge."""
+    executor = classes["SubagentExecutor"](config=base_config, tools=[])
+    assert executor.delegation_context is None

@@ -611,7 +611,11 @@ make doctor    # verify the environment
   operators can override its limits in `config.yaml`.
 - **Live subagent progress cards** — task events show status, a readable latest
   step or tool-call summary, reported step count and measured usage; structured
-  messages remain available to durable run receipts.
+  messages remain available to durable run receipts. Nested delegation renders
+  as the tree the run reported: each task carries its parent id, depth, and
+  agent identity from the server's own events, a task whose parent was never
+  seen in the stream shows at the top level with a disclosed count, and no
+  parent edge is ever invented client-side.
 - **Live collaborative Kanban** — agents create, assign, transition, and audit
   cards on a shared board.
 - **Agent-to-Agent (A2A) messaging** — structured protocol for peer requests and

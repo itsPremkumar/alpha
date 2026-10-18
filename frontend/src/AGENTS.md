@@ -84,7 +84,7 @@ source for exact route mappings and honest display states.
 | --- | --- | --- |
 | Reasoning picker / model catalog | `ChatView`, `lib/models.ts`, `components/ReasoningEffortPicker.tsx` | `frontend/tests/reasoning-effort.test.mjs`, `lib/freeModels.test.mjs` |
 | Free provider health menu | `components/FreeCatalogMenu.tsx`, `lib/freeCatalogView.ts` | `lib/free-catalog-view.test.mjs` |
-| Live activity / tool receipts / swarm rows | `components/ActivityStatus.tsx`, `ToolGroup.tsx`, `SubagentList.tsx`, `components/sections/DelegatedWorkPanel.tsx`, `lib/activity.ts` | `lib/activity.test.mjs`, `lib/subagent-events.test.mjs`, `lib/delegated-work-panel.test.mjs`, `lib/tool-status-honesty.test.mjs` |
+| Live activity / tool receipts / swarm rows | `components/ActivityStatus.tsx`, `ToolGroup.tsx`, `SubagentList.tsx`, `components/agent-ui/DelegationGraph.tsx`, `components/sections/DelegatedWorkPanel.tsx`, `lib/activity.ts`, `lib/delegation-graph.ts` | `lib/activity.test.mjs`, `lib/subagent-events.test.mjs`, `lib/delegation-graph.test.mjs`, `lib/delegated-work-panel.test.mjs`, `lib/tool-status-honesty.test.mjs` |
 | Bot roster, liveness, work and the create forge | `components/bots/` (roster, detail, `BotCreateDialog.tsx`), `lib/bots.ts`, `lib/bot-working-status.ts` | `lib/bots-activity-client.test.mjs`, `lib/bot-forge-client.test.mjs`, `lib/bot-working-status.test.mjs`, `lib/bot-working-status-view.test.mjs` |
 | Network status and reconnect | workspace strip and chat network bubble | `lib/network*.test.mjs`, `lib/chat-stream.test.mjs` |
 | APEX panel and composer control | `components/sections/ApexSection.tsx`, `ApexModePicker.tsx`, `lib/apex.ts` | `lib/apex.test.mjs` |
