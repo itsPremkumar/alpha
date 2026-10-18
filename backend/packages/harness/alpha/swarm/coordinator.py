@@ -31,6 +31,7 @@ from alpha.swarm.models import (
     TaskNodeState,
     is_terminal_swarm_status,
 )
+from alpha.swarm.recovery import RESTART_TERMINAL_REASON
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
 from alpha.swarm.spec_lint import lint_plan
 from alpha.swarm.stigmergy import StigmergicTraceStore, TraceCategory
@@ -212,7 +213,7 @@ class SwarmCoordinator:
                     task.lease_expires_at = None
                     task.error_message = "recovered after process restart; awaiting a fresh lease"
             plan.status = "paused"
-            plan.terminal_reason = "process_restart_requires_resume"
+            plan.terminal_reason = RESTART_TERMINAL_REASON
             self.append_event(
                 plan.swarm_id,
                 "SWARM_RECOVERED_AFTER_RESTART",
@@ -436,9 +437,9 @@ class SwarmCoordinator:
                 return None
             return plan
 
-    def list_swarms(self, limit: int = 20, *, owner_id: str | None = None) -> list[SwarmPlan]:
+    def list_swarms(self, limit: int = 20, *, owner_id: str | None = None, status: str | None = None) -> list[SwarmPlan]:
         with self._lock:
-            plans = [plan for plan in self._swarms.values() if owner_id is None or plan.owner_id == owner_id]
+            plans = [plan for plan in self._swarms.values() if (owner_id is None or plan.owner_id == owner_id) and (status is None or plan.status == status)]
             plans.sort(key=lambda p: p.created_at, reverse=True)
             return plans[: max(1, int(limit))]
 

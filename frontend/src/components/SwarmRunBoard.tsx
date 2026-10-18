@@ -34,7 +34,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Layers3, ListChecks, Network, Users } from "lucide-react";
 import { listSwarms, swarmDetails, swarmMetrics, hasRefreshableSwarms, isTerminalSwarmStatus, swarmProgress, swarmProgressLabel } from "@/lib/teamops";
 import { subscribeSwarmEvents } from "@/lib/swarm-events";
-import { swarmRunRows, type SwarmRunRow } from "@/lib/swarm-run-board";
+import { swarmRunRows, swarmRecoveryBanner, type SwarmRunRow, type SwarmRecoveryBanner } from "@/lib/swarm-run-board";
 import { pick } from "@/lib/http";
 import {
   swarmStructureView,
@@ -66,6 +66,7 @@ export function SwarmRunBoard({ onOpenTeamOps, swarmId }: SwarmRunBoardProps) {
   const [expanded, setExpanded] = useState<ExpandedState | null>(null);
   const [streamFallback, setStreamFallback] = useState<string | null>(null);
   const [streamEndedTick, setStreamEndedTick] = useState(0);
+  const [recovery, setRecovery] = useState<SwarmRecoveryBanner | null>(null);
   const loadingRef = useRef(false);
   const refreshTimer = useRef<number | null>(null);
 
@@ -95,9 +96,11 @@ export function SwarmRunBoard({ onOpenTeamOps, swarmId }: SwarmRunBoardProps) {
               : "auto-sized",
         };
         setRows([row]);
+        setRecovery(null);
       } else {
         const swarms = await listSwarms();
         setRows(swarmRunRows(swarms));
+        setRecovery(swarmRecoveryBanner(swarms));
       }
       setReadError(null);
     } catch (e) {
@@ -263,6 +266,12 @@ export function SwarmRunBoard({ onOpenTeamOps, swarmId }: SwarmRunBoardProps) {
       {streamNote && (
         <p className="px-1 pb-2 text-[10px] text-amber-600 dark:text-amber-400" data-swarm-stream-fallback>
           {streamNote}
+        </p>
+      )}
+      {recovery && (
+        <p className="px-1 pb-2 text-[10px] text-amber-600 dark:text-amber-400" data-swarm-recovery-banner>
+          {recovery.count === 1 ? "1 swarm was" : `${recovery.count} swarms were`} parked by a process restart
+          ({recovery.terminalReason}) — resume or abandon them in Team Ops.
         </p>
       )}
 

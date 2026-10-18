@@ -331,6 +331,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if public_projection_ready:
         logger.info("Ensured the public skill projection; user projections repair lazily on sandbox acquire")
 
+    # Swarm recovery (bot-mode 3.1). Constructing the coordinator here also
+    # parks every restart-recovered plan (paused + terminal_reason, leases
+    # cleared); the pass then applies `swarm.resume_on_start` (default none).
+    # A failure here must never block Gateway startup — parked plans simply
+    # wait for an explicit resume.
+    try:
+        from alpha.swarm.recovery import auto_resume_on_start
+
+        recovery_report = await asyncio.to_thread(auto_resume_on_start, startup_config.swarm.resume_on_start)
+        logger.info(
+            "Swarm recovery pass: mode=%s scanned=%d resumed=%d",
+            recovery_report["mode"],
+            recovery_report["scanned"],
+            len(recovery_report["resumed"]),
+        )
+    except Exception:
+        logger.warning("Swarm recovery pass skipped", exc_info=True)
+
     # Agent observability (Monocle). Off by default; enabled with
     # MONOCLE_TRACING. Initialized here at startup — not at import time — so a
     # plain `import alpha.agents` never installs a process-global tracer.

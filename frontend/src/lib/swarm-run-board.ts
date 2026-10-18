@@ -13,7 +13,7 @@
  * same `swarmProgress`/`swarmProgressLabel` pair the Team Ops DAG uses.
  */
 
-import { isTerminalSwarmStatus, swarmProgress, swarmProgressLabel, type Swarm } from "@/lib/teamops";
+import { isRestartRecoverable, isTerminalSwarmStatus, swarmProgress, swarmProgressLabel, type Swarm } from "@/lib/teamops";
 
 export interface SwarmRunRow {
   id: string;
@@ -49,4 +49,27 @@ export function swarmRunRows(swarms: Swarm[]): SwarmRunRow[] {
           ? `ceiling ${swarm.maxConcurrency}`
           : "auto-sized",
     }));
+}
+
+export interface SwarmRecoveryBanner {
+  /** How many loaded rows are restart-recovered. A null banner means zero. */
+  count: number;
+  /** The server's own `terminal_reason`, verbatim — never reworded, never guessed. */
+  terminalReason: string;
+}
+
+/**
+ * The recovered-plan banner for the chat board (plan 3.1). The board stays a
+ * read-only monitor — lifecycle controls are owned by Team Ops — so this is a
+ * display projection only: it names how many plans a restart parked and the
+ * server's exact reason, so the operator knows why a swarm is paused and where
+ * to Resume or Abandon it. A pause without that reason never produces a banner.
+ */
+export function swarmRecoveryBanner(swarms: Swarm[]): SwarmRecoveryBanner | null {
+  const recovered = swarms.filter(isRestartRecoverable);
+  if (recovered.length === 0) return null;
+  return {
+    count: recovered.length,
+    terminalReason: recovered[0].terminalReason ?? "",
+  };
 }

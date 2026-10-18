@@ -68,6 +68,7 @@ from alpha.config.subagent_runtime_config import SubagentRuntimeConfig
 from alpha.config.subagents_config import SubagentsAppConfig, load_subagents_config_from_dict
 from alpha.config.suggestions_config import SuggestionsConfig
 from alpha.config.summarization_config import SummarizationConfig, load_summarization_config_from_dict
+from alpha.config.swarm_config import SwarmConfig
 from alpha.config.system_one_config import SystemOneConfig
 from alpha.config.task_continuity_config import TaskContinuityConfig
 from alpha.config.title_config import TitleConfig, load_title_config_from_dict
@@ -419,6 +420,7 @@ class AppConfig(BaseModel):
         ),
     )
     deepagent: DeepAgentConfig = Field(default_factory=DeepAgentConfig, description="Deep-agent working plane: a thread-scoped virtual filesystem in graph state (deepagents' StateBackend)")
+    swarm: SwarmConfig = Field(default_factory=SwarmConfig, description="Swarm engine operator policy: the startup recovery pass (swarm.resume_on_start) deciding what happens to restart-parked plans.")
     memory: MemoryConfig = Field(default_factory=MemoryConfig, description="Memory subsystem configuration")
     agents_api: AgentsApiConfig = Field(default_factory=AgentsApiConfig, description="Custom-agent management API configuration")
     agent_presets: dict[str, AgentPresetConfig] = Field(default_factory=dict, description="Named per-session agent presets for DeepSeek-Harness style execution modes.")

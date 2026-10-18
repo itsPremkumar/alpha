@@ -174,6 +174,31 @@ messages, enforces the consecutive-failure circuit and reports
 keeps execution status separate from acceptance: duplicate voters and unverified
 evidence cannot produce a clean approval.
 
+**Restart recovery (phase 3.1).** A restart parks every non-terminal in-flight
+plan as `paused` with `terminal_reason = alpha.swarm.recovery.RESTART_TERMINAL_REASON`
+(the single authority for that string: the coordinator writes it at load, the
+recovery module decides what counts as recovered, and the frontend banner keys on
+the same value) and requeues RUNNING/STRAGGLING tasks lease-free — the next
+scheduler tick claims **fresh** lease ids, so a dead process's lease can never
+fence a new attempt. `swarm/recovery.py` owns the vocabulary after that parking:
+`scan_recoverable` (owner-scoped, bounded, truncation reported rather than
+hidden), `resume` (refuses anything not restart-recovered by name; re-parks any
+task still holding a lease before flipping the plan), `abandon` (cancel with a
+named reason), and the one-shot startup pass `auto_resume_on_start`, gated by
+`config.yaml -> swarm.resume_on_start` (`none` default — cost-bearing resume is
+opt-in per plan §11.3; `owned` resumes only the installation default owner's
+plans; `all` resumes every recovered plan; `none` constructs no coordinator at
+all). The pass runs in `app.py`'s lifespan and a failure there never blocks
+startup. `GET /api/swarms?status=` filters by one known status and refuses an
+unknown value with 422 rather than silently returning everything. Surfaces split
+deliberately: the read-only chat `SwarmRunBoard` renders a recovery banner
+naming the server's `terminal_reason` (`lib/swarm-run-board.ts::
+swarmRecoveryBanner`), while the Resume/Abandon controls live in Team Ops beside
+every other lifecycle verb (`isRestartRecoverable` in `lib/teamops.ts`).
+Tests: `backend/tests/test_swarm_recovery.py` (a real two-coordinator restart
+over one storage dir), `frontend/src/lib/teamops.test.mjs`,
+`frontend/src/lib/swarm-run-board.test.mjs`.
+
 Specialist swarm tasks must run the same advisory receipt-citation audit as
 ordinary delegated tasks when the executor harvested receipts. Surface
 uncorroborated action claims in the team report and task UI. A resolved receipt

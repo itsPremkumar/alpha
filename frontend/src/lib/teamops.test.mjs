@@ -232,3 +232,29 @@ test("listGroups leaves mode and moderator undefined when the Gateway omits them
   assert.equal(room.mode, undefined);
   assert.equal(room.moderator, undefined);
 });
+
+// ---------------------------------------------------------------------------
+// Restart recovery (plan 3.1): the one server-written marker, keyed verbatim.
+// ---------------------------------------------------------------------------
+
+test("only the Gateway's restart terminal_reason marks a plan restart-recovered", () => {
+  assert.equal(teamops.SWARM_RESTART_RECOVERED_REASON, "process_restart_requires_resume");
+  assert.equal(teamops.isRestartRecoverable({ status: "paused", terminalReason: "process_restart_requires_resume" }), true);
+  // A pause without a reason, an operator's reason, or a non-paused status
+  // must never render as "recovered" — the banner is keyed on the exact string.
+  assert.equal(teamops.isRestartRecoverable({ status: "paused", terminalReason: undefined }), false);
+  assert.equal(teamops.isRestartRecoverable({ status: "paused", terminalReason: "operator_paused" }), false);
+  assert.equal(teamops.isRestartRecoverable({ status: "running", terminalReason: "process_restart_requires_resume" }), false);
+  assert.equal(teamops.isRestartRecoverable({ status: "completed", terminalReason: undefined }), false);
+});
+
+test("swarmAction forwards an explicit body (the abandon reason) and posts to the one route", async () => {
+  const calls = [];
+  setHttpHandler(async (path, method, payload) => { calls.push({ path, method, payload }); return {}; });
+  await teamops.swarmAction("swm-1", "cancel", { reason: "abandoned_after_restart" });
+  await teamops.swarmAction("swm-1", "resume");
+  assert.deepEqual(calls, [
+    { path: "/swarms/swm-1/cancel", method: "POST", payload: { reason: "abandoned_after_restart" } },
+    { path: "/swarms/swm-1/resume", method: "POST", payload: {} },
+  ]);
+});

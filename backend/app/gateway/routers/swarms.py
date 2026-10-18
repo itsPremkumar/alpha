@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 from alpha.config import limits
 from alpha.runtime.user_context import get_effective_user_id
 from alpha.swarm.coordinator import get_swarm_coordinator
-from alpha.swarm.models import SwarmBudget, SwarmMode, is_terminal_swarm_status
+from alpha.swarm.models import NON_TERMINAL_SWARM_STATUSES, TERMINAL_SWARM_STATUSES, SwarmBudget, SwarmMode, is_terminal_swarm_status
 from alpha.swarm.telemetry import SwarmTelemetry
 from alpha.utils.time import coerce_iso
 from app.gateway.deps import require_admin_user
@@ -298,11 +298,13 @@ async def create_and_spawn_swarm(
 
 
 @router.get("")
-async def list_swarms(limit: int = 20, *, request: Request = None):
-    """List owner-visible swarms sorted by creation timestamp."""
+async def list_swarms(limit: int = 20, status: str | None = None, *, request: Request = None):
+    """List owner-visible swarms sorted by creation timestamp, optionally narrowed to one status."""
 
+    if status is not None and status not in TERMINAL_SWARM_STATUSES | NON_TERMINAL_SWARM_STATUSES:
+        raise HTTPException(status_code=422, detail=f"Unknown swarm status {status!r}; refusing rather than returning an unfiltered list.")
     coordinator = get_swarm_coordinator()
-    plans = await asyncio.to_thread(coordinator.list_swarms, max(1, min(int(limit), 100)), owner_id=_owner_scope(request))
+    plans = await asyncio.to_thread(coordinator.list_swarms, max(1, min(int(limit), 100)), owner_id=_owner_scope(request), status=status)
     return [_plan_to_wire(plan.to_dict()) for plan in plans]
 
 

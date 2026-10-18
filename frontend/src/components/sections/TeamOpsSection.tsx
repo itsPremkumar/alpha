@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   listGroups, createGroup, groupMessages, startGroupRun, listSwarms, createSwarm, hasRefreshableSwarms,
   swarmAction, swarmMessages, publishSwarmMessage, SWARM_MESSAGE_WINDOW,
-  swarmProgress, swarmProgressLabel,
+  swarmProgress, swarmProgressLabel, isRestartRecoverable,
   swarmDetails, swarmEvents, swarmMetrics,
   type Swarm, type SwarmAction, type SwarmMessage, type SwarmCostProjection, listMcpTasks, listJobs, cancelJob,
   companyStatus, executiveDigest, companyKpis,
@@ -316,12 +316,12 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
    * its real state and the control usable again — the busy flag is a UI lock,
    * not a claim that anything succeeded.
    */
-  const runSwarmAction = async (id: string, action: SwarmAction) => {
+  const runSwarmAction = async (id: string, action: SwarmAction, body: Record<string, unknown> = {}) => {
     if (busySwarm) return;
     setBusySwarm(id);
     setError(null);
     try {
-      await swarmAction(id, action);
+      await swarmAction(id, action, body);
       await load();
     } catch (e) {
       setError(errMsg(e));
@@ -608,6 +608,12 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                 {s.terminalReason && (
                   <p className="text-[10px] text-muted-foreground mt-1">Stopped because: {s.terminalReason}</p>
                 )}
+                {isRestartRecoverable(s) && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1" data-swarm-recovered-row>
+                    Recovered after a process restart — work was requeued with fresh leases; Resume continues it,
+                    Abandon cancels it with that reason recorded.
+                  </p>
+                )}
                 <div className="flex gap-2 mt-2 flex-wrap">
                   <Btn
                     variant="ghost"
@@ -623,6 +629,16 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                   >
                     Blackboard
                   </Btn>
+                  {isRestartRecoverable(s) && (
+                    <Btn
+                      variant="ghost"
+                      disabled={busy}
+                      title={busy ? "A swarm request is still in flight" : "Cancel this recovered swarm; the reason is recorded on the plan"}
+                      onClick={() => runSwarmAction(s.id, "cancel", { reason: "abandoned_after_restart" })}
+                    >
+                      Abandon
+                    </Btn>
+                  )}
                   {swarmActions(s.status).map((a) => (
                     <Btn
                       key={a}

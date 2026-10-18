@@ -39,7 +39,7 @@
 # resolved every one of them to no model and booted with a WARNING saying so.
 # A merge-only upgrade cannot add the key to a file that already sits at the
 # previous version, so this needs its own version to reach existing installs.
-config_version: 63
+config_version: 64
 
 # ============================================================================
 # Logging
@@ -4897,6 +4897,21 @@ gro:
   require_final_verification: true   # re-check the winner's gates before reporting it
   relative_rank_is_tiebreaker_only: true  # pinned by design: rank orders eligible candidates only
   require_approval_for_external_side_effects: true  # external/destructive work needs a human first
+
+# ============================================================================
+# Swarm engine operator policy. A Gateway restart cannot know which worker still
+# owns a lease, so an in-flight plan is always PARKED as paused with
+# terminal_reason=process_restart_requires_resume and its tasks requeued lease-free
+# (alpha.swarm.coordinator._load_persisted_swarms). The flag below chooses what the
+# one-shot startup recovery pass (alpha.swarm.recovery) does AFTER that parking.
+# Startup-only: an edit needs a Gateway restart.
+# ============================================================================
+swarm:
+  resume_on_start: "none"        # none = park and wait for an explicit resume (default)
+                                # owned = also resume recovered plans owned by the
+                                #         installation default owner
+                                # all   = resume every recovered plan. Auto-resume
+                                #         spends model tokens, so it is opt-in.
 
 # ============================================================================
 # Self-evolution evidence gate: the bar a proposed self-change must clear before it

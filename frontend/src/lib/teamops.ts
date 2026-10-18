@@ -134,6 +134,19 @@ export interface Swarm {
 
 const TERMINAL_SWARM_STATES = new Set(["completed", "failed", "cancelled", "budget_exhausted", "stalled"]);
 
+/**
+ * The terminal_reason the Gateway writes when a *restart* parks an in-flight
+ * plan (`alpha.swarm.recovery.RESTART_TERMINAL_REASON`). Keyed on the server's
+ * own string — the UI never infers "recovered" from age, shape, or a pause
+ * without a reason.
+ */
+export const SWARM_RESTART_RECOVERED_REASON = "process_restart_requires_resume";
+
+/** A paused plan whose pause was a Gateway restart: resumable or abandonable. */
+export function isRestartRecoverable(swarm: Pick<Swarm, "status" | "terminalReason">): boolean {
+  return swarm.status === "paused" && swarm.terminalReason === SWARM_RESTART_RECOVERED_REASON;
+}
+
 /** Terminal = execution reached a final recorded verdict (Team Ops keeps the history). */
 export function isTerminalSwarmStatus(status: string): boolean {
   return TERMINAL_SWARM_STATES.has(status);
@@ -321,8 +334,8 @@ export const SWARM_ACTIONS = ["pause", "resume", "cancel", "step", "run-async"] 
 
 export type SwarmAction = (typeof SWARM_ACTIONS)[number];
 
-export async function swarmAction(id: string, action: SwarmAction): Promise<void> {
-  await send(`/swarms/${encodeURIComponent(id)}/${action}`, "POST", {});
+export async function swarmAction(id: string, action: SwarmAction, body: Record<string, unknown> = {}): Promise<void> {
+  await send(`/swarms/${encodeURIComponent(id)}/${action}`, "POST", body);
 }
 
 export async function swarmDetails(id: string): Promise<Record<string, unknown>> {

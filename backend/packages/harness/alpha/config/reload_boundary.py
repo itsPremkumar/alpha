@@ -54,6 +54,9 @@ STARTUP_ONLY_FIELDS: dict[str, str] = {
         "AioSandboxProvider and E2BSandboxProvider normalize and capture the skills mount root when their provider singleton starts; "
         "sandbox identity, mounts, remote metadata, and skill synchronization must keep using that one root until the Gateway restarts."
     ),
+    "swarm.resume_on_start": (
+        "alpha.swarm.recovery.auto_resume_on_start() runs once during app.py startup, after the coordinator has parked restart-recovered plans; the pass is not re-armed on config.yaml edits, so changing the policy needs a Gateway restart."
+    ),
     "log_level": ("apply_logging_level() runs only during app.py startup; it sets the alpha/app logger levels and may lower root handler thresholds so configured messages can propagate. A freshly reloaded AppConfig does not retrigger it."),
     "logging": (
         "configure_logging() runs only during app.py startup; it installs/removes the trace-context filter and the enhanced formatter on root handlers, "

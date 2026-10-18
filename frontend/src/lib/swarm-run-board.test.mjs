@@ -54,7 +54,7 @@ export function asList(body, keys) {
 const stubUrl = toDataUrl(httpStub);
 const teamopsUrl = toDataUrl(transpile("./teamops.ts").replace(/from\s+"\.\/http"/, `from "${stubUrl}"`));
 const boardUrl = toDataUrl(transpile("./swarm-run-board.ts").replace(`from "@/lib/teamops"`, `from "${teamopsUrl}"`));
-const { swarmRunRows } = await import(boardUrl);
+const { swarmRunRows, swarmRecoveryBanner } = await import(boardUrl);
 
 // ---------------------------------------------------------------------------
 // swarmRunRows: which swarms belong on the chat board
@@ -157,4 +157,35 @@ test("the projection maps through the shared teamops projections, not a second c
   const lib = read("./swarm-run-board.ts");
   assert.ok(lib.includes('from "@/lib/teamops"'), "swarm-run-board reuses the teamops mapping");
   assert.ok(lib.includes("swarmProgressLabel("), "progress language is the DAG's own");
+});
+
+// ---------------------------------------------------------------------------
+// The recovered banner (plan 3.1): display only, keyed on the server's string.
+// ---------------------------------------------------------------------------
+
+test("the banner names the count and the server's terminal_reason verbatim", () => {
+  const banner = swarmRecoveryBanner([
+    swarm({ id: "swm-a", status: "paused", terminalReason: "process_restart_requires_resume" }),
+    swarm({ id: "swm-b" }),
+  ]);
+  assert.deepEqual(banner, { count: 1, terminalReason: "process_restart_requires_resume" });
+  const many = swarmRecoveryBanner([
+    swarm({ id: "swm-a", status: "paused", terminalReason: "process_restart_requires_resume" }),
+    swarm({ id: "swm-b", status: "paused", terminalReason: "process_restart_requires_resume" }),
+  ]);
+  assert.equal(many.count, 2);
+});
+
+test("a pause without the restart reason never renders a recovery banner", () => {
+  assert.equal(swarmRecoveryBanner([swarm({ status: "paused" })]), null);
+  assert.equal(swarmRecoveryBanner([swarm({ status: "paused", terminalReason: "operator_paused" })]), null);
+  assert.equal(swarmRecoveryBanner([swarm()]), null);
+  assert.equal(swarmRecoveryBanner([]), null);
+});
+
+test("the board renders the banner through the lib projection and stays read-only", () => {
+  const component = read("../components/SwarmRunBoard.tsx");
+  assert.ok(component.includes("swarmRecoveryBanner("), "the banner is the lib projection, not inline logic");
+  assert.ok(component.includes("data-swarm-recovery-banner"), "the banner is addressable");
+  assert.ok(component.includes("resume or abandon them in Team Ops"), "the banner hands lifecycle to Team Ops");
 });
