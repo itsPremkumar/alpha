@@ -88,6 +88,7 @@ from app.gateway.routers import (
     supervision,
     swarms,
     system_monitor,
+    tasks,
     teams,
     thread_runs,
     threads,
@@ -1353,6 +1354,11 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # ledger. It exposes posture and calibration and mutates nothing.
     app.include_router(predictive_rsi.router)
     app.include_router(swarms.router)
+    # The run-scoped task projection (Bot Mode 3.5): one read over every
+    # engine's tasks for a run, in the neutral `alpha.tasks` contract. The
+    # graph plane and Team Ops both consume this route rather than each
+    # re-mapping engine statuses client-side.
+    app.include_router(tasks.router)
     # The team read plane. Mounted here rather than inside `create_swarm` so the
     # roster and report are reachable for a swarm that already exists; the
     # composition itself still runs inside `create_swarm`, so all four existing

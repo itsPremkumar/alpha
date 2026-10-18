@@ -32,7 +32,7 @@ _GLOBAL_LIFECYCLE_MANAGER: SubagentLifecycleManager | None = None
 #: Attempts a subagent gets before its failure is escalated to a human. A
 #: crashed attempt counts: a worker that died mid-flight cannot be resumed by
 #: the same process, so the next worker is a new attempt.
-DEFAULT_MAX_ATTEMPTS = 3
+DEFAULT_MAX_ATTEMPTS = limits.MAX_ATTEMPTS_PER_TASK
 
 
 class SubagentStatusEnum(StrEnum):

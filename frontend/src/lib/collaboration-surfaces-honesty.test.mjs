@@ -765,6 +765,8 @@ const swarmStructureViewUrl = toUrl(
   transpile(read("./swarm-structure-view.ts")),
 );
 const teamopsUrl = toUrl(compileTs("teamops", { http: httpStubUrl }));
+// The run-scoped task projection client (3.5), whose only import is ./http.
+const runTasksUrl = toUrl(compileTs("tasks", { http: httpStubUrl }));
 // The mention composer (2.6) and its two lib deps, as data URLs.
 const apiClientUrl = toUrl("export function apiUrl(p) { return p; }");
 const groupsProfileUrl = toUrl(
@@ -840,7 +842,8 @@ const loadSection = async (file) => {
     .replace(
       /from\s+"@\/components\/groups\/MentionComposer"/,
       `from "${mentionComposerUrl}"`,
-    );
+    )
+    .replace(/from\s+"@\/lib\/tasks"/, `from "${runTasksUrl}"`);
   return load(code);
 };
 

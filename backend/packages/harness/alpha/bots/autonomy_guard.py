@@ -18,6 +18,13 @@ once per dispatch:
 * **honest aggregation** — a parent sees FAILED if any descendant failed, and a
   task is not complete while any descendant is unresolved.
 
+Every number on :class:`AutonomyBounds` is read from
+:mod:`alpha.config.limits` — the single authority (Bot Mode 3.5) — so this
+chokepoint cannot disagree with the delegation tree, the subagent lifecycle
+manager or the swarm runner about what a bound is. The enforcement stays here
+(the wall-clock, attempt, total-task and revisit checks exist nowhere else);
+the *values* live in one place.
+
 The honesty rules are the load-bearing part
 -------------------------------------------
 This codebase has shipped "child failure reported to the parent as success"
@@ -111,10 +118,10 @@ class AutonomyBounds:
 
     max_depth: int = limits.MAX_DELEGATION_DEPTH
     max_children_per_parent: int = limits.MAX_CHILDREN_PER_PARENT
-    max_attempts_per_task: int = 3
-    max_wall_clock_seconds: float = 1800.0
-    max_total_tasks: int = 200
-    max_revisits_per_task: int = 2
+    max_attempts_per_task: int = limits.MAX_ATTEMPTS_PER_TASK
+    max_wall_clock_seconds: float = limits.MAX_WALL_CLOCK_SECONDS
+    max_total_tasks: int = limits.MAX_TOTAL_TASKS
+    max_revisits_per_task: int = limits.MAX_REVISITS_PER_TASK
 
     def __post_init__(self) -> None:
         for name in (

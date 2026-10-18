@@ -510,6 +510,23 @@ class SwarmCoordinator:
                 cancelled.append(swarm_id)
         return cancelled
 
+    def plans_for_run(self, run_id: str) -> list[SwarmPlan]:
+        """Every swarm plan correlated to one run — the read-only twin of
+        :meth:`cancel_for_run` (Bot Mode 3.5).
+
+        The run-scoped task projection (`GET /api/tasks?run_id=`) needs the
+        same run correlation without cancelling anything: a cancelled swarm's
+        tasks still describe what happened, and a projection that only exists
+        for live runs could never report a finished one. The snapshot is taken
+        under the lock; the plans themselves are the coordinator's own live
+        objects, exactly as every other reader of ``_swarms`` sees them.
+        """
+        target = str(run_id or "").strip()
+        if not target:
+            return []
+        with self._lock:
+            return [plan for plan in self._swarms.values() if plan.run_id == target]
+
     def step(self, swarm_id: str) -> dict[str, Any]:
         """Advance one durable scheduler tick (used by tools and integrations)."""
         from alpha.swarm.watchdog import SwarmWatchdog

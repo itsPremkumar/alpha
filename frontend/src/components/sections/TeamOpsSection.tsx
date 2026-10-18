@@ -23,6 +23,7 @@ import {
 import { fetchRoster, registerRosterAgent, sendAgentMessage, fetchInbox, RosterAgent, InboxMessage } from "@/lib/inbox";
 import type { GroupRoom } from "@/lib/teamops";
 import { swarmProgressView } from "@/lib/teamops-progress";
+import { fetchRunTasks, type RunTasksProjection } from "@/lib/tasks";
 import { MentionComposer } from "@/components/groups/MentionComposer";
 import { ArenaPanel } from "@/components/sections/ArenaPanel";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
@@ -771,6 +772,9 @@ function SwarmStructurePanel(props: { swarmId: string }) {
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [telemetry, setTelemetry] = useState<ReturnType<typeof swarmTelemetryView> | null>(null);
   const [modeBadge, setModeBadge] = useState<ReturnType<typeof swarmModeBadge> | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [runTasks, setRunTasks] = useState<RunTasksProjection | null>(null);
+  const [runTasksError, setRunTasksError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -794,6 +798,21 @@ function SwarmStructurePanel(props: { swarmId: string }) {
       // other reads.
       const root = (detail.value ?? {}) as Record<string, unknown>;
       setModeBadge(swarmModeBadge(root.mode));
+      // A plan correlated to a run (Bot Mode 1.x) also gets the run's whole
+      // task projection — the one read the graph plane and Team Ops share.
+      // It is a separate request settling on its own: a swarm whose run
+      // projection fails still has a DAG worth showing.
+      const correlated = typeof root.run_id === "string" && root.run_id ? root.run_id : null;
+      setRunId(correlated);
+      if (correlated) {
+        const forRun = correlated;
+        fetchRunTasks(forRun)
+          .then((projection) => setRunTasks(projection))
+          .catch((err: unknown) => setRunTasksError(errMsg(err)));
+      } else {
+        setRunTasks(null);
+        setRunTasksError(null);
+      }
     }
     setView(
       swarmStructureView(
@@ -865,6 +884,31 @@ function SwarmStructurePanel(props: { swarmId: string }) {
           </p>
           <p className="text-[10px] text-muted-foreground">{telemetry.note}</p>
         </div>
+      )}
+
+      {runId && (
+        <p className="text-[10px] text-muted-foreground" data-panel="run-tasks">
+          <span className="font-medium text-foreground">Run tasks ({runId}): </span>
+          {runTasksError ? (
+            <span className="text-destructive">could not be read ({runTasksError}); this is not a zero-task answer.</span>
+          ) : runTasks ? (
+            <>
+              {runTasks.count === 0
+                ? "0 — every engine read clean and reported none."
+                : `${runTasks.count} in the neutral contract (${Object.entries(runTasks.engines)
+                    .map(([engine, count]) => `${engine} ${count}`)
+                    .join(", ")}).`}
+              {Object.entries(runTasks.engine_errors).map(([engine, reason]) => (
+                <span key={engine} className="text-destructive">
+                  {" "}
+                  {engine} could not be read ({reason}).
+                </span>
+              ))}
+            </>
+          ) : (
+            "reading…"
+          )}
+        </p>
       )}
 
       {view && (
