@@ -306,6 +306,43 @@ renders `terminal_reason` ("Stopped because: …") and maps a non-number
 `promote_to_org_memory` declines an unmeasured score or a non-passed verdict.
 Tests: `backend/tests/test_swarm_judge.py`.
 
+**Model-backed decomposition (phase 3.2).** `swarm/llm_decomposer.py` turns the
+decomposer's fixed graph shapes into one bounded, evidence-backed model call,
+gated by `config.yaml -> swarm.decomposition` — `template` (default) selects the
+fixed shapes and never spends a token, which *is* plan §11.3's cost gate; `model`
+runs one call whose candidates the existing planner scores; `auto` runs the same
+call only under an explicitly declared positive `budget.max_tokens`, so a
+heuristic default can never start spending on its own initiative. The gate runs
+before any seam is touched, and an **explicit topology mode keeps its template**
+(honored as given — never rewritten into model output). The record
+`plan.metrics["decomposition"]` carries the same honesty contract the judge
+carries: `source="model"` is **never** recorded without a real call (a `model`
+label proves nothing on its own), every fallback names its reason (missing seam,
+`budget_precheck: …`, `model_decomposition_failed: <Type>: <exc>`,
+`model_decomposition_rejected: <reason>`, `model_decomposition_no_valid_candidate`
+with the bounded per-candidate refusals attached), and `tokens` is read from the
+provider's usage report or `None` — never a fabricated `0` — and stays in the
+record even when the reply was unusable, because the spend happened either way.
+Bounds are refused with the bound named (task/candidate counts, reply size,
+field vocabulary, `estimated_seconds` range, criterion shape), never clamped;
+artifacts without acceptance criteria are refused at the model boundary and fall
+back deterministically, because an artifact nobody checks is the shape of a
+fabricated delivery. A winning model plan obeys every template invariant:
+`plan.mode == plan.metrics["strategy"]["mode"]` (measured from its own DAG
+shape), declared capability requirements, evidence-bearing criteria
+(`required_evidence_kinds` may be empty — evidence is still required), the
+measured critical path, and the losing candidates plus scores recorded in
+`metrics["strategy_candidates"]` for audit. The seam is caller-supplied, like
+the judge's — the module never opens a model call itself (event-loop
+discipline) — and only `SwarmCoordinator.create_swarm` passes it, after
+resolving the operator's mode and building the one production invoke
+(`build_production_invoke()` over `default_model`, whose construction failure
+is reported as the record's reason rather than silently becoming templates).
+Every direct caller (`swarm lint`, plan-mode dry runs, tests) keeps the
+template default and never constructs a model. The `swarm` tool's spawn
+response discloses the recorded block (`Decomposition source`), same as the
+other plan-time projections. Tests: `backend/tests/test_swarm_llm_decompose.py`.
+
 Specialist swarm tasks must run the same advisory receipt-citation audit as
 ordinary delegated tasks when the executor harvested receipts. Surface
 uncorroborated action claims in the team report and task UI. A resolved receipt

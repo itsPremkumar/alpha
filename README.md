@@ -570,6 +570,18 @@ make doctor    # verify the environment
   report and never sets the score. A judge that fails, returns junk, or never
   ran reports `unverified` — never a pass — and a plan the judge did not accept
   cannot reach `completed`.
+- **Opt-in model decomposition** — swarm plans are built by deterministic
+  graph templates by default (no model call, no spend); `swarm.decomposition`
+  in `config.yaml` opts into `"model"`, which scores bounded LLM-proposed task
+  candidates with the existing planner, or `"auto"`, which does so only under
+  an explicitly declared positive token budget. Every plan records where its
+  tasks came from, and any failure — no configured model, budget pre-check,
+  raising call, invalid reply, no valid candidate — falls back to the template
+  plan with the reason named; `source: model` is never reported without a real
+  call, and usage is measured or reported unmeasured, never invented. Proposed
+  tasks that declare output artifacts must carry acceptance criteria, bounds
+  are refused with the bound named, and an explicitly chosen topology is never
+  rewritten.
 - **Specialist report citation audit** — swarm tasks cross-check cited receipt
   IDs against the specialist's recorded tool calls. Missing or unresolved
   citations are surfaced as uncorroborated; a resolved call receipt is execution

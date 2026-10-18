@@ -257,6 +257,12 @@ def swarm_tool(
         calibrated_lines = f"- **Calibrated cost projection (recorded history)**: `{json.dumps(calibrated, sort_keys=True)}`\n" if calibrated else ""
         diversity_audit = plan.metrics.get("diversity") or {}
         diversity_lines = f"- **Panel composition audit (advisory)**: `{json.dumps(diversity_audit, sort_keys=True)}`\n" if diversity_audit else ""
+        # Where the tasks came from (phase 3.2): the template shapes, or one
+        # scored model decomposition with its fallback reason when the model
+        # attempt did not become a plan.  Data as recorded on the plan — never
+        # a success claim.
+        decomposition = plan.metrics.get("decomposition") or {}
+        decomposition_lines = f"- **Decomposition source**: `{json.dumps(decomposition, sort_keys=True)}`\n" if decomposition else ""
         tasks_summary = "\n".join(f"  - `[{task.task_id}]` {task.objective} (deps: {task.dependencies or 'none'})" for task in plan.tasks.values())
         return (
             "### Autonomous Swarm Successfully Spawned (plan created; execution is explicit)\n"
@@ -268,6 +274,7 @@ def swarm_tool(
             f"- **Projected cost**: `{json.dumps(projection, sort_keys=True)}`\n"
             f"{calibrated_lines}"
             f"{diversity_lines}"
+            f"{decomposition_lines}"
             f"{advisory_lines}"
             f"Run it with `swarm(action='run_async', swarm_id='{plan.swarm_id}')`; `step` only dispatches work."
         )

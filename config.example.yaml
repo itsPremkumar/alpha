@@ -4902,9 +4902,10 @@ gro:
 # Swarm engine operator policy. A Gateway restart cannot know which worker still
 # owns a lease, so an in-flight plan is always PARKED as paused with
 # terminal_reason=process_restart_requires_resume and its tasks requeued lease-free
-# (alpha.swarm.coordinator._load_persisted_swarms). The flag below chooses what the
-# one-shot startup recovery pass (alpha.swarm.recovery) does AFTER that parking.
-# Startup-only: an edit needs a Gateway restart.
+# (alpha.swarm.coordinator._load_persisted_swarms). resume_on_start chooses what
+# the one-shot startup recovery pass (alpha.swarm.recovery) does AFTER that
+# parking, and is startup-only: an edit needs a Gateway restart. decomposition is
+# read on every swarm spawn, so an edit applies to the next plan.
 # ============================================================================
 swarm:
   resume_on_start: "none"        # none = park and wait for an explicit resume (default)
@@ -4912,6 +4913,12 @@ swarm:
                                 #         installation default owner
                                 # all   = resume every recovered plan. Auto-resume
                                 #         spends model tokens, so it is opt-in.
+  decomposition: "template"      # template = fixed graph shapes, never spends a token
+                                # model    = one bounded LLM call whose candidates
+                                #            the planner scores; any failure falls
+                                #            back to template with the reason recorded
+                                # auto     = model only under a declared positive
+                                #            budget.max_tokens
 
 # ============================================================================
 # Self-evolution evidence gate: the bar a proposed self-change must clear before it

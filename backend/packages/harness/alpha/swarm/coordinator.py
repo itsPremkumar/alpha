@@ -310,12 +310,34 @@ class SwarmCoordinator:
                     if existing_fingerprint and existing_fingerprint != fingerprint:
                         raise ValueError("idempotency_key was already used with a different swarm request")
                     return existing
+        # Model-backed decomposition (phase 3.2) is opt-in via
+        # `config.yaml -> swarm.decomposition` (default `template`, the plan
+        # §11.3 cost gate).  The mode and the model seam resolve here, on
+        # this caller's thread — the Gateway route reaches `create_swarm`
+        # through `asyncio.to_thread` — and only for `model`/`auto`: direct
+        # callers (`swarm lint`, tests, raw `decompose()`) keep the
+        # deterministic template default and never construct a model.  The
+        # admission fingerprint above deliberately does not include the mode:
+        # it is server-side config, not part of the client's request, so a
+        # replayed idempotency key returns the plan that request produced.
+        from alpha.swarm.llm_decomposer import build_production_invoke, resolve_decomposition_mode
+
+        decomposition_mode = resolve_decomposition_mode()
+        llm_invoke = llm_model = llm_error = None
+        if decomposition_mode in ("auto", "model"):
+            source = build_production_invoke()
+            llm_invoke, llm_model, llm_error = source.invoke, source.model, source.error
         plan = SwarmTaskDecomposer.decompose(
             goal=goal,
             mode=mode,
             items=normalized_items or None,
             max_concurrency=effective_concurrency,
             requires_consensus=bool(requires_consensus),
+            decomposition_mode=decomposition_mode,
+            llm_invoke=llm_invoke,
+            llm_model=llm_model,
+            llm_error=llm_error,
+            budget=effective_budget,
         )
         plan.owner_id = normalized_owner
         plan.run_id = normalized_run_id or None

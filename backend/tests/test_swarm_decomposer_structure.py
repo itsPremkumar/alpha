@@ -92,7 +92,7 @@ def test_decomposer_has_no_mid_file_import_silencer():
 
 
 def test_decompose_stamps_the_source_of_the_plan():
-    """Every plan says how it was decomposed: this builder is a template, not a model."""
+    """Every plan says how it was decomposed: with no mode opted in, the template says so."""
 
     plan = SwarmTaskDecomposer.decompose(goal="Implement a sql migration and audit the backend service")
-    assert plan.metrics["decomposition"] == {"source": "template", "reason": "no model decomposer configured"}
+    assert plan.metrics["decomposition"] == {"source": "template", "reason": "decomposition_mode=template"}

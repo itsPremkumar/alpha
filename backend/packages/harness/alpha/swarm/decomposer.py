@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from typing import Any
 
 from alpha.capabilities.eligibility import infer_capability_tags
+from alpha.swarm.llm_decomposer import DEFAULT_DECOMPOSITION_MODE, DecomposeInvoke, source_decomposition
 from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
 from alpha.swarm.planner import MAX_CANDIDATES, PlanCandidate, build_candidate, select_best_candidate
 from alpha.swarm.strategy import StrategyResolution, resolve_strategy
@@ -169,6 +171,15 @@ class SwarmTaskDecomposer:
         max_concurrency: int = 0,
         *,
         requires_consensus: bool = False,
+        # Model-backed sourcing (phase 3.2).  The defaults keep every direct
+        # caller — `swarm lint`, tests, plan-mode dry runs — on the
+        # deterministic template path; only `create_swarm` resolves the
+        # operator's `swarm.decomposition` mode and supplies the seam.
+        decomposition_mode: str = DEFAULT_DECOMPOSITION_MODE,
+        llm_invoke: DecomposeInvoke | None = None,
+        llm_model: str | None = None,
+        llm_error: str | None = None,
+        budget: Any | None = None,
     ) -> SwarmPlan:
         """Construct a SwarmPlan with dependency-linked SwarmTaskNode instances.
 
@@ -190,6 +201,18 @@ class SwarmTaskDecomposer:
         plan is rebuilt from the measured route instead.  The loop is bounded
         and, because the rebuild makes ``plan.mode`` equal the mode that was just
         resolved, the two agree by construction once it exits.
+
+        Where the tasks come from is recorded on every plan as
+        ``plan.metrics["decomposition"]``.  The default
+        ``decomposition_mode="template"`` selects the fixed graph shapes above
+        and never spends a token (plan §11.3's cost gate); the operator's
+        ``config.yaml -> swarm.decomposition`` may opt into ``model``/``auto``,
+        in which case ``create_swarm`` passes a caller-supplied
+        ``llm_invoke`` seam and ``source_decomposition`` either returns a
+        scored model-sourced plan or the template plan with the reason the
+        attempt did not become a plan.  ``source="model"`` is never recorded
+        without a real call, and a failing decomposition can never fail the
+        plan — fallback carries its reason.
         """
 
         sid = swarm_id or f"swm-{uuid.uuid4().hex[:8]}"
@@ -218,13 +241,31 @@ class SwarmTaskDecomposer:
             if candidate is not None:
                 plan, resolved = cls._settle(goal, items, mode, candidate, sid, max_concurrency, requires_consensus=requires_consensus)
 
-        # Every plan states how it was decomposed.  This decomposer selects
-        # among fixed graph shapes and never calls a model, so the source must
-        # say so rather than leaving a reader to assume a model planned the work.
-        plan.metrics["decomposition"] = {
-            "source": "template",
-            "reason": "no model decomposer configured",
-        }
+        # Every plan states how it was decomposed.  Under the default
+        # `swarm.decomposition=template` the fixed graph shapes above were
+        # used and the record says so.  When the operator opted into
+        # `auto`/`model` and the caller supplied the model seam,
+        # `source_decomposition` either returns a model-sourced plan — its
+        # candidates scored by the existing planner, its mode measured from
+        # its own shape — or this template plan with the reason the attempt
+        # did not become a plan.  Either way the source is stated, never
+        # assumed, and `source="model"` is never recorded without a call.
+        record, plan, resolved = source_decomposition(
+            goal,
+            template_plan=plan,
+            template_resolution=resolved,
+            mode=decomposition_mode,
+            invoke=llm_invoke,
+            model=llm_model,
+            error=llm_error,
+            items=items,
+            max_concurrency=max_concurrency,
+            swarm_id=sid,
+            budget=budget,
+            requested_mode=mode,
+            requires_consensus=requires_consensus,
+        )
+        plan.metrics["decomposition"] = record
         # Recorded for every plan, explicit or automatic: an operator looking at
         # a finished run can see which signal chose the mode and which tier gated
         # the coordination machinery.
