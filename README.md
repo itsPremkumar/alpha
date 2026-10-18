@@ -9,7 +9,7 @@
 **Alpha is a self-hosted, local-first AI agent platform that plans and executes
 long-horizon work — and reports honestly when a result is unverified.** It runs a LangGraph agent runtime behind a FastAPI
 Gateway with a Next.js 15 web workspace and a Windows desktop app — combining deep
-research, multi-agent swarms, sandboxed code execution, persistent memory, 139 native
+research, multi-agent swarms, sandboxed code execution, persistent memory, 140 native
 tools, MCP extensions, and 24 public skills, with a single Nginx entry point and no
 proprietary backend.
 
@@ -90,7 +90,7 @@ control.
 In one sentence:
 
 > Alpha is a LangGraph-based agent operating system: a Python/FastAPI Gateway runs
-> the agent runtime and 139 native tools, a Next.js 15 workspace and an Electron
+> the agent runtime and 140 native tools, a Next.js 15 workspace and an Electron
 > Windows app are the front ends, and a single Nginx port is the only thing you
 > expose.
 
@@ -156,7 +156,7 @@ flowchart TB
         Harness["Continuous execution harness (goal engine, Ralph loop, checkpoints)"]
         Cognition["Cognitive plane (AVO, MoA, ToM, dreaming)"]
         CodeCore["Code agentic core (AST-grep, repo twin, auto-repair)"]
-        Tools["139 tools + 49 middleware modules + MCP + 24 skills"]
+        Tools["140 tools + 49 middleware modules + MCP + 24 skills"]
     end
 
     subgraph Security ["Security & governance"]
@@ -194,7 +194,7 @@ the parts that decide whether an autonomous agent is usable in production.
 | **It burns your budget** | Token, tool-call, wall-clock, task, and replan budgets per run; explicit `budget_exhausted` / `stalled` states; cache-aware spend telemetry. |
 | **It runs dangerous commands** | A risk-scoring approval gate, a scoped credential vault, per-thread sandbox isolation, and an emergency stop (Estop) — ⚠️ though Estop currently gates only the RSI cycle, so do not treat it as a fleet kill switch. |
 | **You can't tell what it did** | End-to-end artifact lineage tracing — hash-linked provenance from prompt to output (stored locally; not a cryptographic attestation) — plus a run-event feed, bounded/redacted lead-agent trajectory records, and `X-Trace-Id` correlation on every log line. |
-| **It can't use your tools** | 139 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
+| **It can't use your tools** | 140 native tools, MCP over stdio/HTTP/SSE, a documented extension contract, and an OpenAI-compatible endpoint for third-party clients. |
 | **It forgets everything** | A layered memory plane: working memory, episodic replay, semantic knowledge graph, and idle-time dreaming consolidation. Opt-in **active memory** (`memory.fusion.enabled`) additionally fuses the curated `MEMORY.md` rules, your configured memory backend, and session history into one relevance-ranked `memory_search` answer that reports each source's health honestly — off by default, and relevance is never presented as truth. |
 | **It only works in a terminal** | Web workspace, Windows desktop app, and eight messaging platforms — all driving the same agent runtime. |
 | **You can't evaluate it** | A benchmarks registry, a skill quality reviewer, a 5-pass research citation contract, and a generated `feature_manifest.json` that fails CI on registry drift. |
@@ -1270,7 +1270,7 @@ scanning, while continuing to watch the project tree.
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 139 tools, 74 routers, 49 middleware modules, and 13 supervisor loops. CI fails
+  pins all 140 tools, 75 routers, 49 middleware modules, and 13 supervisor loops. CI fails
   on drift **of that generated artifact** (`scripts/check_generated_drift.py`
   byte-compares it against a fresh regeneration), so the manifest cannot silently
   rot. The gate does not read Markdown: a prose count elsewhere is still checked
@@ -1312,7 +1312,7 @@ access; pairing is explicit and uses a high-entropy out-of-band code.**
 **A:** An open-source autonomous multi-agent AI operating system: a LangGraph agent
 runtime behind a FastAPI Gateway, with a Next.js 15 workspace and an Electron
 Windows app, running long-horizon work with sandboxed execution, persistent
-memory, 139 native tools, MCP extensions, and 24 public skills. MIT licensed,
+memory, 140 native tools, MCP extensions, and 24 public skills. MIT licensed,
 self-hosted, no proprietary backend.
 
 **Q: How do I install and run it?**

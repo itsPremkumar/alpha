@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-17T02:05:00Z",
+ "generated_at": "2026-10-18T15:15:12Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -95,6 +95,14 @@
    "id": "bot_roster_tool",
    "module": "alpha.tools.builtins.bot_roster_tool",
    "symbol": "bot_roster_tool",
+   "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "message_agent_tool",
+   "module": "alpha.tools.builtins.message_agent_tool",
+   "symbol": "message_agent_tool",
    "wiring_point": "alpha.tools.tools:BUILTIN_TOOLS",
    "wired": true,
    "state": "wired"
@@ -1656,6 +1664,14 @@
   {
    "id": "app.gateway.routers.system_monitor",
    "module": "app.gateway.routers.system_monitor",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
+   "id": "app.gateway.routers.tasks",
+   "module": "app.gateway.routers.tasks",
    "symbol": "router",
    "wiring_point": "app.gateway.app:include_router",
    "wired": true,

@@ -15,7 +15,7 @@ Alpha is an open-source autonomous multi-agent AI operating system. An asynchron
 Python 3.12+ backend built on LangGraph and served by a FastAPI Gateway, paired with
 a Next.js 15 web workspace and an Electron Windows desktop app. It executes
 long-horizon tasks with sandboxed code execution, persistent memory, subagent
-delegation, 139 native tools, MCP extensions, and 24 public skills, behind a single
+delegation, 140 native tools, MCP extensions, and 24 public skills, behind a single
 Nginx reverse proxy on port `2026`. Maintained by
 [Prem Kumar](https://github.com/itsPremkumar) under the MIT license.
 
@@ -138,7 +138,7 @@ Discord, Buzz, and Signal.
 
 ### How many tools, skills, routers, and middlewares ship?
 
-139 native tools, Gateway 74 routers, 49 middleware modules, and 13 background
+140 native tools, Gateway 75 routers, 49 middleware modules, and 13 background
 supervisor loops, plus 24 public skills and 127 harness engine packages. Tools,
 routers, middleware, loop, and engine package counts are generated into
 [`contracts/feature_manifest.json`](../contracts/feature_manifest.json) and checked
