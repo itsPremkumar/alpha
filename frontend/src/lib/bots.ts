@@ -93,19 +93,42 @@ export async function fetchBot(name: string): Promise<BotProfile | null> {
   }
 }
 
+/**
+ * The role-template catalog (`GET /api/bots/templates`).
+ *
+ * The live route answers `{templates: [{slug, display, role, avatar,
+ * department, reports_to, responsibilities, capabilities}]}` — the handle is
+ * `slug` (alpha/bots/templates.py `list_templates`). This projection used to
+ * cast the array straight to `BotTemplate`, which reads `name`, so every row
+ * would have arrived with an undefined handle the moment anything consumed it.
+ *
+ * Rejects on failure: `[]` must mean the server listed no templates, not that
+ * the read failed (frontend/src/AGENTS.md → Client honesty rules).
+ */
 export async function fetchBotTemplates(): Promise<BotTemplate[]> {
-  try {
-    const res = await apiFetch(`/bots/templates`);
-    const data = await res.json();
-    const raw = data.templates;
-    if (Array.isArray(raw)) return raw as BotTemplate[];
-    if (raw && typeof raw === "object")
-      return Object.entries(raw).map(([name, t]) => ({ name, ...(t as Omit<BotTemplate, "name">) }));
-    return [];
-  } catch (err) {
-    console.error("Failed to fetch bot templates:", err);
-    return [];
-  }
+  const res = await apiFetch(`/bots/templates`);
+  const data = await res.json();
+  const raw = data.templates;
+  const list: Array<Record<string, unknown>> = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object"
+      ? Object.entries(raw as Record<string, unknown>).map(([name, t]) => ({
+          ...(t && typeof t === "object" ? (t as Record<string, unknown>) : {}),
+          slug: name,
+        }))
+      : [];
+  return list
+    .map((t) => ({
+      name: String(t.slug ?? t.name ?? ""),
+      display: String(t.display ?? ""),
+      role: String(t.role ?? ""),
+      avatar: String(t.avatar ?? ""),
+      department: String(t.department ?? ""),
+      reports_to: typeof t.reports_to === "string" ? t.reports_to : null,
+      responsibilities: Array.isArray(t.responsibilities) ? (t.responsibilities as string[]) : [],
+      capabilities: Array.isArray(t.capabilities) ? (t.capabilities as string[]) : [],
+    }))
+    .filter((t) => t.name !== "");
 }
 
 export async function fetchDepartments(): Promise<string[]> {
@@ -184,6 +207,82 @@ export async function touchBot(name: string): Promise<void> {
   } catch {
     /* offline or not permitted — never block chatting */
   }
+}
+
+/** What the create dialog collects; everything but `name` is optional. */
+export interface BotCreateInput {
+  name: string;
+  role?: string;
+  /** Template slug from `fetchBotTemplates` — the server resolves the rest. */
+  template?: string;
+  displayName?: string;
+  department?: string;
+  /** Must be declared in `config.yaml` models[]; the forge refuses the rest. */
+  model?: string;
+  skills?: string[];
+}
+
+/**
+ * The forge's answer (`POST /api/bots`), carrying every honesty field.
+ *
+ * `alive` is load-bearing: it is true ONLY when the forge ran a smoke probe
+ * and that probe answered. A clean build with no probe is `ok: true` with
+ * `alive: false` and `smokeTested: false` — "created · unverified", never
+ * "alive". `reason`, `steps` and `rollbackReport` are what a refusal carries —
+ * including a clean rollback, which is the difference between "nothing was
+ * built" and "something half-built is hiding on the roster".
+ */
+export interface BotForgeResult {
+  ok: boolean;
+  name: string;
+  reason: string;
+  alive: boolean;
+  smokeTested: boolean;
+  rolledBack: boolean;
+  steps: string[];
+  warnings: string[];
+  rollbackReport: string[];
+  elapsedSeconds: number;
+  /** The forge's own operator-facing message (includes any "heads up" notes). */
+  reply: string;
+}
+
+/**
+ * Forge one bot through the transactional create (`POST /api/bots`).
+ *
+ * The route answers 200 with `ok: false` for a forge REFUSAL (name taken,
+ * unknown template, overlapping role, unconfigured model) because the refusal
+ * carries the steps and rollback report; a non-2xx here is a transport or
+ * permission failure and rejects with the server's own text.
+ */
+export async function forgeBot(input: BotCreateInput): Promise<BotForgeResult> {
+  const res = await apiFetch(`/bots`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: input.name,
+      role: input.role ?? "",
+      ...(input.template ? { template: input.template } : {}),
+      ...(input.displayName ? { display_name: input.displayName } : {}),
+      ...(input.department ? { department: input.department } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.skills && input.skills.length > 0 ? { skills: input.skills } : {}),
+    }),
+  });
+  const data = (await res.json()) as Record<string, unknown>;
+  return {
+    ok: data.ok === true,
+    name: String(data.name ?? input.name),
+    reason: String(data.reason ?? ""),
+    alive: data.alive === true,
+    smokeTested: data.smoke_tested === true,
+    rolledBack: data.rolled_back === true,
+    steps: Array.isArray(data.steps) ? (data.steps as string[]) : [],
+    warnings: Array.isArray(data.warnings) ? (data.warnings as string[]) : [],
+    rollbackReport: Array.isArray(data.rollback_report) ? (data.rollback_report as string[]) : [],
+    elapsedSeconds: typeof data.elapsed_seconds === "number" ? data.elapsed_seconds : 0,
+    reply: String(data.reply ?? ""),
+  };
 }
 
 /**

@@ -131,10 +131,14 @@ test("the board's polling follows the Team Ops discipline", () => {
   assert.ok(!component.includes("setInterval(() => {\n      void loadList();\n    }, 1000)"), "does not invent its own faster cadence");
 });
 
-test("ChatView mounts the board and never reconstructs swarm data from prose", () => {
+test("ChatView mounts the board pinned to the swarm it dispatched, never reconstructs swarm data from prose", () => {
   const chatView = read("../components/ChatView.tsx");
   assert.ok(chatView.includes("from \"@/components/SwarmRunBoard\""), "ChatView imports the board");
-  assert.ok(chatView.includes("<SwarmRunBoard onOpenTeamOps={"), "ChatView mounts the board");
+  assert.match(
+    chatView,
+    /<SwarmRunBoard\s+swarmId=\{pinnedSwarmId \?\? undefined\} onOpenTeamOps=\{/,
+    "ChatView mounts the board pinned to the dispatch's swarm id",
+  );
 });
 
 test("a failed first read is named, never silent, and never 'no swarm is running'", () => {

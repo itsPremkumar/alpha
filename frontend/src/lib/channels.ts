@@ -41,11 +41,34 @@ export async function restartChannel(name: string): Promise<string> {
   return String(pick(d, ["message", "status"], "Restart requested."));
 }
 
+export interface ChannelCredentialField {
+  /** The config key the server stores this value under. */
+  name: string;
+  /** The server's own label for the field. */
+  label: string;
+  /** `password` values are shown masked and reused when posted back masked. */
+  type: string;
+  required: boolean;
+}
+
 export interface ChannelProvider {
   id: string;
   name: string;
   description: string;
   configured: boolean;
+  /**
+   * The fields the server will accept for this provider
+   * (`POST /api/channels/{provider}/runtime-config` values), taken from
+   * `GET /api/channels/providers`. Empty when the server sent none — the
+   * configure form then offers nothing rather than inventing fields.
+   */
+  credentialFields: ChannelCredentialField[];
+  /**
+   * What the server currently holds, with secret fields masked
+   * (`********`). Posting a masked value back reuses the stored one, so an
+   * unchanged secret is not a "missing required configuration" error.
+   */
+  credentialValues: Record<string, string>;
 }
 
 /**
@@ -79,7 +102,52 @@ export async function listProviders(): Promise<ChannelProviderCatalog> {
       name: String(pick(p, ["name", "display_name"], "")),
       description: String(pick(p, ["description"], "")),
       configured: Boolean(pick(p, ["configured", "connected"], false)),
+      credentialFields: asList(p.credential_fields, ["fields"])
+        .map((f) => ({
+          name: String(pick(f, ["name"], "")),
+          label: String(pick(f, ["label", "name"], "")),
+          type: String(pick(f, ["type"], "text")),
+          required: Boolean(pick(f, ["required"], false)),
+        }))
+        .filter((f) => f.name !== ""),
+      credentialValues: stringRecord(p.credential_values),
     })),
+  };
+}
+
+/** A plain string→string record; non-string entries are dropped, not stringified. */
+function stringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
+}
+
+export interface ChannelRuntimeConfigResult {
+  provider: string;
+  /** The provider row's state after the write, as the server re-read it. */
+  configured: boolean;
+}
+
+/**
+ * Save one provider's runtime credentials
+ * (`POST /api/channels/{provider}/runtime-config`).
+ *
+ * Admin-only on the Gateway; a non-admin caller receives the server's own
+ * refusal as the rejection, which the form shows instead of a silent no-op.
+ * The response is the provider row re-read *after* the write, so the caller
+ * renders the server's `configured` verdict rather than assuming the save
+ * took. A secret field posted back while still masked (`********`) reuses the
+ * stored value (backend `_required_runtime_values`), so "leave it as shown,
+ * change one field" works.
+ */
+export async function saveChannelRuntimeConfig(provider: string, values: Record<string, string>): Promise<ChannelRuntimeConfigResult> {
+  const d = await send<Record<string, unknown>>(`/channels/${encodeURIComponent(provider)}/runtime-config`, "POST", { values });
+  return {
+    provider: String(pick(d, ["provider"], provider)),
+    configured: Boolean(pick(d, ["configured"], false)),
   };
 }
 

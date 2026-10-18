@@ -20,14 +20,22 @@
  *   with an overlapping read, and a failed refresh keeps the previous rows
  *   visible and names the Gateway's reason instead of turning into an empty
  *   board.
+ * - Pinned to one swarm it consumes that swarm's event stream
+ *   (`GET /api/swarms/{id}/events/stream`), so a state change is read when the
+ *   runtime records it rather than on the next sweep. The stream is a change
+ *   notification — every frame just re-reads the detail — and the 3s sweep
+ *   stays as a fallback whose reason is rendered when the stream fails. The
+ *   list mode keeps the sweep because the stream route is per swarm.
  * - Expanding a row reads detail and metrics as two independent requests and
  *   reuses the Team Ops structue/telemetry projections verbatim.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Layers3, ListChecks, Network, Users } from "lucide-react";
-import { listSwarms, swarmDetails, swarmMetrics, hasRefreshableSwarms } from "@/lib/teamops";
+import { listSwarms, swarmDetails, swarmMetrics, hasRefreshableSwarms, isTerminalSwarmStatus, swarmProgress, swarmProgressLabel } from "@/lib/teamops";
+import { subscribeSwarmEvents } from "@/lib/swarm-events";
 import { swarmRunRows, type SwarmRunRow } from "@/lib/swarm-run-board";
+import { pick } from "@/lib/http";
 import {
   swarmStructureView,
   swarmTelemetryView,
@@ -38,6 +46,8 @@ import {
 interface SwarmRunBoardProps {
   /** Hand the operator to Team Ops, which owns every lifecycle control. */
   onOpenTeamOps?: () => void;
+  /** Pin the board to one swarm (composer dispatch). Omit for the full list. */
+  swarmId?: string;
 }
 
 interface ExpandedState {
@@ -48,20 +58,47 @@ interface ExpandedState {
   mode: ReturnType<typeof swarmModeBadge> | null;
 }
 
-export function SwarmRunBoard({ onOpenTeamOps }: SwarmRunBoardProps) {
+export function SwarmRunBoard({ onOpenTeamOps, swarmId }: SwarmRunBoardProps) {
   const [rows, setRows] = useState<SwarmRunRow[]>([]);
   const [readError, setReadError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<ExpandedState | null>(null);
+  const [streamFallback, setStreamFallback] = useState<string | null>(null);
+  const [streamEndedTick, setStreamEndedTick] = useState(0);
   const loadingRef = useRef(false);
+  const refreshTimer = useRef<number | null>(null);
 
+  // When pinned to a single swarm (composer dispatch), read that swarm's
+  // detail directly instead of the full list.
   const loadList = useCallback(async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     try {
-      const swarms = await listSwarms();
-      setRows(swarmRunRows(swarms));
+      if (swarmId) {
+        const detail = await swarmDetails(swarmId);
+        const status = String(pick(detail, ["status", "state"], ""));
+        const objective = String(pick(detail, ["objective", "goal"], ""));
+        const mode = String(pick(detail, ["mode"], ""));
+        const maxConcurrency = typeof detail.max_concurrency === "number" ? detail.max_concurrency : undefined;
+        const progress = (detail.progress ?? undefined) as Record<string, number> | undefined;
+        const row: SwarmRunRow = {
+          id: swarmId,
+          objective,
+          status,
+          paused: status === "paused",
+          progressLabel: swarmProgressLabel(swarmProgress(progress)),
+          topology: mode,
+          requestedConcurrency:
+            typeof maxConcurrency === "number" && maxConcurrency > 0
+              ? `ceiling ${maxConcurrency}`
+              : "auto-sized",
+        };
+        setRows([row]);
+      } else {
+        const swarms = await listSwarms();
+        setRows(swarmRunRows(swarms));
+      }
       setReadError(null);
     } catch (e) {
       // Keep the previous rows visible: a failed refresh must not read as
@@ -71,20 +108,63 @@ export function SwarmRunBoard({ onOpenTeamOps }: SwarmRunBoardProps) {
       loadingRef.current = false;
       setLoaded(true);
     }
-  }, []);
+  }, [swarmId]);
 
   useEffect(() => {
     void loadList();
   }, [loadList]);
 
+  // Bursts collapse into one re-read: one event batch can carry a dozen
+  // frames, and each one would otherwise trigger its own detail read.
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current !== null) return;
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
+      void loadList();
+    }, 200);
+  }, [loadList]);
+  useEffect(
+    () => () => {
+      if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    },
+    [],
+  );
+
   const refreshable = hasRefreshableSwarms(rows.map((r) => ({ status: r.status })));
+  // Pinned mode streams that swarm's events; a terminal row means the server
+  // has nothing further to report on it. A paused swarm still streams, because
+  // the resume event must arrive even though polling intentionally rests.
+  const streaming = Boolean(swarmId) && !rows.some((r) => isTerminalSwarmStatus(r.status));
+  useEffect(() => {
+    if (!swarmId || !streaming) return;
+    setStreamFallback(null);
+    const handle = subscribeSwarmEvents(swarmId, {
+      onEvent: scheduleRefresh,
+      onEnd: () => {
+        // The server closed its observation window. Re-read first and only
+        // then allow a re-subscribe — the effect's `streaming` gate decides
+        // whether the swarm is still running; without this, a long swarm would
+        // freeze silently after the server's window closed.
+        void loadList().finally(() => setStreamEndedTick((t) => t + 1));
+      },
+      onError: (reason) => {
+        setStreamFallback(reason);
+      },
+    });
+    return () => handle.close();
+  }, [swarmId, streaming, streamEndedTick, loadList, scheduleRefresh]);
+
   useEffect(() => {
     if (!refreshable) return;
+    // While the pinned swarm's event stream is healthy it IS the refresh
+    // clock. The sweep runs only as a disclosed fallback once the stream has
+    // failed (or in list mode, where there is no single swarm to stream).
+    if (swarmId && streaming && !streamFallback) return;
     const timer = window.setInterval(() => {
       void loadList();
     }, 3_000);
     return () => window.clearInterval(timer);
-  }, [refreshable, loadList]);
+  }, [refreshable, loadList, swarmId, streaming, streamFallback]);
 
   const openId = expandedId;
   useEffect(() => {
@@ -155,13 +235,19 @@ export function SwarmRunBoard({ onOpenTeamOps }: SwarmRunBoardProps) {
     readError && rows.length > 0
       ? `The last swarm refresh failed (${readError}) — the rows below are the previous measured state, not a live answer.`
       : null;
+  // A degraded stream is disclosed where the rows are, not buried: the reader
+  // must know the board is on the 3s sweep, and why.
+  const streamNote =
+    swarmId && streaming && streamFallback
+      ? `The live event stream for this swarm failed (${streamFallback}) — refreshing every 3 seconds instead.`
+      : null;
 
   return (
     <div className="my-2 rounded-lg border border-border/60 bg-muted/20 p-2.5" data-swarm-run-board>
       <div className="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-medium text-muted-foreground">
         <Network className="size-3.5" aria-hidden="true" />
         <span>
-          Coordinator swarms · {rows.length} running
+          {swarmId ? "Pinned swarm" : `Coordinator swarms · ${rows.length} running`}
         </span>
         <span className="text-border/70">|</span>
         <button
@@ -174,6 +260,11 @@ export function SwarmRunBoard({ onOpenTeamOps }: SwarmRunBoardProps) {
       </div>
 
       {modelNote && <p className="px-1 pb-2 text-[10px] text-amber-600 dark:text-amber-400">{modelNote}</p>}
+      {streamNote && (
+        <p className="px-1 pb-2 text-[10px] text-amber-600 dark:text-amber-400" data-swarm-stream-fallback>
+          {streamNote}
+        </p>
+      )}
 
       <div className="space-y-1.5">
         {rows.map((row) => (

@@ -20,7 +20,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Building2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Building2, PencilLine, RefreshCw } from "lucide-react";
 
 import { botDisplayName, botInitials, type BotProfile } from "@/types/bots";
 import {
@@ -36,6 +36,8 @@ import { elapsedWords, type FleetHealthSummary } from "@/lib/bot-working-status"
 import { kanbanStatusLabel, type KanbanTask } from "@/lib/kanban";
 import { workspaceViewUrl, type WorkspaceView } from "@/lib/workspace-view";
 import { BotModelConfigPanel } from "./BotModelConfigPanel";
+import { Modal } from "@/components/ui";
+import { BotDetailPanel } from "@/components/chat-shell/BotDetailPanel";
 import {
   BotStatusBadge,
   CountRow,
@@ -95,6 +97,10 @@ export function BotDetailView({ name }: { name: string }) {
   // read with its own failure — never folded into `fetchBotDetail`, where a
   // board outage would take the profile down with it.
   const [kanban, setKanban] = useState<KanbanState>({ state: "loading" });
+  // The page itself stays a read-only survey; editing opens the one editor
+  // that already exists (`chat-shell/BotDetailPanel`, which PATCHes through
+  // the server's own field list) rather than growing a second field form here.
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,6 +151,15 @@ export function BotDetailView({ name }: { name: string }) {
         >
           <ArrowLeft className="size-3" /> Roster
         </Link>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          disabled={!bot}
+          title={bot ? "Edit this bot's profile" : "The profile could not be read, so there is nothing to edit"}
+          className="flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1.5 text-xs hover:bg-muted/40 disabled:opacity-40"
+        >
+          <PencilLine className="size-3" /> Edit
+        </button>
         <button
           type="button"
           onClick={() => void load()}
@@ -845,6 +860,26 @@ export function BotDetailView({ name }: { name: string }) {
         Every value above is read from the Gateway. Anything it did not report is shown as &ldquo;not
         reported&rdquo; rather than as a default, and each section fails on its own.
       </p>
+
+      {/* The editor exists exactly once (`chat-shell/BotDetailPanel`, which
+          PATCHes through the server's own accepted field list). Editing here
+          opens that panel in a modal and re-reads the survey on save, so this
+          page shows the server's answer — never the draft that was typed. */}
+      {editing && bot && (
+        <Modal
+          title={`Edit ${botDisplayName(bot)}`}
+          subtitle="Saves PATCH this bot's profile on the Gateway; the page re-reads its answer on save."
+          onClose={() => setEditing(false)}
+          className="max-w-lg bg-card border-l border-border"
+        >
+          <BotDetailPanel
+            bot={bot}
+            onSaved={() => {
+              void load();
+            }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

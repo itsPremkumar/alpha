@@ -85,7 +85,7 @@ source for exact route mappings and honest display states.
 | Reasoning picker / model catalog | `ChatView`, `lib/models.ts`, `components/ReasoningEffortPicker.tsx` | `frontend/tests/reasoning-effort.test.mjs`, `lib/freeModels.test.mjs` |
 | Free provider health menu | `components/FreeCatalogMenu.tsx`, `lib/freeCatalogView.ts` | `lib/free-catalog-view.test.mjs` |
 | Live activity / tool receipts / swarm rows | `components/ActivityStatus.tsx`, `ToolGroup.tsx`, `SubagentList.tsx`, `components/sections/DelegatedWorkPanel.tsx`, `lib/activity.ts` | `lib/activity.test.mjs`, `lib/subagent-events.test.mjs`, `lib/delegated-work-panel.test.mjs`, `lib/tool-status-honesty.test.mjs` |
-| Bot roster, liveness and work | `components/bots/`, `lib/bots.ts`, `lib/bot-working-status.ts` | `lib/bots-activity-client.test.mjs`, `lib/bot-working-status.test.mjs`, `lib/bot-working-status-view.test.mjs` |
+| Bot roster, liveness, work and the create forge | `components/bots/` (roster, detail, `BotCreateDialog.tsx`), `lib/bots.ts`, `lib/bot-working-status.ts` | `lib/bots-activity-client.test.mjs`, `lib/bot-forge-client.test.mjs`, `lib/bot-working-status.test.mjs`, `lib/bot-working-status-view.test.mjs` |
 | Network status and reconnect | workspace strip and chat network bubble | `lib/network*.test.mjs`, `lib/chat-stream.test.mjs` |
 | APEX panel and composer control | `components/sections/ApexSection.tsx`, `ApexModePicker.tsx`, `lib/apex.ts` | `lib/apex.test.mjs` |
 | Intelligence control plane | `components/sections/IntelligenceSection.tsx`, `lib/intelligence.ts` | `lib/intelligence.test.mjs` |
@@ -97,7 +97,7 @@ source for exact route mappings and honest display states.
 | Specialist catalog and orchestration controls | subagent catalog, composer selectors, Team Ops swarm DAG, per-task acceptance and receipt-citation audit display | `lib/subagent-catalog-view.test.mjs`, `lib/swarm-structure-view.test.mjs`, `lib/swarm-structure-wiring.test.mjs` |
 | Delegation scenario catalogue + advisory plan preview | `lib/subagent-scenarios.ts`, `components/DelegationPlanPreview.tsx`, mounted in `Composer` beside the delegation controls | `lib/subagent-scenarios.test.mjs` |
 | Swarm mode on/off control | `lib/swarm-preference.ts`, `components/SwarmModeControl.tsx`, mounted in `Composer` beside the delegation controls | `lib/swarm-preference.test.mjs` |
-| Chat-side coordinator-swarm board (read-only monitor) | `lib/swarm-run-board.ts`, `components/SwarmRunBoard.tsx`, mounted in `ChatView` beneath the delegation rows; lifecycle controls stay in Team Ops | `lib/swarm-run-board.test.mjs` |
+| Chat-side coordinator-swarm board (read-only monitor) | `lib/swarm-run-board.ts`, `lib/swarm-events.ts` (per-swarm event stream; a stream failure falls back to the 3s sweep with the reason rendered), `components/SwarmRunBoard.tsx`, mounted in `ChatView` beneath the delegation rows; lifecycle controls stay in Team Ops | `lib/swarm-run-board.test.mjs`, `lib/swarm-events.test.mjs` |
 | Projects and group tree | project/group section clients and views | matching `lib/projects*.test.mjs`, `lib/groups*.test.mjs` |
 | Alpha peer network | peer client and network panel | `lib/peer-network*.test.mjs`, `lib/qr-decode.test.mjs` |
 | Message projections and tags | `lib/messages-view.ts`, tag palette | `lib/messages-view.test.mjs`; tag editing is covered by the composer/UI suite. |

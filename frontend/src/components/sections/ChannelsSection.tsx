@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { channelStatus, restartChannel, listProviders, listConnections, connectProvider, disconnectConnection, larkStatus, type ChannelProviderCatalog } from "@/lib/channels";
+import { channelStatus, restartChannel, listProviders, listConnections, connectProvider, disconnectConnection, saveChannelRuntimeConfig, larkStatus, type ChannelProviderCatalog, type ChannelProvider } from "@/lib/channels";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, SkeletonList } from "@/components/ui";
 import { errMsg } from "@/lib/http";
 import { RefreshCw, Plug, PlugZap, Unplug } from "lucide-react";
@@ -87,6 +87,42 @@ export function ChannelsSection() {
       // Success is confirmed by the re-read, not painted optimistically: a 2xx
       // on the DELETE is followed by load() so the list reflects the server.
       await disconnectConnection(connectionId);
+      await load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  // Runtime credentials live here because the backend runtime-config route
+  // does: the catalog read carries both the field specs and the current
+  // (masked) values, so this form never invents a field the server would not
+  // accept, and a secret left as shown is posted back masked and reused.
+  const [configuringId, setConfiguringId] = useState<string | null>(null);
+  const [configValues, setConfigValues] = useState<Record<string, string>>({});
+
+  const openConfigure = (p: ChannelProvider) => {
+    const opening = configuringId !== p.id;
+    setConfiguringId(opening ? p.id : null);
+    if (opening) {
+      setError(null);
+      setConfigValues({ ...p.credentialValues });
+    }
+  };
+
+  const onSaveRuntimeConfig = async (p: ChannelProvider) => {
+    if (busyAction) return;
+    setBusyAction(busyKey("configure", p.id));
+    try {
+      const saved = await saveChannelRuntimeConfig(p.id, configValues);
+      const label = p.name || p.id;
+      flash(
+        saved.configured
+          ? `${label} credentials saved.`
+          : `${label} credentials saved, but the provider still reports itself as not linked.`,
+      );
+      setConfiguringId(null);
       await load();
     } catch (e) {
       setError(errMsg(e));
@@ -184,12 +220,54 @@ export function ChannelsSection() {
                       <Badge tone={p.configured ? "green" : "gray"}>{p.configured ? "linked" : "not linked"}</Badge>
                     </div>
                     {p.description && <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{p.description}</p>}
-                    <div className="mt-2">
+                    <div className="mt-2 flex items-center gap-2">
                       <Btn variant="ghost" onClick={() => onConnect(p.id)} disabled={isBusy(busyKey("connect", p.id))}>
                         <PlugZap className="size-3.5" />{" "}
                         {busyAction === busyKey("connect", p.id) ? "Connecting…" : p.configured ? "Reconnect" : "Connect"}
                       </Btn>
+                      {p.credentialFields.length > 0 && (
+                        <button
+                          type="button"
+                          className="text-[11px] underline decoration-border/60 underline-offset-2 hover:text-foreground text-muted-foreground"
+                          onClick={() => openConfigure(p)}
+                        >
+                          {configuringId === p.id ? "Hide credentials" : p.configured ? "Edit credentials" : "Add credentials"}
+                        </button>
+                      )}
                     </div>
+                    {configuringId === p.id && (
+                      <form
+                        className="mt-2 space-y-2 border-t border-border/60 pt-2"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void onSaveRuntimeConfig(p);
+                        }}
+                      >
+                        {p.credentialFields.map((f) => (
+                          <label key={f.name} className="block text-[11px]">
+                            <span className="text-muted-foreground">
+                              {f.label}
+                              {f.required ? "" : " (optional)"}
+                            </span>
+                            <input
+                              type={f.type === "password" ? "password" : "text"}
+                              className="mt-0.5 w-full rounded-lg border border-border/60 bg-background px-2 py-1 text-xs"
+                              value={configValues[f.name] ?? ""}
+                              autoComplete="off"
+                              onChange={(e) => setConfigValues((cur) => ({ ...cur, [f.name]: e.target.value }))}
+                            />
+                          </label>
+                        ))}
+                        <div className="flex items-center gap-2">
+                          <Btn type="submit" variant="primary" disabled={isBusy(busyKey("configure", p.id))}>
+                            {busyAction === busyKey("configure", p.id) ? "Saving…" : "Save credentials"}
+                          </Btn>
+                          <span className="text-[10px] text-muted-foreground">
+                            Stored on the Gateway. A field left as shown keeps its saved value.
+                          </span>
+                        </div>
+                      </form>
+                    )}
                   </div>
                 ))}
               </div>
