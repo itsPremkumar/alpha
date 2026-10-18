@@ -27,6 +27,7 @@ import { AlertTriangle, Info } from "lucide-react";
 
 import { enumOrUnknown, type DetailState } from "@/lib/bot-detail";
 import { workspaceViewUrl, type WorkspaceView } from "@/lib/workspace-view";
+import type { BotSmokeBadgeView } from "@/lib/bots";
 
 export type Tone = "neutral" | "good" | "warn" | "bad";
 
@@ -155,6 +156,29 @@ export function BotStatusBadge({ status }: { status: string | null }) {
   const { value, known } = enumOrUnknown(status, KNOWN_STATUSES);
   const tone: Tone = value === "active" ? "good" : value === "paused" ? "warn" : value === "disabled" ? "bad" : "neutral";
   return <StatusBadge status={status === null ? null : value} known={known} tone={tone} />;
+}
+
+/**
+ * The bot's verification badge: the one place the *smoke* vocabulary is
+ * mapped to a colour.
+ *
+ * Unlike `BotStatusBadge`, the words come from the client
+ * (`lib/bots.ts` → `botSmokeBadge`) so "created · unverified" → "smoke passed"
+ * is pinned by tests that never mount React. This primitive only paints the
+ * view-model — it never invents a verdict a probe did not record.
+ */
+export function SmokeBadge({ badge }: { badge: BotSmokeBadgeView }) {
+  const tone: Tone =
+    badge.state === "passed" ? "good" : badge.state === "failed" ? "bad" : badge.state === "timeout" ? "warn" : "neutral";
+  return (
+    <span
+      className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${TONE_CLS[tone]}`}
+      title={badge.detail ?? undefined}
+    >
+      {badge.label}
+      {badge.runId && <span className="ml-1 font-mono opacity-80">{badge.runId}</span>}
+    </span>
+  );
 }
 
 /**

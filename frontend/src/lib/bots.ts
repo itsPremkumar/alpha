@@ -1,5 +1,29 @@
-import { BotProfile, BotTemplate, FleetHealth } from "@/types/bots";
+import { BotProfile, BotSmokeOutcome, BotTemplate, FleetHealth } from "@/types/bots";
 import { apiFetch } from "./api-client";
+
+/**
+ * Map the recorded smoke outcome, or `null` when none is recorded.
+ *
+ * `status` is the one field that must be present for the outcome to mean
+ * anything; a malformed blob is treated as "no recorded smoke" rather than a
+ * partial verdict. Every other field degrades to `null` individually — absent
+ * is null, never `""` / `0` / `false` (the honesty contract in
+ * `lib/bot-detail.ts`).
+ */
+function normalizeSmoke(raw: unknown): BotSmokeOutcome | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as Record<string, unknown>;
+  if (typeof s.status !== "string" || !s.status) return null;
+  return {
+    status: s.status,
+    run_id: typeof s.run_id === "string" ? s.run_id : null,
+    thread_id: typeof s.thread_id === "string" ? s.thread_id : null,
+    observed_status: typeof s.observed_status === "string" ? s.observed_status : null,
+    answered: s.answered === true,
+    detail: typeof s.detail === "string" ? s.detail : null,
+    at: typeof s.at === "string" ? s.at : null,
+  };
+}
 
 /** Map one raw `GET /api/bots` row onto a BotProfile (exported for tests). */
 export function normalizeBot(raw: Record<string, unknown>): BotProfile {
@@ -38,6 +62,10 @@ export function normalizeBot(raw: Record<string, unknown>): BotProfile {
     last_message_at: typeof raw.last_message_at === "number" ? raw.last_message_at : null,
     last_message_sender: typeof raw.last_message_sender === "string" ? raw.last_message_sender : null,
     last_message_withheld: raw.last_message_withheld === true,
+    // No recorded smoke => "created · unverified". The badge may not infer a
+    // verdict the server did not record.
+    smoke: normalizeSmoke(raw.smoke),
+    alive: raw.alive === true,
   };
 }
 
@@ -312,4 +340,76 @@ export async function updateBotProfile(
   const candidate = (body.bot ?? body.profile ?? body) as Record<string, unknown>;
   if (!candidate || typeof candidate !== "object" || !("name" in candidate)) return null;
   return normalizeBot(candidate);
+}
+
+/**
+ * The smoke route's answer (`POST /api/bots/{name}/smoke`).
+ *
+ * The route ran one REAL bot-scoped run and observed it to terminal. `ok`
+ * answers "was a terminal result observed" — a probe that ran and failed is
+ * still `ok: true`, with the failure recorded. `alive` is true only when that
+ * observed result was success. A non-2xx (403 non-admin, 404 unknown bot, 409
+ * busy thread) rejects with the server's own text and is never painted as a
+ * smoke result.
+ */
+export interface BotSmokeResult {
+  ok: boolean;
+  name: string;
+  alive: boolean;
+  smoke: BotSmokeOutcome | null;
+  runId: string | null;
+  reply: string | null;
+  messageCount: number | null;
+}
+
+/** Run one real bot-scoped smoke probe and return the observed result. */
+export async function runBotSmoke(name: string): Promise<BotSmokeResult> {
+  const res = await apiFetch(`/bots/${encodeURIComponent(name)}/smoke`, { method: "POST" });
+  const data = (await res.json()) as Record<string, unknown>;
+  return {
+    ok: data.ok === true,
+    name: String(data.name ?? name),
+    alive: data.alive === true,
+    smoke: normalizeSmoke(data.smoke),
+    runId: typeof data.run_id === "string" ? data.run_id : null,
+    reply: typeof data.reply === "string" ? data.reply : null,
+    messageCount: typeof data.message_count === "number" ? data.message_count : null,
+  };
+}
+
+/** The badge state vocabulary: what a bot's record can say about verification. */
+export type BotSmokeBadgeState = "unverified" | "passed" | "failed" | "timeout" | "unknown";
+
+/** The badge view-model for one bot, computed once so tests can pin the words. */
+export interface BotSmokeBadgeView {
+  state: BotSmokeBadgeState;
+  label: string;
+  /** The smoke run id, shown beside a verdict. Never invented. */
+  runId: string | null;
+  /** The recorded failure reason, for the badge's `title`. */
+  detail: string | null;
+}
+
+/**
+ * The verification badge for one bot, exactly as the roster records it.
+ *
+ * Vocabulary is fixed by the plan: **`created · unverified`** (no smoke
+ * recorded) → **`smoke passed`** (with the run id). A failed or timed-out
+ * probe keeps its own label — neither can borrow "passed", and none of them
+ * may render as "alive". A profile that failed to load is "verification
+ * unknown", which is NOT the same claim as "created · unverified": the read
+ * failed, so nothing is known about this bot at all.
+ */
+export function botSmokeBadge(bot: Pick<BotProfile, "smoke"> | null): BotSmokeBadgeView {
+  if (!bot) {
+    return { state: "unknown", label: "verification unknown — profile read failed", runId: null, detail: null };
+  }
+  const smoke = bot.smoke ?? null;
+  if (!smoke) return { state: "unverified", label: "created · unverified", runId: null, detail: null };
+  if (smoke.status === "passed") return { state: "passed", label: "smoke passed", runId: smoke.run_id, detail: smoke.detail };
+  if (smoke.status === "failed") return { state: "failed", label: "smoke failed", runId: smoke.run_id, detail: smoke.detail };
+  if (smoke.status === "timeout") return { state: "timeout", label: "smoke timed out", runId: smoke.run_id, detail: smoke.detail };
+  // A verdict this build does not know is shown verbatim — never snapped to a
+  // label this build picked.
+  return { state: "unknown", label: `smoke ${smoke.status}`, runId: smoke.run_id, detail: smoke.detail };
 }

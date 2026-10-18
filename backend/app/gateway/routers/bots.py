@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
@@ -30,6 +31,16 @@ router = APIRouter(prefix="/api/bots", tags=["bots"])
 _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to manage bots."
 
 _BOT_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+#: One real bot-scoped run, no tools, one short answer: the cheapest probe that
+#: still exercises the whole loop (assembly → model → reply) for this bot.
+_SMOKE_PROMPT = "Smoke test: reply with one short sentence confirming you are operational."
+
+#: The smoke route waits for the run to reach a terminal state, bounded so a
+#: stalled model call cannot hold the request forever. On the deadline the run
+#: is interrupted and the smoke reports ``timeout`` — never a fabricated verdict.
+_SMOKE_TIMEOUT_SECONDS = 180.0
+_SMOKE_POLL_SECONDS = 0.5
 
 
 def _validate_bot_name(name: str) -> str:
@@ -59,6 +70,11 @@ def _bot_to_response(profile) -> dict:
     else:
         reputation_score = None
         reputation_basis = "no recorded runs — unverified"
+    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    smoke = metadata.get("smoke") if isinstance(metadata.get("smoke"), dict) else None
+    # Only a passing smoke makes a bot "alive": a profile with no recorded
+    # smoke is "created · unverified", never alive by default.
+    alive = bool(smoke and smoke.get("status") == "passed")
     return {
         "name": data.get("name"),
         "display_name": data.get("display_name"),
@@ -72,6 +88,8 @@ def _bot_to_response(profile) -> dict:
         "last_active": data.get("last_active"),
         "version": data.get("version", 1),
         "epoch": data.get("epoch"),
+        "smoke": smoke,
+        "alive": alive,
         "department": data.get("department", "engineering"),
         "reports_to": data.get("reports_to"),
         "responsibilities": data.get("responsibilities", []),
@@ -115,6 +133,115 @@ def _forge_result_to_response(result) -> dict:
         "rollback_report": list(result.rollback_report),
         "elapsed_seconds": round(float(result.elapsed_seconds), 3),
         "reply": result.reply(),
+    }
+
+
+def _persist_smoke_outcome(bot_name: str, smoke: dict) -> None:
+    """Record the smoke outcome on the profile so the badge survives a reload.
+
+    ``metadata`` is the profile's own free-form slot (round-tripped by
+    ``BotProfile.to_dict``/``from_dict``), so "created · unverified" becomes
+    "smoke passed" on the next GET without a schema change. Best-effort: a
+    roster write failure must not turn an observed smoke into a 500.
+    """
+    registry = _registry()
+    bot = registry.get_bot(bot_name)
+    if bot is None:
+        return
+    bot.metadata = {**(bot.metadata or {}), "smoke": smoke}
+    registry.register(bot)
+
+
+async def _await_run_terminal(run_mgr, run_id: str, *, timeout_seconds: float):
+    """Poll a run record until it leaves pending/running — or the deadline passes.
+
+    Returns the last observed record (including one that is still running at
+    the deadline, so the caller can report ``timeout`` honestly) or ``None``
+    when the record cannot be observed at all.
+    """
+    from alpha.runtime.runs.schemas import RunStatus
+
+    deadline = time.monotonic() + max(0.0, timeout_seconds)
+    while True:
+        record = await run_mgr.get(run_id)
+        if record is None:
+            return None
+        if record.status not in (RunStatus.pending, RunStatus.running):
+            return record
+        if time.monotonic() >= deadline:
+            return record
+        await asyncio.sleep(_SMOKE_POLL_SECONDS)
+
+
+async def _run_bot_smoke(bot_name: str, request: Request) -> dict:
+    """Run ONE real bot-scoped run and return the observed terminal result.
+
+    The run is started through the scheduler's internal launcher — the same
+    admission path every scheduled run uses — with ``assistant_id`` bound to
+    the bot under test, so the probe exercises the bot's real assembly, model
+    and tool path rather than a simulation. It lands on
+    ``canonical_bot_chat_id`` — the bot's own chat — so the evidence sits
+    where the bot's other work lives.
+    """
+    from alpha.bots.dm import canonical_bot_chat_id
+    from alpha.runtime.runs.schemas import RunStatus
+    from app.gateway.deps import get_run_manager
+    from app.gateway.services import launch_scheduled_thread_run
+
+    thread_id = canonical_bot_chat_id(bot_name)
+    owner = getattr(getattr(request, "state", None), "user", None)
+    owner_user_id = str(owner.id) if getattr(owner, "id", None) is not None else None
+    launch = await launch_scheduled_thread_run(
+        thread_id=thread_id,
+        assistant_id=bot_name,
+        prompt=_SMOKE_PROMPT,
+        app=request.app,
+        owner_user_id=owner_user_id,
+        metadata={"bot_mode_smoke": True},
+    )
+    run_id = str(launch.get("run_id") or "")
+    run_mgr = get_run_manager(request)
+    record = await _await_run_terminal(run_mgr, run_id, timeout_seconds=_SMOKE_TIMEOUT_SECONDS)
+
+    if record is None:
+        return {
+            "bot_name": bot_name,
+            "run_id": run_id,
+            "thread_id": thread_id,
+            "status": "failed",
+            "observed_status": "absent",
+            "detail": "the launched run could not be observed in the run store",
+            "answered": False,
+            "reply": None,
+            "message_count": 0,
+        }
+
+    observed_status = str(record.status)
+    if record.status == RunStatus.success:
+        verdict = "passed"
+        detail = None
+    elif record.status in (RunStatus.pending, RunStatus.running):
+        verdict = "timeout"
+        detail = f"still {observed_status} after {_SMOKE_TIMEOUT_SECONDS:.0f}s — the run was interrupted"
+        try:
+            await run_mgr.cancel(run_id, action="interrupt")
+        except Exception:  # noqa: BLE001 — the deadline verdict stands regardless
+            logger.warning("Smoke run %s could not be interrupted after the deadline.", run_id, exc_info=True)
+    else:
+        verdict = "failed"
+        detail = record.error or record.stop_reason or f"the run ended as {observed_status}"
+
+    reply = (record.last_ai_message or "").strip()
+    return {
+        "bot_name": bot_name,
+        "run_id": run_id,
+        "thread_id": thread_id,
+        "status": verdict,
+        "observed_status": observed_status,
+        "detail": detail,
+        "answered": bool(reply),
+        "reply": reply[:1000] or None,
+        "message_count": int(record.message_count or 0),
     }
 
 
@@ -297,6 +424,50 @@ async def create_bot(request: Request, body: BotCreateRequest) -> dict:
 
     result = await asyncio.to_thread(_forge)
     return _forge_result_to_response(result)
+
+
+@router.post("/{name}/smoke", summary="Run a real bot-scoped smoke run and record the observed result")
+async def smoke_bot(name: str, request: Request) -> dict:
+    """Prove a bot works end to end — or say plainly that it did not.
+
+    One REAL bot-scoped run on the bot's canonical chat thread; ``alive`` is
+    true only when that run reached ``success``, the run system's own terminal
+    verdict. The outcome (including the run id) is persisted on the profile,
+    so the UI badge progresses from ``created · unverified`` to
+    ``smoke passed`` without re-running — and a bot is never reported alive
+    without one.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+
+    def _get():
+        return _registry().get_bot(key)
+
+    bot = await asyncio.to_thread(_get)
+    if bot is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+
+    observed = await _run_bot_smoke(key, request)
+    smoke = {
+        "status": observed["status"],
+        "run_id": observed["run_id"],
+        "thread_id": observed["thread_id"],
+        "observed_status": observed["observed_status"],
+        "answered": observed["answered"],
+        "detail": observed["detail"],
+        "at": datetime.now(UTC).isoformat(),
+    }
+    await asyncio.to_thread(_persist_smoke_outcome, key, smoke)
+    return {
+        "ok": observed["observed_status"] not in ("absent", "pending", "running"),
+        "name": key,
+        "alive": observed["status"] == "passed",
+        "smoke": smoke,
+        "run_id": observed["run_id"],
+        "thread_id": observed["thread_id"],
+        "reply": observed["reply"],
+        "message_count": observed["message_count"],
+    }
 
 
 @router.get("/templates", summary="List bot role templates")
