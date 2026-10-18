@@ -207,13 +207,6 @@ def swarm_tool(
         # plan's declared concurrency. Advisory, never a gate.
         advisory = plan.metrics.get("admission_advisory") or {}
         advisory_lines = f"- **Process admission (advisory)**: {advisory.get('note')}\n- **Admission schedule snapshot** (advisory, never enforced): `{json.dumps(advisory, sort_keys=True)}`\n\n" if advisory else ""
-        # The calibrated projection (S7) and the panel composition audit (S4),
-        # as recorded on the plan at admission.  A cold start renders the
-        # "insufficient_history" method rather than a number nobody measured.
-        calibrated = plan.metrics.get("calibrated_cost_projection") or {}
-        calibrated_lines = f"- **Calibrated cost projection (recorded history)**: `{json.dumps(calibrated, sort_keys=True)}`\n" if calibrated else ""
-        diversity_audit = plan.metrics.get("diversity") or {}
-        diversity_lines = f"- **Panel composition audit (advisory)**: `{json.dumps(diversity_audit, sort_keys=True)}`\n" if diversity_audit else ""
         tasks_summary = "\n".join(f"  - `[{task.task_id}]` {task.objective} (deps: {task.dependencies or 'none'})" for task in plan.tasks.values())
         return (
             "### Autonomous Swarm Successfully Spawned (plan created; execution is explicit)\n"
@@ -223,8 +216,6 @@ def swarm_tool(
             f"- **Tasks**: {len(plan.tasks)}\n"
             f"- **Task DAG**:\n{tasks_summary}\n"
             f"- **Projected cost**: `{json.dumps(projection, sort_keys=True)}`\n"
-            f"{calibrated_lines}"
-            f"{diversity_lines}"
             f"{advisory_lines}"
             f"Run it with `swarm(action='run_async', swarm_id='{plan.swarm_id}')`; `step` only dispatches work."
         )

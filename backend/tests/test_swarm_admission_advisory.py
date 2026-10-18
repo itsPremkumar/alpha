@@ -20,7 +20,6 @@ discloses that seam.  These pins are the contract:
 
 from __future__ import annotations
 
-import importlib
 import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -182,14 +181,7 @@ class TestCreateSwarmStampsTheAdvisory(unittest.TestCase):
 
 class TestToolResponseCarriesTheAdvisory(unittest.TestCase):
     def test_spawn_response_discloses_the_admission_reality(self) -> None:
-        # ``import alpha.tools.builtins.swarm_tool as …`` is order-sensitive:
-        # the lazy package facade caches the resolved export under the same
-        # name, so once anything has resolved ``swarm_tool`` through the
-        # facade this binds the *tool*, not the module, and ``patch.object``
-        # then fails with AttributeError.  ``importlib`` reads the module from
-        # ``sys.modules`` unconditionally -- the same workaround as
-        # ``test_gro_tool.py``.
-        swarm_tool_module = importlib.import_module("alpha.tools.builtins.swarm_tool")
+        import alpha.tools.builtins.swarm_tool as swarm_tool_module
 
         capacity_module.configure_subagent_execution_capacity(SubagentRuntimeConfig(max_running=3, max_queued=64))
         with TemporaryDirectory() as storage:

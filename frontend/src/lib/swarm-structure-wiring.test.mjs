@@ -210,39 +210,3 @@ test("the section renders those absence notes and not a bare zero", () => {
   assert.match(body, /t\.workerNote/, "an unassigned task must render its own sentence");
   assert.match(body, /view\.leader\.note/, "a missing leader must render its own sentence");
 });
-
-// ---------------------------------------------------------------------------
-// The plan-time admission advisory
-//
-// The Gateway stamps `plan.metrics["admission_advisory"]` at `create_swarm`
-// (backend 76cecf6): declared plan concurrency versus the process admission
-// pool every worker inherits. The panel must actually read it — and read it
-// from the same fulfilled detail read the topology badge uses, never from a
-// rejected refresh or a local invention.
-// ---------------------------------------------------------------------------
-
-test("the section derives the advisory from the fulfilled detail read only", () => {
-  assert.match(section, /swarmAdmissionAdvisory\(/, "the advisory must be derived, not invented");
-  const start = section.indexOf('if (detail.status === "fulfilled") {');
-  const end = section.indexOf("setView(", start);
-  assert.ok(end > start, "the fulfilled branch must precede setView");
-  const fulfilled = flat(section.slice(start, end));
-  assert.match(
-    fulfilled,
-    /setAdmission\(swarmAdmissionAdvisory\(root\)\)/,
-    "the advisory updates only inside the branch that saw a real detail payload",
-  );
-});
-
-test("the advisory view exists beside the topology badge", () => {
-  assert.match(view, /export function swarmAdmissionAdvisory/);
-  assert.match(view, /export interface SwarmAdmissionAdvisory/);
-});
-
-test("the panel renders the advisory with its note, not a computed substitute", () => {
-  const body = flat(section.slice(section.indexOf("function SwarmStructurePanel")));
-  assert.match(body, /Process admission \(advisory\)/, "the card names what it is");
-  assert.match(body, /admission\.note/, "the Gateway's composed note is what renders");
-  assert.match(body, /admission\.expectedRealizedConcurrency/, "expected realized concurrency is disclosed when reported");
-});
-

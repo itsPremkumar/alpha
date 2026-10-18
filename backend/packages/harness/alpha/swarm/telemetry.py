@@ -21,7 +21,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from alpha.swarm.diversity import panel_decorrelation, panel_voters
 from alpha.swarm.models import SwarmPlan, TaskNodeState
 
 __all__ = [
@@ -458,12 +457,5 @@ class SwarmTelemetry:
             "risk_signals": risk,
             "deliberation": report,
             "deliberation_rounds_saved": saved,
-            # Panel decorrelation is recomputed from the same task summaries
-            # every time, so the telemetry read and the aggregator's guard
-            # cannot drift; not a panel mode (or <2 outputs) reads `None`.
-            "panel_decorrelation": panel_decorrelation([task.result_summary for task in panel_voters(plan)]),
-            # The calibrated projection recorded at creation (S7).  Absent for
-            # pre-existing plans means "not measured at admission", not zero.
-            "cost_projection": plan.metrics.get("calibrated_cost_projection") if isinstance(plan.metrics, Mapping) else None,
             "basis": "derived from persisted plan state; no model call and no estimated token conversion",
         }

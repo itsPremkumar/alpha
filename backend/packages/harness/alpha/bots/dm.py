@@ -356,17 +356,26 @@ def send_dm(
 
 
 def message_agent_tool_schema() -> dict[str, Any]:
-    """OpenAI-format schema for ``message_agent``, projected from the real tool.
-
-    Derived rather than hand-maintained so a parameter cannot drift from the
-    implementation — the previous static copy described a tool that did not
-    exist, which is exactly the failure this projection prevents.  The import is
-    local because the tool module imports this one.  ``Runtime`` is a LangChain
-    injected argument, so it is absent from the projected parameters: the model
-    sees only what it may actually pass.
-    """
-    from langchain_core.utils.function_calling import convert_to_openai_tool
-
-    from alpha.tools.builtins.message_agent_tool import message_agent_tool
-
-    return convert_to_openai_tool(message_agent_tool)
+    """OpenAI-format schema for ``message_agent`` (inject into bot chats only)."""
+    return {
+        "type": "function",
+        "function": {
+            "name": MESSAGE_AGENT_TOOL_NAME,
+            "description": (
+                "Send a message to ANOTHER agent (teammate). FIRE-AND-FORGET and asynchronous, like texting: "
+                "validates the target against the live roster, delivers into that agent's inbox with your "
+                "attribution prefixed, and returns immediately with a delivery acknowledgement. It does NOT "
+                "return their reply — send it, finish your turn, and the reply arrives later as a new message. "
+                "Compose the message yourself (lead with the point; paraphrase, never paste private chat verbatim). "
+                "Message one clearly relevant teammate when it genuinely helps the goal."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "description": "Teammate profile name from your roster (e.g. 'researcher')."},
+                    "message": {"type": "string", "description": "What you want to say (max 16000 chars)."},
+                },
+                "required": ["target", "message"],
+            },
+        },
+    }

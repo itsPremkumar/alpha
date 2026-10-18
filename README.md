@@ -536,16 +536,8 @@ make doctor    # verify the environment
 - **Pre-run swarm projection** — each created plan reports its decomposer's
   predicted critical path and speedup before execution; a plan exceeding its
   declared wall-clock budget is refused before it is registered. Token and tool
-  call admission is governed by the separate calibrated history projection
-  below, never by this wall-clock estimate.
-- **Specification lint before registration** — every plan is checked for
-  unexecutable or uncheckable specifications before it is registered,
-  checkpointed or published: an empty directive, or an output artifact with no
-  acceptance criteria, is refused with the finding named (an explicit
-  `acceptance_waiver` records the operator's decision instead), while vague,
-  duplicated, stale-path and missing-write-scope directives are disclosed as
-  warnings. The `swarm` tool can dry-run the same lint without creating a
-  swarm.
+  call projections remain explicitly unmeasured because the plan has no
+  per-task estimates for them.
 - **Model-use transparency** — Team Ops separates a task's requested model
   override from model labels recorded in worker evidence. Missing evidence is
   shown as unreported, and the governor no longer publishes hardcoded model
@@ -566,31 +558,6 @@ make doctor    # verify the environment
   IDs against the specialist's recorded tool calls. Missing or unresolved
   citations are surfaced as uncorroborated; a resolved call receipt is execution
   evidence only and does not prove the report's claims are correct.
-- **Deterministic claim grounding** — worker result summaries are re-checked
-  against the real workspace with no model call: cited file paths, `path:line`
-  ranges and `path::test` symbols resolve to resolved / missing / out-of-range /
-  absent, while absolute and sandbox paths stay explicitly unverifiable rather
-  than failed. Unresolved claims fail acceptance when the task declared criteria,
-  render in the team report, and a result with nothing checkable renders no
-  verdict — a resolved path proves existence, never correctness.
-- **Panel decorrelation** — panel-mode swarms (ensemble, debate, scatter/gather)
-  are audited at composition time against the axes the runtime can actually
-  produce (declared model and directive framing): a panel whose voters are
-  identical on every axis is refused before registration with the colliding axes
-  named, while a partially colliding panel is disclosed as advisory. After the
-  run, voter summaries are compared lexically (mean pairwise word-shingle
-  overlap); a unanimous vote from near-identical outputs is flagged
-  `suspicious_unanimity` and downgraded to manual review — never the reverse,
-  and never on an unmeasured panel.
-- **Calibrated cost projection** — before registration, a plan's token,
-  tool-call and USD cost is projected from Alpha's own recorded completed tasks
-  (capability tags → prompt size → model → all tasks, p50/p90 with sample size
-  and the coverage tier disclosed per task), with USD priced only from
-  `config.yaml -> model_pricing`. A cold start reports `insufficient_history`
-  with every figure unmeasured; a p90 above the declared ceiling warns and
-  beyond 2× refuses the plan, while projections that are lower bounds never
-  refuse. This metric is separate from the wall-clock projection, which is
-  unchanged.
 - **Swarm operations surface** — REST + SSE for claims, leases, revisions, events,
   messages, replans, progress, and leader/resource telemetry; the `swarm` tool
   exposes the same to authorized agents, plus `strategy` (why this mode was

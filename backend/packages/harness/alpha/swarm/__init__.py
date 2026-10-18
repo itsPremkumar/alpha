@@ -29,29 +29,12 @@ from alpha.swarm.consensus import (
     evaluate_consensus,
 )
 from alpha.swarm.coordinator import SwarmCoordinator, get_swarm_coordinator
-from alpha.swarm.cost_model import (
-    COST_MODEL_BASIS,
-    COST_REFUSAL_MULTIPLE,
-    INSUFFICIENT_HISTORY,
-    TaskCostSample,
-    budget_verdict,
-    project_plan_costs,
-    samples_from_plans,
-)
 from alpha.swarm.decomposer import SwarmTaskDecomposer
 from alpha.swarm.deliberation import (
     DeliberationPolicy,
     DeliberationReport,
     rounds_from_evidence,
     run_deliberation,
-)
-from alpha.swarm.diversity import (
-    DECORRELATION_BASIS,
-    HIGH_SIMILARITY_THRESHOLD,
-    composition_audit,
-    panel_decorrelation,
-    panel_voters,
-    suspicious_unanimity,
 )
 from alpha.swarm.estimator import SwarmBenefitEstimator
 from alpha.swarm.governor import SwarmResourceGovernor, get_swarm_resource_governor
@@ -114,8 +97,6 @@ __all__ = [
     "AsyncSwarmRunner",
     "AutonomousWorkTrigger",
     "BudgetPressure",
-    "COST_MODEL_BASIS",
-    "COST_REFUSAL_MULTIPLE",
     "Claim",
     "CodingWorktreeWorker",
     "ComplexityTier",
@@ -124,14 +105,11 @@ __all__ = [
     "ConsensusPolicy",
     "ConsensusResult",
     "ConsensusVote",
-    "DECORRELATION_BASIS",
     "DagFeatures",
     "DeliberationPolicy",
     "DeliberationReport",
     "EphemeralSubagentWorker",
     "GROUNDING_BASIS",
-    "HIGH_SIMILARITY_THRESHOLD",
-    "INSUFFICIENT_HISTORY",
     "LeaderCandidate",
     "LeaderElection",
     "PlanCandidate",
@@ -172,7 +150,6 @@ __all__ = [
     "SpecFinding",
     "SpecLintReport",
     "SPECIALIST_WORKER_TYPE",
-    "TaskCostSample",
     "TaskNodeState",
     "TeamAssignment",
     "TopologyRoute",
@@ -180,10 +157,8 @@ __all__ = [
     "VoteStance",
     "SwarmBenefitEstimator",
     "assign_specialists",
-    "budget_verdict",
     "build_candidate",
     "build_team_report",
-    "composition_audit",
     "compute_dag_features",
     "elect_leader",
     "evaluate_consensus",
@@ -194,9 +169,6 @@ __all__ = [
     "ground_claims",
     "is_terminal_swarm_status",
     "lint_plan",
-    "panel_decorrelation",
-    "panel_voters",
-    "project_plan_costs",
     "register_roster_provider",
     "render_team_report_markdown",
     "resolve_roster",
@@ -204,10 +176,8 @@ __all__ = [
     "route_topology",
     "rounds_from_evidence",
     "run_deliberation",
-    "samples_from_plans",
     "score_plan",
     "select_best_candidate",
-    "suspicious_unanimity",
     "tier_for",
     "unregister_roster_provider",
 ]
