@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm, hasRefreshableSwarms,
+  listGroups, createGroup, groupMessages, startGroupRun, listSwarms, createSwarm, hasRefreshableSwarms,
   swarmAction, swarmMessages, publishSwarmMessage, SWARM_MESSAGE_WINDOW,
   swarmProgress, swarmProgressLabel,
   swarmDetails, swarmEvents, swarmMetrics,
@@ -21,7 +21,9 @@ import {
   KanbanTask, KanbanStatus,
 } from "@/lib/kanban";
 import { fetchRoster, registerRosterAgent, sendAgentMessage, fetchInbox, RosterAgent, InboxMessage } from "@/lib/inbox";
+import type { GroupRoom } from "@/lib/teamops";
 import { swarmProgressView } from "@/lib/teamops-progress";
+import { MentionComposer } from "@/components/groups/MentionComposer";
 import { ArenaPanel } from "@/components/sections/ArenaPanel";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
@@ -106,11 +108,10 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [groups, setGroups] = useState<Array<{ name: string; members: string[]; status: string }>>([]);
+  const [groups, setGroups] = useState<GroupRoom[]>([]);
   const [groupName, setGroupName] = useState("");
   const [groupMembers, setGroupMembers] = useState("");
   const [openGroup, setOpenGroup] = useState<string | null>(null);
-  const [groupDraft, setGroupDraft] = useState("");
   const [groupObjective, setGroupObjective] = useState("");
 
   const [swarms, setSwarms] = useState<Swarm[]>([]);
@@ -464,13 +465,15 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                         ))
                       )}
                     </div>
-                    <div className="flex gap-2">
-                      <input value={groupDraft} onChange={(e) => setGroupDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && groupDraft.trim() && act(() => postGroupMessage(g.name, groupDraft.trim()).then(() => setGroupDraft("")).then(() => groupMessages(g.name)).then((ms) => setGroupMsgs((p) => ({ ...p, [g.name]: ms }))))} placeholder="Message the room…" className={inputCls} aria-label={`Message ${g.name}`} />
-                      <Btn onClick={() => groupDraft.trim() && act(() => postGroupMessage(g.name, groupDraft.trim()).then(() => setGroupDraft("")).then(() => groupMessages(g.name)).then((ms) => setGroupMsgs((p) => ({ ...p, [g.name]: ms }))))} disabled={!groupDraft.trim()}>
-                        <Send className="size-3.5" aria-hidden="true" />
-                        <span className="sr-only">Send message to {g.name}</span>
-                      </Btn>
-                    </div>
+                    <MentionComposer
+                      room={g.name}
+                      mode={g.mode ?? null}
+                      moderator={g.moderator ?? null}
+                      onSent={async () => {
+                        const ms = await groupMessages(g.name);
+                        setGroupMsgs((p) => ({ ...p, [g.name]: ms }));
+                      }}
+                    />
                     <div className="flex gap-2">
                       <input value={groupObjective} onChange={(e) => setGroupObjective(e.target.value)} placeholder="Autonomous goal, e.g. Draft the launch plan…" className={inputCls} aria-label="Autonomous run objective" />
                       {/* Shape 5: POST /groups/{name}/runs mints a NEW run id per

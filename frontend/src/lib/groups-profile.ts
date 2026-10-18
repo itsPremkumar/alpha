@@ -324,6 +324,15 @@ export interface MentionPreviewResponse {
   resolvedHandles: string[];
   ok: boolean;
   human_line: string;
+  /**
+   * The routing decision for this exact draft, computed by the same
+   * orchestrator method the landed message goes through. Optional because an
+   * older Gateway omits them — the composer then says the routing is
+   * unknown rather than guessing.
+   */
+  mode?: string;
+  moderator?: string | null;
+  next_speakers?: string[];
 }
 
 /**

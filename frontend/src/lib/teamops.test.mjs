@@ -168,3 +168,67 @@ test("the swarm client does not reintroduce the unmounted run_async spelling", (
   );
   assert.ok(codeOnly.includes("run-async"), "lib/teamops.ts must use the mounted run-async route segment");
 });
+
+// ── Group rooms (2.6 mention composer) ─────────────────────────────────────
+
+test("postGroupMessage names the operator as the sender the route requires", async () => {
+  // The route 422s on a missing sender, and the orchestration grammar reads
+  // sender == "user" as the human — any other name makes the room read the
+  // operator as a bot.
+  const calls = [];
+  setHttpHandler((path, method, payload) => {
+    calls.push({ path, method, payload });
+    return undefined;
+  });
+  await teamops.postGroupMessage("alpha", "@coder status?");
+  assert.deepEqual(calls, [
+    { path: "/groups/alpha/messages", method: "POST", payload: { message: "@coder status?", sender: "user" } },
+  ]);
+});
+
+test("fetchGroupRoster reads the roster the grammar resolves against", async () => {
+  setHttpHandler((path, method) => {
+    assert.equal(path, "/groups/alpha/roster");
+    assert.equal(method, "GET");
+    return {
+      room: "alpha",
+      direct: ["coder"],
+      inherited: ["reviewer"],
+      effective: ["coder", "reviewer"],
+      direct_count: 1,
+      effective_count: 2,
+    };
+  });
+  const roster = await teamops.fetchGroupRoster("alpha");
+  assert.equal(roster.room, "alpha");
+  assert.deepEqual(roster.effective, ["coder", "reviewer"]);
+  assert.deepEqual(roster.direct, ["coder"]);
+  assert.equal(roster.directCount, 1);
+  assert.equal(roster.effectiveCount, 2);
+});
+
+test("fetchGroupRoster keeps an absent list null rather than an empty one", async () => {
+  // "The Gateway sent no list" and "the list is empty" drive opposite composer
+  // states — no autocomplete at all versus an empty one.
+  setHttpHandler(() => ({ room: "alpha", direct_count: null, effective_count: null }));
+  const roster = await teamops.fetchGroupRoster("alpha");
+  assert.equal(roster.effective, null);
+  assert.equal(roster.direct, null);
+  assert.equal(roster.directCount, null);
+  assert.equal(roster.effectiveCount, null);
+});
+
+test("listGroups reports the routing mode and moderator when the Gateway sends them", async () => {
+  setHttpHandler(() => ({ rooms: [{ name: "alpha", members: [], status: "active", mode: "mention", moderator: "coder" }] }));
+  const [room] = await teamops.listGroups();
+  assert.equal(room.mode, "mention");
+  assert.equal(room.moderator, "coder");
+});
+
+test("listGroups leaves mode and moderator undefined when the Gateway omits them", async () => {
+  // An older Gateway without those fields must not invent a default mode.
+  setHttpHandler(() => ({ rooms: [{ name: "alpha", members: [], status: "active" }] }));
+  const [room] = await teamops.listGroups();
+  assert.equal(room.mode, undefined);
+  assert.equal(room.moderator, undefined);
+});

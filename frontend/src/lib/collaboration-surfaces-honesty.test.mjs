@@ -765,6 +765,33 @@ const swarmStructureViewUrl = toUrl(
   transpile(read("./swarm-structure-view.ts")),
 );
 const teamopsUrl = toUrl(compileTs("teamops", { http: httpStubUrl }));
+// The mention composer (2.6) and its two lib deps, as data URLs.
+const apiClientUrl = toUrl("export function apiUrl(p) { return p; }");
+const groupsProfileUrl = toUrl(
+  compileTs("groups-profile", {})
+    .replace(/from\s+"@\/lib\/http"/, `from "${httpStubUrl}"`)
+    .replace(/from\s+"@\/lib\/api-client"/, `from "${apiClientUrl}"`)
+    // The model re-export cannot resolve through the data-URL loader and is
+    // not what this suite measures; previewMentions does not touch it.
+    .replace(/export \* from "\.\/groups-profile-model";/, ""),
+);
+const agentMentionsUrl = toUrl(transpile(read("./agent-mentions.ts")));
+const mentionComposerUrl = toUrl(
+  transpile(read("../components/groups/MentionComposer.tsx"), {
+    jsx: ts.JsxEmit.ReactJSX,
+  })
+    .replace(/from\s+"react"/, `from "${resolveUrl("react")}"`)
+    .replace(
+      /from\s+"react\/jsx-runtime"/,
+      `from "${resolveUrl("react/jsx-runtime")}"`,
+    )
+    .replace(/from\s+"lucide-react"/, `from "${LUCIDE}"`)
+    .replace(/from\s+"@\/components\/ui"/, `from "${uiUrl}"`)
+    .replace(/from\s+"@\/lib\/agent-mentions"/, `from "${agentMentionsUrl}"`)
+    .replace(/from\s+"@\/lib\/http"/, `from "${httpStubUrl}"`)
+    .replace(/from\s+"@\/lib\/groups-profile"/, `from "${groupsProfileUrl}"`)
+    .replace(/from\s+"@\/lib\/teamops"/, `from "${teamopsUrl}"`),
+);
 const subagentsUrl = toUrl(compileTs("subagents", { http: httpStubUrl }));
 const kanbanBoardUrl = toUrl(compileTs("kanban-board", { kanban: kanbanUrl }));
 const inboxUrl = toUrl(`
@@ -809,6 +836,10 @@ const loadSection = async (file) => {
     .replace(
       /from\s+"@\/components\/sections\/ArenaPanel"/,
       `from "${arenaPanelUrl}"`,
+    )
+    .replace(
+      /from\s+"@\/components\/groups\/MentionComposer"/,
+      `from "${mentionComposerUrl}"`,
     );
   return load(code);
 };
@@ -938,18 +969,23 @@ test("the source no longer contains the bare '?' move-button glyph or the '??' a
 });
 
 test("icon-only destructive controls in Team Ops carry an accessible name", () => {
-  const src = read("../components/sections/TeamOpsSection.tsx");
-  const code = src
-    .split("\n")
-    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
-    .join("\n");
+  const codeOnlyOf = (text) =>
+    text
+      .split("\n")
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join("\n");
   // The job Cancel button and the room Send button were `<Ban/>` / `<Send/>`
   // alone. `Btn` forwards `title` but not `aria-label`, so the name is carried
-  // as an sr-only child, which is what a screen reader actually reads.
-  for (const glyph of [
-    '<Ban className="size-3.5" aria-hidden="true" />',
-    '<Send className="size-3.5" aria-hidden="true" />',
-  ]) {
+  // as an sr-only child, which is what a screen reader actually reads. The
+  // room Send button moved into the mention composer (2.6); both homes must
+  // still name their glyph.
+  const sectionCode = codeOnlyOf(read("../components/sections/TeamOpsSection.tsx"));
+  const composerCode = codeOnlyOf(read("../components/groups/MentionComposer.tsx"));
+  const homes = [
+    [sectionCode, '<Ban className="size-3.5" aria-hidden="true" />'],
+    [composerCode, '<Send className="size-3.5" aria-hidden="true" />'],
+  ];
+  for (const [code, glyph] of homes) {
     const at = code.indexOf(glyph);
     assert.ok(at > 0, `expected the ${glyph} control`);
     const after = code.slice(at, at + 400);
