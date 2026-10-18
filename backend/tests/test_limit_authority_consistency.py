@@ -63,6 +63,12 @@ def test_the_authority_values_are_pinned():
     assert limits.MAX_GROUP_NESTING_DEPTH == 4
     assert limits.MAX_GROUP_RELAY_HOPS == 8
     assert limits.MAX_GROUP_PARALLEL_MEMBERS == 3
+    # Bot Mode 3.5: the attempt/wall-clock/total-task/revisit axis moved here
+    # from autonomy_guard's literals — same values, one source.
+    assert limits.MAX_ATTEMPTS_PER_TASK == 3
+    assert limits.MAX_WALL_CLOCK_SECONDS == 1800.0
+    assert limits.MAX_TOTAL_TASKS == 200
+    assert limits.MAX_REVISITS_PER_TASK == 2
 
 
 def test_the_authority_module_is_stdlib_free():
@@ -84,10 +90,14 @@ def test_the_authority_module_is_stdlib_free():
 
 
 def test_subagent_lifecycle_reads_the_authority():
-    from alpha.subagents.lifecycle import SubagentLifecycleManager
+    from alpha.subagents.lifecycle import DEFAULT_MAX_ATTEMPTS, SubagentLifecycleManager
 
     assert SubagentLifecycleManager.DEFAULT_MAX_DEPTH == limits.MAX_DELEGATION_DEPTH
     assert SubagentLifecycleManager.DEFAULT_MAX_CHILDREN_PER_PARENT == limits.MAX_CHILDREN_PER_PARENT
+    # Bot Mode 3.5: the attempt ceiling was a private literal (3) here; it now
+    # resolves through the authority like every other bound. It is a
+    # module-level constant (the contract default), not a class attribute.
+    assert DEFAULT_MAX_ATTEMPTS == limits.MAX_ATTEMPTS_PER_TASK
 
 
 def test_autonomy_bounds_read_the_authority():
@@ -96,6 +106,13 @@ def test_autonomy_bounds_read_the_authority():
     bounds = AutonomyBounds()
     assert bounds.max_depth == limits.MAX_DELEGATION_DEPTH
     assert bounds.max_children_per_parent == limits.MAX_CHILDREN_PER_PARENT
+    # Bot Mode 3.5: every autonomy number resolves through the authority, so
+    # the chokepoint cannot disagree with the delegation tree or the lifecycle
+    # manager about what a bound is.
+    assert bounds.max_attempts_per_task == limits.MAX_ATTEMPTS_PER_TASK
+    assert bounds.max_wall_clock_seconds == limits.MAX_WALL_CLOCK_SECONDS
+    assert bounds.max_total_tasks == limits.MAX_TOTAL_TASKS
+    assert bounds.max_revisits_per_task == limits.MAX_REVISITS_PER_TASK
 
 
 def test_delegation_limits_read_the_authority():

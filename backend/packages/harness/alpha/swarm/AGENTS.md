@@ -58,6 +58,73 @@ not a hot-reloadable config read. The projection keys are unchanged: the
 projection answers the declared budget; the advisory answers the process.
 Tests: `tests/test_swarm_admission_advisory.py`.
 
+**Specification lint (refusal before registration).** `swarm/spec_lint.py` runs
+inside `SwarmCoordinator.create_swarm` after the wall-budget refusal and before
+the plan is registered, checkpointed or published — a refused specification must
+never remain visible as a running swarm. The rules are deterministic and
+model-free; the report is ordered refusals-then-warnings with tasks in `task_id`
+order, and a report truncated at the bound discloses the truncation rather than
+shortening itself silently:
+
+- `empty_objective` — **refuse**.
+- `acceptance_missing` — **refuse** when the task declares `output_artifacts`
+  and no acceptance criteria: an artifact nobody checks is the shape of a
+  fabricated delivery. It is a **warn** when the task declares no artifact —
+  such a task can be executed but never accepted (`acceptance_status` stays
+  `not_required`), and a blanket refusal there would refuse every ordinary
+  plan, because the decomposer itself sets neither criteria nor artifacts.
+- `acceptance_waived` — **warn**: the explicit waiver
+  (`create_swarm(..., acceptance_waiver=True)`, passed through by the `swarm`
+  tool) is recorded on the plan (`metrics["spec_lint"]`), so a waivered plan is
+  never indistinguishable from a compliant one.
+- `vague_directive` — **warn** on a fixed vocabulary, suppressed when the task
+  declares an artifact or criteria (the done-state is defined elsewhere).
+- `duplicate_directive` — **warn**: two tasks with one directive is step
+  repetition, not parallelism.
+- `dangling_reference` — **warn** on a cited path that does not resolve under
+  the project or repository root (a planned file may be fine; a stale citation
+  is not). It reuses `grounding.ground_claims`, so the two surfaces cannot
+  disagree.
+- `no_declared_write_scope` — **warn** when *declared* (never inferred)
+  capability tags are not all read-only and the task names no output artifact
+  or worktree path.
+- `findings_truncated` — **warn**.
+
+A refusal raises `SwarmPlanValidationError` with the stable prefix
+`swarm was refused before registration: specification lint found N
+refuse-severity finding(s)`. The `swarm` tool's `lint` action dry-runs the same
+rules against a decomposition without registering anything (or re-lints a
+registered plan, honoring a recorded waiver). Tests:
+`tests/test_swarm_spec_lint.py`.
+
+**Claim grounding (deterministic provenance for worker claims).**
+`swarm/grounding.py` re-resolves the file-shaped claims inside a worker's own
+result summary — workspace-relative tokens with a recognized source extension,
+optionally `:LINE` / `:LINE-END` or `::test_ref`, plus absolute extension paths
+— against the real workspace with no model call. It is bounded throughout (64
+claims, a 200k-character summary head, 240-character tokens; line claims above
+4MB and symbol scans above 512KB are `unverifiable`) and deliberately
+conservative, so prose like `client/server` never becomes a citation.
+`resolved` proves existence (the path exists, the line is inside the file, the
+test symbol is defined), never correctness; `missing` / `out_of_range` /
+`absent` are claim contradictions and gate; `unverifiable` and virtual-sandbox
+paths stay visible but never count as failures; no extractable claims is
+`not_checked` — never a vacuous pass. The payload carries `GROUNDING_BASIS`
+(`deterministic_workspace_resolution_v1`), and every consumer renders a verdict
+only for the current basis. `SwarmAggregator`'s acceptance overlay turns an
+unresolved claim into `acceptance_status="failed"` with the
+`grounding_unresolved` count and reason (the overlay only runs when the task
+declared acceptance criteria — grounding never invents a criterion); the team
+report renders the row and counts unresolved claims as an unknown. The runner
+computes grounding from the internal worker outcome only, after the completion
+commit and off the event loop, and writes it under a following state lock —
+running it while the node still read `RUNNING` widened the watchdog's straggler
+window (a healthy worker could be classified as slow and a duplicate provider
+attempt launched), so it must not precede the commit again. Same discipline as
+the citation audit: never external `complete_task` (there is no request field)
+and never before lease acceptance. Tests:
+`tests/test_swarm_claim_grounding.py`.
+
 **The governor does not route models.** `SwarmResourceGovernor` adapts concurrency
 after 429s and reports which models a swarm used. It used to carry a `MODEL_TIERS`
 table of four hardcoded names plus a `resolve_model_for_role` substring matcher;

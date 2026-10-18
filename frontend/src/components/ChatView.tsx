@@ -27,6 +27,7 @@ import { WorkspaceSheet } from "@/components/WorkspaceSheet";
 import { findTranscriptMatches, toSearchable } from "@/lib/transcript-search";
 import { DEFAULT_DELEGATION_MODE } from "@/lib/delegation-preference";
 import { readStoredSwarmPreference } from "@/lib/swarm-preference";
+import { buildSwarmSendRequest, SWARM_RUN_ASYNC_BODY } from "@/lib/swarm-send";
 import { exportTranscript, exportFilename } from "@/lib/transcript-export";
 import { collectWorkspaceContent } from "@/lib/workspace-sheet";
 import { TaskList } from "@/components/TaskList";
@@ -138,7 +139,7 @@ import {
   OmnisearchModal,
 } from "@/components/chat-shell/ChatShell";
 import { ErrorBox, SkeletonList } from "@/components/ui";
-import { errMsg } from "@/lib/http";
+import { errMsg, pick, send } from "@/lib/http";
 import {
   Shrink,
   ClipboardList,
@@ -1021,12 +1022,16 @@ export default function ChatView({
    * owns the store and the catalog validation; this is just the seed.
    */
   const [delegationMode, setDelegationMode] = useState(DEFAULT_DELEGATION_MODE);
-  // Swarm mode: an opt-in that tells the lead agent swarm orchestration is
-  // available for this run. Defaults off, persisted, reconciled against the
-  // modes this build offers - the same discipline as delegationMode.
+  // Swarm mode: an opt-in that dispatches the next prompt as a coordinator
+  // swarm. Defaults off, persisted, reconciled against the modes this build
+  // offers - the same discipline as delegationMode.
   const [swarmModeEnabled, setSwarmModeEnabled] = useState(false);
   const [swarmMode, setSwarmMode] = useState("auto");
   const [swarmConcurrency, setSwarmConcurrency] = useState(4);
+  // The swarm this composer dispatch started, pinned so the board stays
+  // visible until the swarm reaches a terminal state. Null when no swarm was
+  // dispatched from here.
+  const [pinnedSwarmId, setPinnedSwarmId] = useState<string | null>(null);
   // Safe per-run defaults. The Gateway applies the same middleware ceilings and
   // clamps these against process capacity; these settings only narrow them.
   const [subagentConcurrency, setSubagentConcurrency] = useState(1);
@@ -1261,6 +1266,9 @@ export default function ChatView({
     // Subagent progress is per-turn UI state; a receipt from the thread the
     // user just left must not appear under the one they opened.
     setSubagentTasks([]);
+    // The pinned swarm board is per-turn for the same reason as the task
+    // receipt: the previous thread's swarm is not this thread's work.
+    setPinnedSwarmId(null);
     // The execution plan is per-turn for the same reason the task receipt is:
     // a plan belonging to the thread the user just left must not appear under
     // the one they opened.
@@ -2190,6 +2198,9 @@ export default function ChatView({
     // A new run starts from zero subagent tasks; the previous turn's receipt
     // must not be read as live work for this one.
     setSubagentTasks([]);
+    // Same for the pinned swarm board: the previous dispatch's swarm is the
+    // previous turn's work, and this turn has not dispatched one yet.
+    setPinnedSwarmId(null);
     // Same reason: the previous turn's finished plan is not this run's plan.
     // Leaving it up would claim work is outstanding when nothing is running.
     setLivePlan(emptyTodoPlan());
@@ -2400,6 +2411,47 @@ export default function ChatView({
       abortRef.current = null;
       runLock.current = false;
       return false;
+    }
+
+    // The swarm branch. `buildSwarmSendRequest` returns exactly one of the two
+    // shapes, so this branch and the `/runs/stream` admission below are mutually
+    // exclusive: the prompt is spent once, never as both a run and a swarm.
+    const sendRequest = buildSwarmSendRequest({
+      swarmModeEnabled,
+      content,
+      swarmMode,
+      swarmConcurrency,
+      assistantId: activeBot?.name || "lead_agent",
+      modelName: selectedModel,
+    });
+    if (sendRequest.kind === "swarm") {
+      try {
+        const created = await send<Record<string, unknown>>("/swarms", "POST", sendRequest.create);
+        const swarmId = String(pick(created, ["id", "swarm_id"], "") || "");
+        if (!swarmId) {
+          await showRequestFailure({ kind: "network" });
+          setIsLoading(false);
+          setStreamReconnect(null);
+          abortRef.current = null;
+          runLock.current = false;
+          return false;
+        }
+        await send(sendRequest.runAsyncPath(swarmId), "POST", SWARM_RUN_ASYNC_BODY);
+        setPinnedSwarmId(swarmId);
+        updateLion("working", "Swarm dispatched. Coordinating quietly.");
+        setIsLoading(false);
+        setStreamReconnect(null);
+        abortRef.current = null;
+        runLock.current = false;
+        return true;
+      } catch (e) {
+        await showRequestFailure({ kind: "network" });
+        setIsLoading(false);
+        setStreamReconnect(null);
+        abortRef.current = null;
+        runLock.current = false;
+        return false;
+      }
     }
 
     try {
@@ -2778,6 +2830,7 @@ export default function ChatView({
     setInput("");
     setIsLoading(true);
     setSubagentTasks([]);
+    setPinnedSwarmId(null);
     setLivePlan(emptyTodoPlan());
     updateLion("working", "Running that shortcut...");
     const reply = async (content: string) => {
@@ -4172,9 +4225,11 @@ export default function ChatView({
                         {/* Coordinator swarms run in the Gateway's swarm runtime,
                     not as in-turn delegation, so no stream event describes
                     them — this board reads the owner-scoped swarm list the
-                    same way Team Ops does and stays a read-only monitor. */}
+                    same way Team Ops does and stays a read-only monitor. A
+                    swarm dispatched from this thread pins the board to that
+                    swarm, which then follows the swarm's own event stream. */}
                         <div className="max-w-4xl mx-auto">
-                          <SwarmRunBoard onOpenTeamOps={() => handleViewChange("team")} />
+                          <SwarmRunBoard swarmId={pinnedSwarmId ?? undefined} onOpenTeamOps={() => handleViewChange("team")} />
                         </div>
                         {/* The "Latest" pill: sticky to the scroller's bottom edge,
                     visible only while auto-follow is disarmed. One click

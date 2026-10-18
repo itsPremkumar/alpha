@@ -37,6 +37,8 @@ import {
   type PauseState,
 } from "./bot-working-status";
 import { listKanbanTasks, type KanbanTask } from "./kanban";
+import { normalizeCapabilityScope, type CapabilityScope } from "./bot-capabilities";
+import { normalizeBotRoutines, type BotRoutines } from "./bot-routines";
 import type { BotProfile } from "@/types/bots";
 
 export type DetailState<T> =
@@ -57,6 +59,8 @@ export interface BotDetailBundle {
   companies: DetailState<BotCompanies>;
   working: DetailState<BotWorkReport>;
   events: DetailState<BotOrgEvents>;
+  capabilities: DetailState<CapabilityScope>;
+  routines: DetailState<BotRoutines>;
   pause: DetailState<PauseState>;
 }
 
@@ -301,7 +305,7 @@ export async function fetchBotDetail(name: string): Promise<BotDetailBundle> {
   // here only runs on a real success envelope.
   const json = (path: string) => apiFetch(path).then((res) => res.json() as Promise<Record<string, unknown>>);
 
-  const [profile, performance, inbox, chat, fleetHealth, organization, projects, groups, companies, working, events, pause] =
+  const [profile, performance, inbox, chat, fleetHealth, organization, projects, groups, companies, working, events, capabilities, routines, pause] =
     await Promise.allSettled([
       json(`/bots/${key}`).then((raw) => normalizeBot(raw)),
       json(`/bots/${key}/performance`).then(normalizePerformance),
@@ -314,6 +318,8 @@ export async function fetchBotDetail(name: string): Promise<BotDetailBundle> {
       json(`/bots/${key}/companies`).then(normalizeCompanies),
       json("/bots/working").then(normalizeWorkReport),
       json(`/bots/events?actor=${key}&limit=50`).then(normalizeEvents),
+      json(`/bots/${key}/capabilities`).then(normalizeCapabilityScope),
+      json(`/bots/${key}/routines`).then(normalizeBotRoutines),
       fetchPauseState().then((result) => {
         // `ReadResult` and `DetailState` carry the same two states under
         // different names; converting here keeps one vocabulary on this page
@@ -341,6 +347,8 @@ export async function fetchBotDetail(name: string): Promise<BotDetailBundle> {
     companies: settle(companies),
     working: settle(working),
     events: settle(events),
+    capabilities: settle(capabilities),
+    routines: settle(routines),
     pause: settle(pause),
   };
 }

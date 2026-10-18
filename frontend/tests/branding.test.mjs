@@ -255,7 +255,11 @@ test("metadata and visible UI consume centralized branding", async () => {
       "description: branding.description",
       "${branding.name}",
     ],
-    "components/ChatView.tsx": ["branding.name", "branding.intro", "branding.assistantLabel"],
+    // The empty-chat intro sentence was deliberately trimmed in favor of one
+    // greeting (fd56871: "one identity, one greeting, and the composer"), so
+    // `branding.intro` no longer has a ChatView consumer. The pin stays exact:
+    // whatever ChatView shows, it comes from the centralized module.
+    "components/ChatView.tsx": ["branding.name", "branding.assistantLabel"],
     "components/Composer.tsx": ["branding.name"],
     "components/MessageItem.tsx": ["branding.assistantLabel"],
     "components/ThreadSidebar.tsx": ["branding.name"],

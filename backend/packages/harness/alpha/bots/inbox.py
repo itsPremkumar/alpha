@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 MAX_INBOX_MESSAGES = 200
 MAX_BODY_CHARS = 16000
 
+#: How many pending DMs one prompt injection surfaces, oldest first.
+PROMPT_DRAIN_LIMIT = 10
+
 #: Bounded width of a roster last-message preview, in characters.
 PREVIEW_CHARS = 120
 
@@ -131,6 +134,26 @@ class BotInbox:
                     return m
             return None
 
+    def drain_for_prompt(self, *, limit: int = PROMPT_DRAIN_LIMIT) -> list[DMMessage]:
+        """Take up to *limit* unread messages, oldest first, marking them read.
+
+        ``read`` — never straight to ``acked`` — is the contract: the messages
+        have been surfaced to the model exactly once, while whether they were
+        *handled* stays an explicit act (a ``message_agent(reply_to=…)`` reply,
+        or the manual ack route). A second call returns nothing, so no run is
+        ever shown a reminder history it already had.
+        """
+        with self._lock:
+            pending = [m for m in self._messages if m.status == "unread"][:limit]
+            if not pending:
+                return []
+            now = time.time()
+            for msg in pending:
+                msg.status = "read"
+                msg.read_at = now
+            self._save()
+        return pending
+
 
 _inboxes: dict[str, BotInbox] = {}
 _inboxes_lock = threading.Lock()
@@ -150,6 +173,21 @@ def get_bot_inbox(bot_name: str) -> BotInbox:
             box = BotInbox(key)
             _inboxes[key] = box
         return box
+
+
+def drain_for_prompt(bot_name: str, limit: int = PROMPT_DRAIN_LIMIT) -> list[DMMessage]:
+    """Unread DMs for one prompt injection, marked read (the 2.5 contract).
+
+    The entry point the dynamic-context middleware calls: resolves the live
+    inbox (the same per-name cache the routes use) and never raises — a broken
+    inbox read degrades to "no reminder", like every other injection surface,
+    and the messages stay unread for the next run.
+    """
+    try:
+        return get_bot_inbox(bot_name).drain_for_prompt(limit=limit)
+    except Exception:
+        logger.warning("Bot inbox drain failed for %s; skipping prompt reminder", bot_name, exc_info=True)
+        return []
 
 
 # ---------------------------------------------------------------------------

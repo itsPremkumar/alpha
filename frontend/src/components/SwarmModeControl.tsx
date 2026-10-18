@@ -26,11 +26,12 @@ import {
  * the write is gated on the restore having run so a first-paint write cannot
  * clobber the stored preference.
  *
- * The control is **advisory**.  Toggling it on does not dispatch a swarm; it
- * tells the lead agent that swarm orchestration is available for this run, the
- * same way `delegationMode !== "off"` sends `autonomous: true`.  The actual
- * swarm is still created through the Team Ops surface or the `swarm` tool, so
- * an operator who toggles this on has not started anything.
+ * The control is **dispatch**. Toggling it on spends the next prompt as a
+ * coordinator swarm — `POST /api/swarms` then `POST /api/swarms/{id}/run-async`
+ * — and the regular `/runs/stream` admission is never issued for that turn.
+ * The branch decision lives in `lib/swarm-send.ts` (`buildSwarmSendRequest`),
+ * which returns exactly one of the two request shapes so the same prompt can
+ * never be double-spent.
  */
 type Props = {
   enabled: boolean;
@@ -89,18 +90,18 @@ export function SwarmModeControl({
           ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
           : "border-border/70 bg-muted/60 text-muted-foreground"
       }`}
-      aria-label="Swarm mode"
+      aria-label="Send as swarm"
     >
       <button
         type="button"
         disabled={disabled}
         onClick={() => onEnabledChange(!enabled)}
         className="flex items-center gap-1 font-medium"
-        title={enabled ? "Swarm orchestration is on for this run" : "Swarm orchestration is off"}
+        title={enabled ? "The next prompt is dispatched as a coordinator swarm" : "Send the next prompt as a coordinator swarm"}
         aria-pressed={enabled}
       >
         <Power className={`size-3 ${enabled ? "text-emerald-500" : ""}`} />
-        <span>Swarm</span>
+        <span>Send as swarm</span>
       </button>
 
       {enabled && (

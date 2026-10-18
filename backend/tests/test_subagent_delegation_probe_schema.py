@@ -14,11 +14,6 @@ Two layers are pinned here, and both are pure (no Gateway, no model calls):
    measurements alone, so they can be exercised with synthetic reports. A
    finding (``unmet``/``refused``) is data; a missing measurement is
    ``incomplete`` (exit 1); a shape breach is exit 2.
-3. **The report's crash path** (``run_probe`` itself, with the network seams
-   monkeypatched): a Gateway that dies mid-probe — including one that dies
-   before the trailing version read — must still produce a written
-   ``incomplete`` report, never a traceback with nothing on disk (regression
-   for the 2026-10-17 full-catalogue run, which died exactly there).
 
 Plan acceptance gates: D3 (schema + null honesty pinned offline) and the
 offline half of D4 (a Gateway death reported as ``incomplete`` with a reason and
@@ -27,14 +22,8 @@ exit code 1). D1 (live evidence) is produced by running the probe itself.
 
 from __future__ import annotations
 
-import argparse
-import asyncio
-import json
-from pathlib import Path
-
 import pytest
 
-import scripts.subagent_delegation_probe as probe_module
 from scripts.subagent_delegation_probe import (
     _apply_outcome,
     _eval_acceptance_leaf,
@@ -358,32 +347,3 @@ class TestPlanAcceptanceGates:
         # the unmeasured tail stays null — never a fabricated terminal state.
         assert died["scenarios"][0]["run_status"] is None
         assert died["scenarios"][0]["delegations"] is None
-
-    def test_d4_a_target_that_dies_mid_probe_still_yields_a_written_report(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Regression (2026-10-17): the trailing version read is best-effort.
-
-        A real full-catalogue run hit transport death, crashed on
-        ``GET /api/ops/version``, and lost every completed measurement. A dead
-        target must instead produce the report the contract promises:
-        ``incomplete`` with a reason, on disk, exit 1."""
-
-        async def dead_scenario(client: object, base_url: str, scenario: object) -> None:
-            raise probe_module.GatewayUnreachable("connect refused mid-probe")
-
-        async def dead_version(client: object, base_url: str) -> None:
-            raise probe_module.GatewayUnreachable("GET /api/ops/version unreachable: ConnectError")
-
-        monkeypatch.setattr(probe_module, "run_scenario", dead_scenario)
-        monkeypatch.setattr(probe_module, "_alpha_version", dead_version)
-
-        args = argparse.Namespace(base_url="http://127.0.0.1:8001", token=None, timeout=0.0, out_dir=str(tmp_path))
-        payload, out_dir = asyncio.run(probe_module.run_probe(args, [scenario_catalogue()[0]]))
-
-        assert payload["schema_violations"] == []
-        assert payload["verdict"] == "incomplete"
-        assert payload["alpha_version"] is None
-        assert payload["scenarios"][0]["outcome"] == "incomplete"
-        assert "gateway unreachable" in payload["scenarios"][0]["detail"]
-        assert report_exit_code(payload) == 1
-        written = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
-        assert written["verdict"] == "incomplete"

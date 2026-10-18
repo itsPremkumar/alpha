@@ -7,6 +7,9 @@ from collections.abc import Sequence
 
 from alpha.capabilities.eligibility import infer_capability_tags
 from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
+from alpha.swarm.planner import MAX_CANDIDATES, PlanCandidate, build_candidate, select_best_candidate
+from alpha.swarm.strategy import StrategyResolution, resolve_strategy
+from alpha.swarm.topology import compute_dag_features
 
 #: Capability-tag -> model-routing tier.  The tier names are the same keys the
 #: operator already declares under ``model_routing.tiers`` (frontier/coding/fast/
@@ -92,10 +95,6 @@ def _apply_capability_model_routing(task: SwarmTaskNode) -> None:
     if name:
         task.model_override = name
 
-
-from alpha.swarm.planner import MAX_CANDIDATES, PlanCandidate, build_candidate, select_best_candidate  # noqa: E402
-from alpha.swarm.strategy import StrategyResolution, resolve_strategy  # noqa: E402
-from alpha.swarm.topology import compute_dag_features  # noqa: E402
 
 _CAPABILITY_TIER: dict[str, str] = {
     "code_generation": "coding",
@@ -219,6 +218,13 @@ class SwarmTaskDecomposer:
             if candidate is not None:
                 plan, resolved = cls._settle(goal, items, mode, candidate, sid, max_concurrency, requires_consensus=requires_consensus)
 
+        # Every plan states how it was decomposed.  This decomposer selects
+        # among fixed graph shapes and never calls a model, so the source must
+        # say so rather than leaving a reader to assume a model planned the work.
+        plan.metrics["decomposition"] = {
+            "source": "template",
+            "reason": "no model decomposer configured",
+        }
         # Recorded for every plan, explicit or automatic: an operator looking at
         # a finished run can see which signal chose the mode and which tier gated
         # the coordination machinery.

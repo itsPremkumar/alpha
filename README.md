@@ -538,6 +538,14 @@ make doctor    # verify the environment
   declared wall-clock budget is refused before it is registered. Token and tool
   call projections remain explicitly unmeasured because the plan has no
   per-task estimates for them.
+- **Specification lint before registration** — every plan is checked for
+  unexecutable or uncheckable specifications before it is registered,
+  checkpointed or published: an empty directive, or an output artifact with no
+  acceptance criteria, is refused with the finding named (an explicit
+  `acceptance_waiver` records the operator's decision instead), while vague,
+  duplicated, stale-path and missing-write-scope directives are disclosed as
+  warnings. The `swarm` tool can dry-run the same lint without creating a
+  swarm.
 - **Model-use transparency** — Team Ops separates a task's requested model
   override from model labels recorded in worker evidence. Missing evidence is
   shown as unreported, and the governor no longer publishes hardcoded model
@@ -558,6 +566,13 @@ make doctor    # verify the environment
   IDs against the specialist's recorded tool calls. Missing or unresolved
   citations are surfaced as uncorroborated; a resolved call receipt is execution
   evidence only and does not prove the report's claims are correct.
+- **Deterministic claim grounding** — worker result summaries are re-checked
+  against the real workspace with no model call: cited file paths, `path:line`
+  ranges and `path::test` symbols resolve to resolved / missing / out-of-range /
+  absent, while absolute and sandbox paths stay explicitly unverifiable rather
+  than failed. Unresolved claims fail acceptance when the task declared criteria,
+  render in the team report, and a result with nothing checkable renders no
+  verdict — a resolved path proves existence, never correctness.
 - **Swarm operations surface** — REST + SSE for claims, leases, revisions, events,
   messages, replans, progress, and leader/resource telemetry; the `swarm` tool
   exposes the same to authorized agents, plus `strategy` (why this mode was

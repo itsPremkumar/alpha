@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterable, Mapping, Sequence
 
 from alpha.channels.mentions import MentionResolution
@@ -61,8 +62,28 @@ class GroupOrchestrator:
         """
         return list(GroupOrchestrator.resolve_mentions(text, available_members, roles=roles, sender=sender).resolved_handles)
 
+    @staticmethod
+    def preview_next_speakers(
+        room: GroupRoom,
+        sender: str,
+        content: str,
+        *,
+        roles: Mapping[str, Iterable[str]] | None = None,
+    ) -> list[str]:
+        """The next-speaker decision for a message that has not been posted yet.
+
+        Mirrors :meth:`resolve_next_speakers` on an in-memory message so the
+        composer can say "will route to X" before send. Pure: nothing is
+        appended, saved or relayed. In mention mode the decision is exactly the
+        resolved handles, so the routing line can never disagree with the
+        preview's own resolution — the send re-runs the same method on the
+        landed message.
+        """
+        msg = GroupMessage(id=f"preview-{uuid.uuid4().hex}", sender=sender, content=content, intent="discussion")
+        return GroupOrchestrator.resolve_next_speakers(room, msg, roles=roles)
+
+    @staticmethod
     def resolve_next_speakers(
-        self,
         room: GroupRoom,
         last_message: GroupMessage | None = None,
         *,
@@ -81,7 +102,7 @@ class GroupOrchestrator:
         if mode == "mention":
             if not last_message:
                 return [room.members[0]]
-            mentions = self.parse_mentions(last_message.content, room.members, roles=roles, sender=author)
+            mentions = GroupOrchestrator.parse_mentions(last_message.content, room.members, roles=roles, sender=author)
             if mentions:
                 return mentions
             # If no mentions and message from user, invite first member or moderator
@@ -97,7 +118,7 @@ class GroupOrchestrator:
                 return [moderator]
             else:
                 # Moderator spoke: parse whom the moderator invited or default to next member
-                invited = self.parse_mentions(last_message.content, room.members, roles=roles, sender=author)
+                invited = GroupOrchestrator.parse_mentions(last_message.content, room.members, roles=roles, sender=author)
                 specialists = [m for m in invited if m != moderator]
                 if specialists:
                     return specialists

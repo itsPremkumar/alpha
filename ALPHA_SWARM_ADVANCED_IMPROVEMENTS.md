@@ -904,51 +904,6 @@ this section is updated as tickets land.
   unresolved claims force `failed`, everything else stays visible; frontend
   Task-UI rendering is not shipped (team report and tool/API payloads carry the
   row).
-- **S4 — panel decorrelation.** `swarm/diversity.py`: `composition_audit` runs
-  inside `create_swarm` after the spec lint and before registration for the
-  panel modes (`ENSEMBLE`/`DEBATE`/`SCATTER_GATHER` only); a panel whose
-  dependency-free voters are identical on every declared axis (declared
-  `model_override` + normalized directive framing) is refused with the colliding
-  axes named, and a partial collision is recorded as advisory in
-  `metrics["diversity"]`. `panel_decorrelation` measures the mean pairwise
-  token 3-gram Jaccard similarity of voter summaries (`None` below two non-empty
-  outputs), and the `suspicious_unanimity` guard downgrades a unanimous approval
-  over near-identical outputs to `manual_review` inside `_apply_deliberation`
-  (guards may only block; an unmeasured panel changes nothing). The measurement
-  is stored at `plan.metrics["panel_decorrelation"]`, rendered in the team
-  report and the telemetry snapshot. Scope vs. §4's design: `temperature` and
-  `seed` ride `unsupported_axes` rather than being generated — no per-task
-  sampling field exists and every worker makes one `model.invoke`, so an
-  "injected" sampling variety would be a field nothing honours; the refusal
-  fires only on a total collision because the shipped decomposer varies solver
-  framings by construction (the guard covers crafted/other-origin plans), so
-  S4's live value is the post-hoc measurement plus the unanimity downgrade; a
-  decomposer-side diversity contract in the solver prompts and frontend
-  rendering are not shipped.
-- **S7 — calibrated cost projection.** `swarm/cost_model.py`: samples come only
-  from completed tasks with recorded `token_usage` (`samples_from_plans`, plans
-  ordered by `created_at`, newest 500 samples); classes relax capability tags →
-  prompt-size bucket → model → all tasks (first tier with ≥
-  `MIN_CLASS_SAMPLES` = 3 members) and every per-task row names its tier;
-  nearest-rank p50/p90 for tokens and tool calls; USD is computed only from
-  `config.yaml -> model_pricing` and is all-or-nothing — one unpriced model
-  makes the figure `None` and lands in `usd_unpriced_models`. A metric summed
-  over a subset of projected tasks is a labelled lower bound; `budget_verdict`
-  warns above the declared `max_tokens`/`max_tool_calls` and refuses only when
-  a complete p90 exceeds `COST_REFUSAL_MULTIPLE` (2×) the ceiling (strict `>`),
-  so a lower bound never refuses and a cold start (`insufficient_history`, all
-  figures `None`) has nothing to compare. `create_swarm` records it at
-  `plan.metrics["calibrated_cost_projection"]` after the spec lint and the panel
-  audit, before registration; the refusal prefix is
-  `swarm was refused before registration: calibrated cost projection p90 ...`.
-  The spawn response and the telemetry snapshot (`cost_projection`) expose it.
-  Scope vs. §4's design: this is an empirical percentile model over Alpha's own
-  recorded telemetry, not the retrieval-augmented analogue-estimate sketch;
-  wall-conditioned p90s, cross-model re-pricing of historical samples and
-  cost-only plan scoring were not shipped. `SwarmBenefitEstimator` and
-  `SwarmTelemetry.cost_projection` are deliberately untouched (their pinned
-  outputs stay); the division of labor (heuristic wall-clock routing vs.
-  empirical token/tool/$ calibration) is recorded in `swarm/AGENTS.md`.
 
 **Fixed in the same change set (pre-existing failures, not S1/S2 scope).**
 
@@ -966,20 +921,13 @@ this section is updated as tickets land.
   test remains inherently timing-based, but its exposure no longer includes the
   grounding round trip.
 
-**Verified.** `uv run pytest tests/ -k "swarm" -q
---ignore=tests/test_subagent_delegation_probe_schema.py` → 528 passed,
-4 skipped, 12 subtests passed (488 after S1/S2 + 40 new in
-`tests/test_swarm_diversity.py` and `tests/test_swarm_cost_model.py`); the
-focused regression batch (engine, deliberation, stigmergy/telemetry,
-cost-projection, API v2, admission, spec lint, grounding, strategy actions,
-team execution) → 198 passed; `-k "team"` → 151 passed, 4 skipped;
-`ruff format` / `ruff check` clean on the touched modules. The `--ignore` is
-the user's concurrent, uncommitted `tests/test_subagent_delegation_probe_schema.py`,
-which currently fails collection (its `scripts/subagent_delegation_probe.py`
-imports `support.subagent_probe_report`, absent from the tree); it is not part
-of this change set and was not touched.
+**Verified.** `uv run pytest tests/ -k "swarm" -q` → 488 passed, 4 skipped,
+12 subtests passed (447 pre-existing + 41 new in
+`tests/test_swarm_spec_lint.py` and `tests/test_swarm_claim_grounding.py`);
+`ruff format` / `ruff check` clean on the touched modules;
+`uv run python scripts/check_tool_schemas.py` → 136 tools checked, 0 failed.
 
-**Not started.** §4 tickets 5–12 minus S4/S7 — S6 injection detector, S11
-minority report, S17 fault-injection harness skeleton, and the §3.5
-audit-cleanup / wire-or-delete sets. They remain next per the roadmap; nothing
-in S1/S2/S4/S7 blocks them.
+**Not started.** §4 tickets 5–12 (S4 decorrelation, S7 cost model, S6 injection
+detector, S11 minority report, S17 fault-injection harness skeleton, and the
+§3.5 audit-cleanup / wire-or-delete sets). They remain next per the roadmap;
+nothing in S1/S2 blocks them.

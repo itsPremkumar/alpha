@@ -12,7 +12,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -31,6 +33,16 @@ _ADMIN_REQUIRED_DETAIL = "Admin privileges are required to manage bots."
 
 _BOT_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
+#: One real bot-scoped run, no tools, one short answer: the cheapest probe that
+#: still exercises the whole loop (assembly → model → reply) for this bot.
+_SMOKE_PROMPT = "Smoke test: reply with one short sentence confirming you are operational."
+
+#: The smoke route waits for the run to reach a terminal state, bounded so a
+#: stalled model call cannot hold the request forever. On the deadline the run
+#: is interrupted and the smoke reports ``timeout`` — never a fabricated verdict.
+_SMOKE_TIMEOUT_SECONDS = 180.0
+_SMOKE_POLL_SECONDS = 0.5
+
 
 def _validate_bot_name(name: str) -> str:
     cleaned = name.lower().strip()
@@ -46,6 +58,18 @@ def _validation_error(detail: str) -> HTTPException:
     return HTTPException(status_code=422, detail=detail)
 
 
+def _authority_refusal(exc) -> HTTPException:
+    """A ceiling refusal travels as a structured 422, not a bare string.
+
+    ``AuthorityViolation.to_dict()`` carries the per-rule ``violations``, and
+    the scoping UI lists every one of them so the operator reads *why* a grant
+    was refused — over-ceiling, outside the creator's grant, empirically
+    empty — instead of a generic rejection. The status stays a refusal: the
+    profile was not written.
+    """
+    return HTTPException(status_code=422, detail=exc.to_dict())
+
+
 def _bot_to_response(profile) -> dict:
     data = profile.to_dict()
     stats = data.get("task_stats") or {}
@@ -59,6 +83,11 @@ def _bot_to_response(profile) -> dict:
     else:
         reputation_score = None
         reputation_basis = "no recorded runs — unverified"
+    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    smoke = metadata.get("smoke") if isinstance(metadata.get("smoke"), dict) else None
+    # Only a passing smoke makes a bot "alive": a profile with no recorded
+    # smoke is "created · unverified", never alive by default.
+    alive = bool(smoke and smoke.get("status") == "passed")
     return {
         "name": data.get("name"),
         "display_name": data.get("display_name"),
@@ -72,6 +101,8 @@ def _bot_to_response(profile) -> dict:
         "last_active": data.get("last_active"),
         "version": data.get("version", 1),
         "epoch": data.get("epoch"),
+        "smoke": smoke,
+        "alive": alive,
         "department": data.get("department", "engineering"),
         "reports_to": data.get("reports_to"),
         "responsibilities": data.get("responsibilities", []),
@@ -94,6 +125,139 @@ def _registry():
     return get_bot_registry()
 
 
+def _forge_result_to_response(result) -> dict:
+    """Project a harness-layer ``ForgeResult`` onto the wire.
+
+    ``alive`` is the load-bearing field: it is true ONLY when the forge ran a
+    smoke probe and that probe answered. A clean build with no probe supplied
+    is ``alive: false`` with ``smoke_tested: false`` — "created · unverified",
+    never "alive". ``steps``/``warnings``/``rollback_report`` travel with the
+    result so a refusal that rolled back is readable without a log dive.
+    """
+    return {
+        "ok": bool(result.ok),
+        "name": result.name,
+        "reason": result.reason,
+        "alive": bool(result.ok and result.smoke_tested),
+        "smoke_tested": bool(result.smoke_tested),
+        "rolled_back": bool(result.rolled_back),
+        "steps": result.step_names,
+        "warnings": list(result.warnings),
+        "rollback_report": list(result.rollback_report),
+        "elapsed_seconds": round(float(result.elapsed_seconds), 3),
+        "reply": result.reply(),
+    }
+
+
+def _persist_smoke_outcome(bot_name: str, smoke: dict) -> None:
+    """Record the smoke outcome on the profile so the badge survives a reload.
+
+    ``metadata`` is the profile's own free-form slot (round-tripped by
+    ``BotProfile.to_dict``/``from_dict``), so "created · unverified" becomes
+    "smoke passed" on the next GET without a schema change. Best-effort: a
+    roster write failure must not turn an observed smoke into a 500.
+    """
+    registry = _registry()
+    bot = registry.get_bot(bot_name)
+    if bot is None:
+        return
+    bot.metadata = {**(bot.metadata or {}), "smoke": smoke}
+    registry.register(bot)
+
+
+async def _await_run_terminal(run_mgr, run_id: str, *, timeout_seconds: float):
+    """Poll a run record until it leaves pending/running — or the deadline passes.
+
+    Returns the last observed record (including one that is still running at
+    the deadline, so the caller can report ``timeout`` honestly) or ``None``
+    when the record cannot be observed at all.
+    """
+    from alpha.runtime.runs.schemas import RunStatus
+
+    deadline = time.monotonic() + max(0.0, timeout_seconds)
+    while True:
+        record = await run_mgr.get(run_id)
+        if record is None:
+            return None
+        if record.status not in (RunStatus.pending, RunStatus.running):
+            return record
+        if time.monotonic() >= deadline:
+            return record
+        await asyncio.sleep(_SMOKE_POLL_SECONDS)
+
+
+async def _run_bot_smoke(bot_name: str, request: Request) -> dict:
+    """Run ONE real bot-scoped run and return the observed terminal result.
+
+    The run is started through the scheduler's internal launcher — the same
+    admission path every scheduled run uses — with ``assistant_id`` bound to
+    the bot under test, so the probe exercises the bot's real assembly, model
+    and tool path rather than a simulation. It lands on
+    ``canonical_bot_chat_id`` — the bot's own chat — so the evidence sits
+    where the bot's other work lives.
+    """
+    from alpha.bots.dm import canonical_bot_chat_id
+    from alpha.runtime.runs.schemas import RunStatus
+    from app.gateway.deps import get_run_manager
+    from app.gateway.services import launch_scheduled_thread_run
+
+    thread_id = canonical_bot_chat_id(bot_name)
+    owner = getattr(getattr(request, "state", None), "user", None)
+    owner_user_id = str(owner.id) if getattr(owner, "id", None) is not None else None
+    launch = await launch_scheduled_thread_run(
+        thread_id=thread_id,
+        assistant_id=bot_name,
+        prompt=_SMOKE_PROMPT,
+        app=request.app,
+        owner_user_id=owner_user_id,
+        metadata={"bot_mode_smoke": True},
+    )
+    run_id = str(launch.get("run_id") or "")
+    run_mgr = get_run_manager(request)
+    record = await _await_run_terminal(run_mgr, run_id, timeout_seconds=_SMOKE_TIMEOUT_SECONDS)
+
+    if record is None:
+        return {
+            "bot_name": bot_name,
+            "run_id": run_id,
+            "thread_id": thread_id,
+            "status": "failed",
+            "observed_status": "absent",
+            "detail": "the launched run could not be observed in the run store",
+            "answered": False,
+            "reply": None,
+            "message_count": 0,
+        }
+
+    observed_status = str(record.status)
+    if record.status == RunStatus.success:
+        verdict = "passed"
+        detail = None
+    elif record.status in (RunStatus.pending, RunStatus.running):
+        verdict = "timeout"
+        detail = f"still {observed_status} after {_SMOKE_TIMEOUT_SECONDS:.0f}s — the run was interrupted"
+        try:
+            await run_mgr.cancel(run_id, action="interrupt")
+        except Exception:  # noqa: BLE001 — the deadline verdict stands regardless
+            logger.warning("Smoke run %s could not be interrupted after the deadline.", run_id, exc_info=True)
+    else:
+        verdict = "failed"
+        detail = record.error or record.stop_reason or f"the run ended as {observed_status}"
+
+    reply = (record.last_ai_message or "").strip()
+    return {
+        "bot_name": bot_name,
+        "run_id": run_id,
+        "thread_id": thread_id,
+        "status": verdict,
+        "observed_status": observed_status,
+        "detail": detail,
+        "answered": bool(reply),
+        "reply": reply[:1000] or None,
+        "message_count": int(record.message_count or 0),
+    }
+
+
 class BotEnsureRequest(BaseModel):
     display_name: str | None = Field(default=None, max_length=100)
     role: str | None = Field(default=None, max_length=200)
@@ -105,6 +269,28 @@ class BotEnsureRequest(BaseModel):
     responsibilities: list[str] | None = None
     capabilities: list[str] | None = None
     succession_fallback: str | None = Field(default=None, max_length=64)
+
+
+class BotCreateRequest(BaseModel):
+    """The forge's create contract, mirroring ``forge_bot``'s own parameters.
+
+    ``role`` and ``template`` may be combined: the template supplies the
+    display name / role / avatar / department / responsibilities it owns, and
+    the explicit fields override. Unknown templates and models that are not
+    declared in ``config.yaml models[]`` are refused by the forge with a
+    reason (``ok: false``), never silently ignored.
+    """
+
+    name: str = Field(min_length=1, max_length=64, description="Bot handle: letters, digits, '_' or '-'")
+    role: str = Field(default="", max_length=200, description="One-line specialty")
+    template: str | None = Field(default=None, max_length=64)
+    display_name: str | None = Field(default=None, max_length=100)
+    department: str | None = Field(default=None, max_length=64)
+    model: str | None = Field(default=None, max_length=200, description="Must be declared in config.yaml models[]")
+    skills: list[str] | None = Field(default=None, max_length=100)
+    capabilities: list[str] | None = Field(default=None, max_length=100)
+    allow_overlap: bool = Field(default=False, description="Operator override for the duplicate-role refusal")
+    workspace_survey: bool = Field(default=True, description="Survey the workspace at birth and write it into the bot's memory")
 
 
 class BotUpdateRequest(BaseModel):
@@ -130,6 +316,33 @@ class BotUpdateRequest(BaseModel):
     # PATCH. It has its own validated route (``PUT /{name}/model-config``) so a
     # fail-closed validation result (422 + ``detail.issues``) is the only write
     # path; a name that is not in ``config.yaml models[]`` must never land here.
+    #
+    # ``capabilities`` and ``toolsets`` stay DECLARED on this model (the field
+    # list is what the client transcribes) but are refused at runtime by the
+    # route: capabilities have their own ceiling-checked, recorded write path
+    # (``PUT /{name}/capabilities``), and toolsets have no PATCH surface. A
+    # scoping mutation must not have a side door.
+
+
+class BotCapabilityScopeRequest(BaseModel):
+    """THE write contract for a capability grant (``PUT /{name}/capabilities``).
+
+    ``capabilities`` is the requested grant, enforced through
+    ``registry.rescope_bot``: a leader actor, the live ceiling and the
+    profile's recorded creator grant have to admit every entry, and a request
+    that exceeds any of them is REFUSED — never silently trimmed — so the
+    profile is left untouched and the operator reads the refusal.
+
+    ``reason`` is recorded verbatim on the profile's ``last_rescope`` so the
+    audit trail carries the stated intent.
+    """
+
+    capabilities: list[str] = Field(..., max_length=100)
+    reason: str = Field(
+        default="Operator re-scope via the capability panel",
+        min_length=1,
+        max_length=500,
+    )
 
 
 class BotModelConfigRequest(BaseModel):
@@ -216,6 +429,102 @@ class KillSwitchRequest(BaseModel):
 
 class BotPauseRequest(BaseModel):
     reason: str = Field(default="Operator paused", max_length=500)
+
+
+class BotRoutineCreateRequest(BaseModel):
+    """One routine: a scheduled task bound to the bot's canonical chat thread.
+
+    The scheduled-task surface owns schedules; this is the bot-shaped entry
+    that binds ``assistant_id=<bot>`` and the canonical thread so the run's
+    result lands in the bot's own conversation (and the task id is recorded on
+    the profile routine, so both stores stay addressable from either end).
+    """
+
+    name: str = Field(min_length=1, max_length=64)
+    action: str = Field(min_length=1, max_length=16000)
+    schedule_type: str
+    schedule_spec: dict[str, Any]
+    timezone: str
+    title: str | None = Field(default=None, max_length=200)
+
+
+@router.post("", status_code=200, summary="Forge a new bot (transactional)")
+async def create_bot(request: Request, body: BotCreateRequest) -> dict:
+    """Create one bot through the transactional forge.
+
+    The forge never raises — a refusal is a *result*, and its ``steps`` and
+    ``rollback_report`` are part of what the caller must see, so this route
+    answers 200 with ``ok: false`` and the reason instead of translating the
+    refusal into an error that would drop them. Callers read ``ok``.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(body.name)
+    if not body.role.strip() and not body.template:
+        raise _validation_error("Provide a role, a template, or both.")
+
+    def _forge():
+        from alpha.bots.forge import forge_bot
+
+        return forge_bot(
+            name=key,
+            role=body.role,
+            registry=_registry(),
+            template=body.template,
+            display_name=body.display_name,
+            department=body.department,
+            model=body.model,
+            skills=body.skills,
+            capabilities=body.capabilities,
+            allow_overlap=body.allow_overlap,
+            workspace_survey=body.workspace_survey,
+        )
+
+    result = await asyncio.to_thread(_forge)
+    return _forge_result_to_response(result)
+
+
+@router.post("/{name}/smoke", summary="Run a real bot-scoped smoke run and record the observed result")
+async def smoke_bot(name: str, request: Request) -> dict:
+    """Prove a bot works end to end — or say plainly that it did not.
+
+    One REAL bot-scoped run on the bot's canonical chat thread; ``alive`` is
+    true only when that run reached ``success``, the run system's own terminal
+    verdict. The outcome (including the run id) is persisted on the profile,
+    so the UI badge progresses from ``created · unverified`` to
+    ``smoke passed`` without re-running — and a bot is never reported alive
+    without one.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+
+    def _get():
+        return _registry().get_bot(key)
+
+    bot = await asyncio.to_thread(_get)
+    if bot is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+
+    observed = await _run_bot_smoke(key, request)
+    smoke = {
+        "status": observed["status"],
+        "run_id": observed["run_id"],
+        "thread_id": observed["thread_id"],
+        "observed_status": observed["observed_status"],
+        "answered": observed["answered"],
+        "detail": observed["detail"],
+        "at": datetime.now(UTC).isoformat(),
+    }
+    await asyncio.to_thread(_persist_smoke_outcome, key, smoke)
+    return {
+        "ok": observed["observed_status"] not in ("absent", "pending", "running"),
+        "name": key,
+        "alive": observed["status"] == "passed",
+        "smoke": smoke,
+        "run_id": observed["run_id"],
+        "thread_id": observed["thread_id"],
+        "reply": observed["reply"],
+        "message_count": observed["message_count"],
+    }
 
 
 @router.get("/templates", summary="List bot role templates")
@@ -550,6 +859,167 @@ async def get_bot(name: str) -> dict:
     return _bot_to_response(bot)
 
 
+@router.get("/{name}/mode", summary="The effective bot-mode contract (what this bot may do right now)")
+async def get_bot_mode(name: str) -> dict:
+    """One answer for "what may this bot do right now".
+
+    Server-side resolution only: capabilities come from the roster profile
+    intersected with the server-owned ceiling — never from a request payload.
+    The response carries per-field provenance plus an ``enforcement``
+    disclosure, so a declared-but-unwired scope never reads as a restriction
+    that exists.
+    """
+    key = _validate_bot_name(name)
+
+    def _mode():
+        from alpha.bots.mode import resolve_bot_mode
+
+        return resolve_bot_mode(bot_name=key, registry=_registry())
+
+    mode = await asyncio.to_thread(_mode)
+    if mode is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    return mode.to_dict()
+
+
+def _capability_scope_view(key: str) -> dict | None:
+    """The scoping read behind ``GET /{name}/capabilities``.
+
+    Built on ``resolve_bot_mode`` so this view and ``GET /{name}/mode`` cannot
+    disagree about the grant: ``requested_capabilities`` is what the profile
+    stores, ``capabilities`` is what survived the live ceiling, and the denied
+    difference is disclosed rather than folded away. What this view adds is
+    what a scoping *decision* needs: the ceiling itself, the known-capability
+    catalog with ranks (so the editor can mark a pick the ceiling would refuse
+    before the save does), the last recorded re-scope, and the declared surface
+    the grant sits beside.
+    """
+    from alpha.bots.authority_ceiling import CAPABILITY_RANKS
+    from alpha.bots.mode import BOT_MODE_ENFORCEMENT, resolve_bot_mode
+
+    registry = _registry()
+    mode = resolve_bot_mode(bot_name=key, registry=registry)
+    if mode is None:
+        return None
+    bot = registry.get_bot(key)
+    metadata = getattr(bot, "metadata", None)
+    metadata = metadata if isinstance(metadata, dict) else {}
+    last_rescope = metadata.get("last_rescope")
+    last_rescope = dict(last_rescope) if isinstance(last_rescope, dict) else None
+    demoted = metadata.get("demoted_capabilities")
+    demoted = sorted(str(c) for c in demoted) if isinstance(demoted, list) else []
+    try:
+        ceiling = registry.ceiling().to_dict()
+    except Exception:  # noqa: BLE001 — an unreadable ceiling must not fail the read
+        logger.warning("Capability view: ceiling read failed for %r.", key, exc_info=True)
+        ceiling = None
+    return {
+        "bot": mode.bot_name,
+        "requested_capabilities": list(mode.requested_capabilities),
+        "effective_capabilities": list(mode.capabilities),
+        "denied_capabilities": list(mode.denied_capabilities),
+        "demoted_capabilities": demoted,
+        "last_rescope": last_rescope,
+        "ceiling": ceiling,
+        "known_capabilities": [{"name": str(name), "rank": rank} for name, rank in sorted(CAPABILITY_RANKS.items(), key=lambda item: (item[1], item[0]))],
+        "declared": {
+            "toolsets": list(mode.toolsets),
+            "skills": list(mode.skills),
+            "mcp_servers": list(mode.mcp_servers),
+            "memory_scope": mode.memory_scope,
+            "model": mode.model,
+        },
+        "epoch": mode.epoch,
+        "version": int(getattr(bot, "version", 1) or 1),
+        "enforcement": dict(BOT_MODE_ENFORCEMENT),
+        "provenance": dict(mode.provenance),
+    }
+
+
+@router.get(
+    "/{name}/capabilities",
+    summary="Capability scoping view: requested vs effective grant, the ceiling, the declared surface",
+)
+async def get_bot_capabilities(name: str) -> dict:
+    """One answer for "what may this bot hold, and what does it hold right now".
+
+    Read-only and server-side: the effective grant is the profile's stored
+    grant intersected with the live ceiling, never a client-supplied value.
+    ``known_capabilities`` carries the server's own vocabulary with ranks, so
+    the operator sees the shape of the ceiling before requesting a change.
+    """
+    key = _validate_bot_name(name)
+    view = await asyncio.to_thread(_capability_scope_view, key)
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    return view
+
+
+@router.put(
+    "/{name}/capabilities",
+    summary="Re-scope a bot's capability grant (refused over the ceiling, never trimmed)",
+)
+async def rescope_bot_capabilities(name: str, request: Request, body: BotCapabilityScopeRequest) -> dict:
+    """THE write path for a capability grant.
+
+    Delegates to ``registry.rescope_bot`` — a leader actor, the live ceiling
+    and the profile's recorded creator grant all have to admit the request, and
+    a request that exceeds any of them is REFUSED (422, with every violation)
+    rather than silently trimmed: the profile is left untouched and the
+    operator reads why. ``PATCH /{name}`` refuses ``capabilities`` and
+    ``toolsets`` for the same reason this route exists — the scoping flow must
+    not have a side door.
+
+    The response is the scoping view plus a ``changed`` record: the previous
+    grant, the epoch and version movement, and — because ``capabilities`` is
+    deliberately not an epoch input (the fingerprint covers the run-shaping
+    surface; pinned by ``test_bots_selfservice``) — a grant-only save reports
+    ``epoch_moved: false`` with the reason instead of implying a new epoch.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+
+    def _rescope() -> dict | None:
+        from alpha.bots.authority_ceiling import AuthorityViolation
+
+        registry = _registry()
+        before = registry.get_bot(key)
+        if before is None:
+            return None
+        change = {
+            "previous_capabilities": sorted(str(c) for c in before.capabilities),
+            "epoch_before": before.capability_fingerprint(),
+            "version_before": int(before.version or 1),
+        }
+        try:
+            registry.rescope_bot(
+                key,
+                actor="server",
+                reason=body.reason.strip(),
+                new_capabilities=list(body.capabilities),
+            )
+        except AuthorityViolation as exc:
+            raise _authority_refusal(exc) from exc
+        return change
+
+    change = await asyncio.to_thread(_rescope)
+    if change is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    view = await asyncio.to_thread(_capability_scope_view, key)
+    if view is None:  # the profile vanished between the write and the read
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    epoch_moved = view["epoch"] != change["epoch_before"]
+    view["changed"] = {
+        "previous_capabilities": change["previous_capabilities"],
+        "effective_capabilities": view["effective_capabilities"],
+        "epoch_before": change["epoch_before"],
+        "epoch_moved": epoch_moved,
+        "version_before": change["version_before"],
+        "note": (None if epoch_moved else "capabilities is descriptive, not epoch-bearing: only toolsets/skills/model change the fingerprint"),
+    }
+    return view
+
+
 @router.post("/{name}/ensure", status_code=200, summary="Get or auto-provision bot")
 async def ensure_bot(name: str, request: Request, body: BotEnsureRequest | None = None) -> dict:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
@@ -621,6 +1091,16 @@ async def clone_bot(name: str, request: Request, body: BotCloneRequest) -> dict:
 async def update_bot(name: str, request: Request, body: BotUpdateRequest) -> dict:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
     key = _validate_bot_name(name)
+    if body.capabilities is not None or body.toolsets is not None:
+        # Refused, not ignored: a scoping mutation has exactly one write path,
+        # and a silently dropped key would let a caller believe it scoped a bot.
+        # The fields stay on the request model for the field-list transcription;
+        # they are refused here so the capability flow cannot be bypassed.
+        raise _validation_error(
+            "capabilities and toolsets are not writable through PATCH: capabilities go through "
+            f"PUT /api/bots/{key}/capabilities (ceiling-checked, recorded on the profile's "
+            "last_rescope); toolsets are declared at creation and have no PATCH surface."
+        )
 
     def _update():
         try:
@@ -1129,6 +1609,242 @@ async def bot_chat(name: str, limit: int = 20) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Routines — scheduled work that lands in the bot's own chat (Bot Mode 2.4)
+# ---------------------------------------------------------------------------
+
+
+def _routine_schedule_label(task: dict) -> str:
+    """Human label for a created task — the routine's ``schedule`` field."""
+    schedule_type = str(task.get("schedule_type") or "")
+    spec = task.get("schedule_spec") if isinstance(task.get("schedule_spec"), dict) else {}
+    if schedule_type == "cron":
+        return f"cron: {spec.get('cron')}"
+    if schedule_type == "interval":
+        return f"every {spec.get('every_seconds')}s"
+    if schedule_type == "once":
+        return f"once at {spec.get('run_at')}"
+    return schedule_type or "manual"
+
+
+async def _ensure_bot_chat_thread(request: Request, thread_id: str, bot_name: str) -> None:
+    """Idempotently open the canonical bot-chat thread record.
+
+    A ``reuse_thread`` scheduled task may only target an existing thread, and
+    that thread is where the routine's result will be visible, so the request
+    that creates the routine also opens the conversation. The record is
+    created *unowned* — one shared canonical conversation per bot, not a
+    personal thread, matching "opening this id always lands in the same
+    conversation" — and carries ``botName`` so every consumer of thread
+    metadata reads it as a bot chat.
+    """
+    from app.gateway.deps import get_thread_store
+
+    store = get_thread_store(request)
+    if await store.get(thread_id, user_id=None) is not None:
+        return
+    try:
+        await store.create(thread_id, user_id=None, metadata={"botName": bot_name})
+    except Exception:
+        # Lost an insert race with another opener (the UI, another routine):
+        # the idempotent end state is the shared row existing.
+        if await store.get(thread_id, user_id=None) is None:
+            raise
+
+
+@router.get("/{name}/routines", summary="A bot's routines with their live task state")
+async def list_bot_routines(name: str, request: Request) -> dict:
+    """Profile routines joined with the scheduled task each one is bound to.
+
+    The profile owns the routine (name, schedule label, action, task id); the
+    scheduler owns the task (status, next run, last run/error). One joined
+    read so the page never has to stitch two stores client-side, and a
+    routine whose task is missing reports ``task: null`` with the read's own
+    reason rather than pretending the schedule is blank.
+    """
+    key = _validate_bot_name(name)
+
+    def _routines():
+        bot = _registry().get_bot(key)
+        return None if bot is None else [dict(r) for r in bot.routines]
+
+    routines = await asyncio.to_thread(_routines)
+    if routines is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    if not routines:
+        return {"bot_name": key, "routines": []}
+
+    from app.gateway.deps import get_scheduled_task_repo
+
+    repo = get_scheduled_task_repo(request)
+    joined = []
+    for routine in routines:
+        entry = dict(routine)
+        task_id = routine.get("task_id")
+        owner = routine.get("owner_user_id")
+        if isinstance(task_id, str) and isinstance(owner, str):
+            try:
+                entry["task"] = await repo.get(task_id, user_id=owner)
+            except Exception as exc:  # noqa: BLE001 — one bad task read must not blank the table
+                entry["task"] = None
+                entry["task_error"] = f"task read failed: {exc}"
+        else:
+            # A routine written by hand (or by an older surface) has no
+            # backing task id: report that honestly instead of inventing one.
+            entry["task"] = None
+        joined.append(entry)
+    return {"bot_name": key, "routines": joined}
+
+
+@router.post("/{name}/routines", summary="Create a bot routine (scheduled run in the bot's chat)")
+async def create_bot_routine(name: str, request: Request, body: BotRoutineCreateRequest) -> dict:
+    """One routine = one scheduled task bound to the bot and its chat thread.
+
+    A duplicate name is REFUSED (409), never silently replaced: a routine
+    name must not point at two schedules or orphan the previous task. Change
+    a routine by deleting it and creating the replacement, so every step has
+    exactly one owner.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+    owner = getattr(getattr(request, "state", None), "user", None)
+    owner_user_id = str(owner.id) if getattr(owner, "id", None) is not None else None
+    if owner_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    def _lookup():
+        bot = _registry().get_bot(key)
+        if bot is None:
+            return None, None
+        return bot, bot.get_routine(body.name)
+
+    bot, existing = await asyncio.to_thread(_lookup)
+    if bot is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Routine '{body.name.strip()}' already exists on '{key}'. Delete it first to change it.",
+        )
+
+    from alpha.bots.dm import canonical_bot_chat_id
+    from app.gateway.deps import get_scheduled_task_repo
+    from app.gateway.routers.scheduled_tasks import ScheduledTaskCreateRequest, create_scheduled_task
+
+    thread_id = canonical_bot_chat_id(key)
+    await _ensure_bot_chat_thread(request, thread_id, key)
+    # The scheduled-task surface owns schedule validation (type, timezone,
+    # interval bounds, next-run computation) AND the bot-name acceptance added
+    # for ``assistant_id`` — one implementation, reached through its own route
+    # function, so this entry cannot drift from the canonical one.
+    task = await create_scheduled_task(
+        request,
+        ScheduledTaskCreateRequest(
+            thread_id=thread_id,
+            context_mode="reuse_thread",
+            assistant_id=key,
+            title=(body.title or f"Routine: {body.name.strip()} ({key})"),
+            prompt=body.action,
+            schedule_type=body.schedule_type,
+            schedule_spec=body.schedule_spec,
+            timezone=body.timezone,
+        ),
+    )
+
+    def _store():
+        return _registry().add_routine(
+            key,
+            body.name,
+            _routine_schedule_label(task),
+            body.action,
+            task_id=task.get("id"),
+            schedule_type=task.get("schedule_type"),
+            schedule_spec=task.get("schedule_spec"),
+            timezone=task.get("timezone"),
+            owner_user_id=owner_user_id,
+            created_at=datetime.now(UTC).isoformat(),
+        )
+
+    routine = await asyncio.to_thread(_store)
+    if routine is None:
+        # The bot vanished between the existence check and here: do not leave
+        # a scheduled task nobody points at (or would retire).
+        try:
+            await get_scheduled_task_repo(request).delete_with_queue_cancellation(
+                str(task.get("id")),
+                user_id=owner_user_id,
+                error="routine creation rolled back: bot no longer exists",
+                now=datetime.now(UTC),
+            )
+        except Exception:  # noqa: BLE001 — the 404 verdict below stands regardless
+            logger.warning("Routine task %s could not be rolled back after the bot vanished.", task.get("id"), exc_info=True)
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    return {"bot_name": key, "routine": routine, "task": task}
+
+
+@router.delete("/{name}/routines/{routine_name}", summary="Remove a bot routine and retire its scheduled task")
+async def delete_bot_routine(name: str, routine_name: str, request: Request) -> dict:
+    """Delete the routine record and retire its task, in that order of proof.
+
+    The task is deleted first; a task that is launching or running refuses
+    (409) and the routine stays whole, because a half-deleted routine would
+    keep firing with no record. A backing task that is already gone is not an
+    error — deleting the dangling record is the clean end state — and the
+    response says which case happened.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(name)
+    cleaned = (routine_name or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="Routine name must not be empty.")
+
+    def _lookup():
+        bot = _registry().get_bot(key)
+        if bot is None:
+            return "bot-missing", None
+        return "found", bot.get_routine(cleaned)
+
+    state, routine = await asyncio.to_thread(_lookup)
+    if state == "bot-missing":
+        raise HTTPException(status_code=404, detail=f"Bot '{key}' not found")
+    if routine is None:
+        raise HTTPException(status_code=404, detail=f"Routine '{cleaned}' not found on bot '{key}'.")
+
+    task_id = routine.get("task_id")
+    task_owner = routine.get("owner_user_id")
+    task_deletion = "no_task_recorded"
+    if isinstance(task_id, str):
+        if isinstance(task_owner, str):
+            from app.gateway.deps import get_scheduled_task_repo
+
+            task_deletion = await get_scheduled_task_repo(request).delete_with_queue_cancellation(
+                task_id,
+                user_id=task_owner,
+                error="bot routine deleted",
+                now=datetime.now(UTC),
+            )
+            if task_deletion == "executing":
+                raise HTTPException(
+                    status_code=409,
+                    detail="The routine's task is launching or running; retry after the active execution finishes",
+                )
+        else:
+            # A hand-edited routine: the task exists but its owner was never
+            # recorded, so the owner-scoped delete cannot prove it may remove
+            # it. Leave the task, remove the record, and say so.
+            task_deletion = "owner_not_recorded"
+
+    removed = await asyncio.to_thread(_registry().remove_routine, key, cleaned)
+    return {
+        "bot_name": key,
+        "routine": cleaned,
+        "removed": bool(removed),
+        # "not_found" here means the backing task was already gone before this
+        # call; "deleted" is a real retirement; the rest disclose themselves.
+        "task_deletion": task_deletion,
+    }
+
+
 @router.post("/{name}/soul/backfill", summary="Backfill DM protocol into roster SOULs")
 async def backfill_soul_protocol(name: str, request: Request) -> dict:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
@@ -1299,10 +2015,11 @@ async def run_bot_workflow_endpoint(
                 context={**body.context, "bot_name": key, "owner_id": owner},
                 initial_state={**body.initial_state, "bot_name": key},
                 max_steps=body.max_steps,
-                # A bot profile is not a digest projection.  Leave the bot
-                # executor unbound unless the host explicitly registers this
-                # server-owned capability; a missing executor then fails with a
-                # real reason instead of returning false success.
+                # A bot profile is not a digest projection.  ``alpha.local.bot``
+                # is registered by ``alpha.orchestrator.executors`` and executes
+                # each node as this bot (real model call, bot SOUL as the system
+                # prompt).  It still refuses with a named reason on an
+                # unknown/archived bot, an engaged ESTOP, or no configured model.
                 default_executor="alpha.local.bot",
             ),
             auto_execute=body.auto_execute,

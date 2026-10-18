@@ -13,10 +13,11 @@ The four properties this module is responsible for
 1. **A specialist is a declared capability, not a label.** A
    :class:`SpecialistProfile` offers capability tags through the existing
    :mod:`alpha.capabilities.eligibility` vocabulary, and a task declares what
-   it requires. Selection is a *hard filter* through the existing
-   :func:`~alpha.capabilities.eligibility.eligible_candidates`, not a score, so
-   a specialist that does not declare the capability is unreachable however
-   senior it looks.
+   it requires. Selection goes through the existing capability dispatch path
+   (:func:`~alpha.bots.capability_dispatch.dispatch_task`) -- a hard filter,
+   then a ranked contract-net auction -- so a specialist that does not declare
+   the capability is unreachable however senior it looks, and composition
+   carries no second matcher of its own.
 2. **A task nobody can take stays unassigned and says why.** There is no
    "nearest match" fallback. An unassignable task keeps the swarm's existing
    default worker path and is reported in ``unassigned`` with the missing tags
@@ -64,11 +65,9 @@ from typing import Any
 
 from alpha.agents.middlewares.receipt_verification import VERDICT_SOURCE
 from alpha.capabilities.eligibility import (
-    ASSIGNABLE_BOT_STATUSES,
     MAX_REQUIRED_TAGS,
     eligible_candidates,
     infer_capability_tags,
-    match_capabilities,
     normalize_tags,
 )
 from alpha.swarm.grounding import GROUNDING_BASIS
@@ -539,6 +538,55 @@ def _cap_for(profile: SpecialistProfile, swarm_default: int | None) -> int:
     return max(1, int(DEFAULT_MAX_TASKS_PER_SPECIALIST if swarm_default is None else swarm_default))
 
 
+class _RosterBot:
+    """A ``BotRegistry``-shaped view of one :class:`SpecialistProfile`.
+
+    The capability dispatcher reads the registry protocol -- the shared
+    eligibility vocabulary, the declared-fit scorer, the health monitor and the
+    contract-net auction. Composition owns a roster of specialist profiles
+    instead, so this projects one shape onto the other and the dispatch path
+    stays the ONE implementation of "who takes this task". It is read-only and
+    in-memory: the roster is a projection of configuration, never a second bot
+    registry.
+    """
+
+    def __init__(self, profile: SpecialistProfile) -> None:
+        self.profile = profile
+        self.name = profile.name
+        self.display_name = profile.name
+        self.role = profile.role or profile.mission or profile.name
+        self.department = "specialists"
+        self.avatar = ""
+        self.status = profile.status
+        # ``reputation_score`` is a measured quantity and a roster entry does
+        # not carry one; ``None`` becomes the dispatcher's disclosed neutral
+        # 0.5 rather than an invented score.
+        self.reputation_score = None
+        # The registry shape calls prose capabilities "responsibilities"; a
+        # specialist's mission is exactly that, so the declared-fit scorer can
+        # read it. Declared capability tags stay in ``capabilities``/``skills``.
+        self.responsibilities = [profile.mission] if profile.mission.strip() else []
+        self.capabilities = list(profile.capabilities)
+        self.skills = list(profile.skills)
+
+
+class _RosterRegistry:
+    """Read-only ``BotRegistry`` view over a composition roster."""
+
+    def __init__(self, roster: Sequence[SpecialistProfile]) -> None:
+        self._entries = [_RosterBot(profile) for profile in roster]
+        self._by_name = {entry.name.strip().lower(): entry for entry in self._entries}
+
+    def list_bots(self, include_archived: bool = False) -> list[_RosterBot]:
+        # Status filtering is the shared eligibility vocabulary's job, applied
+        # by the dispatcher; pre-filtering here would hide the rejection that
+        # explains why a suspended specialist was skipped.
+        return list(self._entries)
+
+    def get_bot(self, name: str) -> _RosterBot | None:
+        return self._by_name.get(str(name or "").strip().lower())
+
+
 def _select_specialist(
     task: SwarmTaskNode,
     roster: Sequence[SpecialistProfile],
@@ -546,53 +594,55 @@ def _select_specialist(
     *,
     swarm_default: int | None,
 ) -> tuple[SpecialistProfile | None, dict[str, Any]]:
-    """Hard-filter the roster for one task and pick the best survivor.
+    """Dispatch one task to a specialist and record the outcome.
 
-    A **declared** requirement is resolved by the existing
-    :func:`~alpha.capabilities.eligibility.eligible_candidates`, which is the
-    one strict-coverage implementation in the codebase. An **inferred** one uses
-    the existing :func:`~alpha.capabilities.eligibility.match_capabilities` per
-    candidate and keeps only the specialists that cover at least one tag, so the
-    hard property -- *a specialist that matches nothing is unreachable* -- holds
-    in both tiers. Only the ranking differs.
+    Capability matching and winner selection are not re-implemented here: the
+    task goes through :func:`~alpha.bots.capability_dispatch.dispatch_task`,
+    the one production path for "a task is being assigned", over a read-only
+    ``BotRegistry``-shaped view of this roster. A **declared** requirement is
+    dispatched in ``"strict"`` mode (every tag is required); an **inferred** one
+    is dispatched as a ranked hint, so the hard property -- *a specialist that
+    covers none of the hints is unreachable* -- holds in both tiers while the
+    ranking still differs.
+
+    Composition supplies the three things the dispatcher cannot know -- the
+    roster, the composition-level load ledger and the per-specialist caps --
+    and turns a refusal into the composition-level reason, keeping the cap as
+    the first explanation when every capable specialist was only excluded for
+    being at it.
     """
 
     requirement = required_capability_tags(task)
     reason = requirement.describe()
-    if requirement.source == "declared":
-        eligibility = eligible_candidates(roster, requirement.tags)
-        survivors = [profile for profile in roster if profile.name.strip().lower() in set(eligibility.eligible)]
-        coverage: dict[str, int] = {}
-        rejected = [dict(item) for item in eligibility.rejected]
-    else:
-        coverage = {}
-        rejected = []
-        survivors = []
-        for profile in roster:
-            if str(getattr(profile, "status", "active")).strip().lower() not in ASSIGNABLE_BOT_STATUSES:
-                rejected.append({"bot": profile.name, "code": "not_assignable", "detail": f"status '{profile.status}' cannot receive work"})
-                continue
-            match = match_capabilities(requirement.tags, profile) if requirement.constrained else None
-            # The floor is `matched`, NOT `eligible`. ``match_capabilities``'s
-            # ``eligible`` property is the *strict* rule -- it requires the
-            # candidate to cover every tag -- so using it here silently
-            # re-imposed the conjunction this two-tier design exists to relax,
-            # and every multi-tag task came back "no specialist is eligible".
-            if match is not None and not match.matched:
-                rejected.append(
-                    {
-                        "bot": profile.name,
-                        "code": "capability_mismatch",
-                        "detail": f"covers none of the task's inferred tags: missing {sorted(match.missing)}",
-                        "missing": sorted(match.missing),
-                    }
-                )
-                continue
-            coverage[profile.name] = len(match.matched) if match is not None else 0
-            survivors.append(profile)
+    by_name = {profile.name.strip().lower(): profile for profile in roster}
+    capped = [profile.name for profile in roster if load.get(profile.name, 0) >= _cap_for(profile, swarm_default)]
+    # Local import: ``alpha.bots.capability_dispatch`` imports the swarm
+    # contract-net module, whose package __init__ imports this module -- a
+    # module-level import here would close the cycle.
+    from alpha.bots.capability_dispatch import dispatch_task
 
-    within_cap = [profile for profile in survivors if load.get(profile.name, 0) < _cap_for(profile, swarm_default)]
-    if not within_cap:
+    decision = dispatch_task(
+        task.task_id,
+        task.objective,
+        required_capability_tags=sorted(requirement.tags) or None,
+        registry=_RosterRegistry(roster),
+        exclude=capped,
+        requirement_mode="strict" if requirement.source == "declared" else "hint",
+        # The roster is an operator-shipped team, not a leader's ad-hoc
+        # delegation: its assignments are not bounded by the leader-side
+        # ``DIRECTABLE_CAPABILITIES`` allowlist, which does not even carry tags
+        # such as ``permission_audit``.
+        enforce_authority=False,
+    )
+
+    if not decision.ok or decision.target is None:
+        # Which specialists could have taken this task at all, ignoring the
+        # cap exclusion: the same shared filter the dispatcher just ran, used
+        # ONLY to say whether the refusal is "at cap" or "no capability".
+        hint = requirement.source != "declared"
+        capable = eligible_candidates(roster, requirement.tags, min_matches=1 if (hint and requirement.constrained) else 0)
+        capable_profiles = [profile for profile in roster if profile.name.strip().lower() in set(capable.eligible)]
+        all_capped = bool(capable_profiles) and all(load.get(profile.name, 0) >= _cap_for(profile, swarm_default) for profile in capable_profiles)
         detail: dict[str, Any] = {
             "task_id": task.task_id,
             "objective": task.objective,
@@ -600,18 +650,40 @@ def _select_specialist(
             "requirement_source": requirement.source,
             "requirement_strict": requirement.strict,
             "requirement": reason,
-            "eligible": [profile.name for profile in survivors],
+            "eligible": [profile.name for profile in capable_profiles],
             "reason": (
                 f"every specialist that can take this task is already at its cap ({max(1, int(DEFAULT_MAX_TASKS_PER_SPECIALIST if swarm_default is None else swarm_default))} task(s) by default)"
-                if survivors
-                else "no specialist in the roster is eligible for this task"
+                if all_capped
+                else f"no specialist in the composition roster can take this task: {decision.reason}"
             ),
-            "rejected": rejected,
+            "rejected": [dict(item) for item in decision.rejected],
+            "dispatch": {
+                "outcome": decision.outcome.value,
+                "refusal_code": decision.refusal_code,
+                "method": decision.method,
+                "requirement_mode": decision.requirement_mode,
+                "ledger_seq": decision.ledger_seq,
+            },
         }
-        if survivors:
-            detail["capped_out"] = [{"name": profile.name, "cap": _cap_for(profile, swarm_default), "assigned": load.get(profile.name, 0)} for profile in survivors]
+        if all_capped:
+            detail["capped_out"] = [{"name": profile.name, "cap": _cap_for(profile, swarm_default), "assigned": load.get(profile.name, 0)} for profile in capable_profiles]
         return None, detail
-    chosen = min(within_cap, key=lambda profile: (-coverage.get(profile.name, 0), load.get(profile.name, 0), profile.name))
+
+    chosen = by_name.get(str(decision.target).strip().lower())
+    if chosen is None:
+        return None, {
+            "task_id": task.task_id,
+            "objective": task.objective,
+            "required": sorted(requirement.tags),
+            "requirement_source": requirement.source,
+            "requirement_strict": requirement.strict,
+            "requirement": reason,
+            "eligible": [],
+            "reason": f"the dispatcher selected {decision.target!r}, which is not a profile on the composition roster",
+            "rejected": [dict(item) for item in decision.rejected],
+        }
+    offered = normalize_tags([*chosen.capabilities, *chosen.skills])
+    eligible_display = [profile.name for profile in roster if profile.name.strip().lower() in {str(item.get("bot_name") or "").strip().lower() for item in decision.candidates}]
     return chosen, {
         "assigned": True,
         "task_id": task.task_id,
@@ -621,10 +693,17 @@ def _select_specialist(
         "requirement_strict": requirement.strict,
         "requirement": reason,
         "cap": _cap_for(chosen, swarm_default),
-        "coverage": coverage.get(chosen.name, 0),
-        "eligible": [profile.name for profile in survivors],
-        "selection": ("capability match is a hard filter; among survivors, highest coverage then lowest current task count, then name"),
-        "rejected": rejected,
+        "coverage": len(requirement.tags & offered),
+        "eligible": eligible_display,
+        "selection": ("capability dispatch: hard capability filter, declared-fit ranking, then a contract-net auction over relevance, capacity and cost; the handoff ledger holds the full recorded decision"),
+        "rejected": [dict(item) for item in decision.rejected],
+        "dispatch": {
+            "outcome": decision.outcome.value,
+            "refusal_code": decision.refusal_code,
+            "method": decision.method,
+            "requirement_mode": decision.requirement_mode,
+            "ledger_seq": decision.ledger_seq,
+        },
     }
 
 

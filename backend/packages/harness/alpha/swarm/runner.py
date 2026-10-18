@@ -73,6 +73,18 @@ def _final_event_for(status: str) -> str:
     return "SWARM_PARTIAL_SUCCESS"
 
 
+def shutdown_background_swarms(timeout: float = 5.0) -> dict[str, Any]:
+    """Stop every background swarm owned by this process.
+
+    Gateway-shutdown entry point.  A fresh runner is used because shutdown only
+    touches the module-level registries and the coordinator; it needs no
+    worker state of its own.
+    """
+    from alpha.swarm.coordinator import get_swarm_coordinator
+
+    return AsyncSwarmRunner(get_swarm_coordinator()).shutdown(timeout=timeout)
+
+
 class AsyncSwarmRunner:
     """Asynchronous background execution engine for :class:`SwarmPlan`."""
 
@@ -91,6 +103,9 @@ class AsyncSwarmRunner:
         self.reflector = reflector or SwarmReflector()
         self.provider = str(provider or "default")
         self._active_tasks: dict[str, asyncio.Task | threading.Thread] = {}
+        # Set by ``shutdown()``.  A background loop checks it before leasing new
+        # work so a stopping process does not start a task it cannot finish.
+        self._shutting_down = False
         # One shared tool pool for every specialist in a run, assembled at most
         # once and threaded through each worker. Per-worker assembly would
         # re-enter MCP discovery once per task; the pool is the same list
@@ -399,15 +414,6 @@ class AsyncSwarmRunner:
                         # payloads can submit generic evidence but cannot assert
                         # this server-generated citation audit.
                         updated.citation_audit = dict(receipt_verdict)
-                    if claim_grounding is not None:
-                        # Same discipline as the citation audit: written only
-                        # here, from the internal outcome, after lease
-                        # acceptance. External completion can never populate it.
-                        updated.claim_grounding = dict(claim_grounding)
-                    SwarmAggregator.apply_acceptance_verification(
-                        updated,
-                        outcome.get("evidence") if isinstance(outcome.get("evidence"), (list, tuple)) else [],
-                    )
                     plan.budget.record_task_success()
                     governor.record_success(self.provider)
                     updated.token_usage = {
@@ -467,6 +473,34 @@ class AsyncSwarmRunner:
                         # A concurrent cancel/budget stop is authoritative; the
                         # task result was already fenced above if necessary.
                         pass
+                # Claim grounding runs AFTER the completion commit.  Running
+                # the grounding round trip while the node still read RUNNING
+                # widened the window the watchdog samples for stragglers, so a
+                # healthy worker already on its way back could be classified
+                # as slow and a duplicate provider attempt launched.  Computed
+                # here, written under the lock below, still only from the
+                # internal outcome and only after lease acceptance; a
+                # grounding failure omits the field rather than inventing a
+                # verdict.
+                claim_grounding: dict[str, Any] | None = None
+                grounding_text = str(outcome.get("summary") or "")
+                if grounding_text.strip():
+                    try:
+                        claim_grounding = await asyncio.to_thread(ground_claims, grounding_text)
+                    except Exception:
+                        logger.warning("Swarm claim grounding failed", exc_info=True)
+                with self.coordinator.state_lock:
+                    if updated.state == TaskNodeState.COMPLETED:
+                        if claim_grounding is not None:
+                            # Same discipline as the citation audit: written
+                            # only here, from the internal outcome, after lease
+                            # acceptance. External completion can never
+                            # populate it.
+                            updated.claim_grounding = dict(claim_grounding)
+                        SwarmAggregator.apply_acceptance_verification(
+                            updated,
+                            outcome.get("evidence") if isinstance(outcome.get("evidence"), (list, tuple)) else [],
+                        )
                 # Mark the plan dirty rather than rewriting the whole snapshot
                 # here.  This runs once per node, and ``checkpoint`` serialises
                 # the entire plan and fsyncs it under the state lock, so a
@@ -896,3 +930,60 @@ class AsyncSwarmRunner:
 
             task.add_done_callback(_cleanup)
             return task
+
+    def shutdown(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Stop in-flight swarms and record that they were interrupted.
+
+        Daemon threads are not joined at interpreter exit, so without this a
+        Gateway restart kills a running swarm with no event and no checkpoint:
+        the plan stays ``running`` on disk and nothing explains why it stopped.
+        Every swarm that was active here is cancelled/joined and then marked
+        ``paused`` with ``terminal_reason="gateway_shutdown"``, so a later boot
+        can resume it deliberately instead of guessing what happened.
+
+        Returns the swarm ids stopped, and those whose thread refused to join
+        within the timeout (still marked paused — a plan claiming to run with no
+        live worker is the failure this prevents).
+        """
+        self._shutting_down = True
+        deadline = time.time() + max(0.0, float(timeout))
+        with _ACTIVE_SWARM_REGISTRY_LOCK:
+            tasks = dict(_ACTIVE_SWARM_TASKS)
+            threads = dict(_ACTIVE_SWARM_THREADS)
+
+        for task in tasks.values():
+            task.cancel()
+
+        forced: list[str] = []
+        for swarm_id, thread in threads.items():
+            remaining = deadline - time.time()
+            if remaining > 0:
+                thread.join(remaining)
+            if thread.is_alive():
+                forced.append(swarm_id)
+
+        stopped: list[str] = []
+        for swarm_id in set(tasks) | set(threads):
+            with self.coordinator.state_lock:
+                plan = self.coordinator.get_swarm(swarm_id)
+                if plan is None or is_terminal_swarm_status(plan.status):
+                    continue
+                if plan.status != "paused":
+                    plan.status = "paused"
+                    plan.terminal_reason = "gateway_shutdown"
+                    self.coordinator.append_event(
+                        swarm_id,
+                        "SWARM_INTERRUPTED",
+                        details={"reason": "gateway_shutdown", "forced": swarm_id in forced},
+                    )
+                    self.coordinator.checkpoint(swarm_id)
+                stopped.append(swarm_id)
+
+        with _ACTIVE_SWARM_REGISTRY_LOCK:
+            for swarm_id in stopped:
+                _ACTIVE_SWARM_THREADS.pop(swarm_id, None)
+                task = _ACTIVE_SWARM_TASKS.get(swarm_id)
+                if task is not None and task.done():
+                    _ACTIVE_SWARM_TASKS.pop(swarm_id, None)
+        self._active_tasks.clear()
+        return {"stopped": stopped, "forced": forced, "shutting_down": True}

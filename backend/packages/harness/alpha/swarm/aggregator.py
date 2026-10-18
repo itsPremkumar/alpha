@@ -231,41 +231,56 @@ class SwarmAggregator:
 
         deliverable_text = "\n".join(report_lines)
         criteria = [f"Complete all subtasks for: {plan.goal}", "Zero unhandled task failures"]
+        # Computed for the report only.  Its verdict is ADVISORY and never
+        # decides the terminal status: 40% keyword overlap with the goal text
+        # cannot establish that work succeeded, and it passed on the
+        # "no successful worker summaries" boilerplate.  Status below is
+        # derived from task facts (executed? completed? acceptance passed?).
+        # ``method``/``advisory`` are stamped by the gate itself, so this
+        # caller cannot drift from the module that computes them.
         quality_gate = evaluate_quality_gate(deliverable_text, criteria)
         plan.final_result = deliverable_text
         score = quality_gate.get("score")
         plan.quality_score = float(score) if isinstance(score, (int, float)) else 0.0
 
-        if failed_tasks and not completed_tasks:
-            plan.status = "failed"
-        elif cancelled_tasks or failed_tasks or conflicts or acceptance_failed_tasks or acceptance_unverified_tasks:
+        if not plan.tasks:
+            # A plan with no nodes executed no work; it can never be completed.
             plan.status = "partial_success"
+            plan.terminal_reason = "no_work"
+        elif failed_tasks and not completed_tasks:
+            plan.status = "failed"
+        elif cancelled_tasks or failed_tasks or conflicts or acceptance_failed_tasks:
+            plan.status = "partial_success"
+        elif acceptance_unverified_tasks:
+            # Tasks ran but their declared criteria were not verified.  That is
+            # a distinct outcome from failure, and it is not success.
+            plan.status = "partial_success"
+            plan.terminal_reason = "acceptance_unverified"
         elif (plan.requires_consensus and consensus_result is None) or (consensus_result is not None and not consensus_result.get("approved")):
             plan.status = "partial_success"
         elif not completed_tasks:
             # Defensive twin of the ``not plan.tasks`` branch above: a plan
             # whose nodes exist but none of them completed must not read as
-            # ``completed`` just because the text quality gate passed.
+            # ``completed``.
             plan.status = "partial_success"
-        elif quality_gate.get("verdict") == "passed":
-            plan.status = "completed"
+            plan.terminal_reason = "no_work"
         else:
-            plan.status = "partial_success"
+            plan.status = "completed"
 
         # The team report is composed LAST, after the terminal status is
         # decided, so the `execution_status` it prints is the final one rather
         # than the transient `aggregating` the plan held a moment earlier. It
         # is appended to `plan.final_result` and NOT to `deliverable_text`,
-        # because `deliverable_text` is the input to the keyword quality gate:
-        # letting a new section change what the gate saw would silently move an
-        # existing status decision.
+        # because `deliverable_text` is what the advisory keyword gate scores:
+        # letting a new section change that score would silently move the
+        # number a reader sees, even though the status no longer depends on it.
         team_report = cls.compose_team(plan, conflicts=conflicts)
         plan.final_result = f"{deliverable_text}\n\n{team_report.get('markdown') or ''}".rstrip()
 
         return {
             "deliverable": deliverable_text,
             "quality_gate": quality_gate,
-            "quality_basis": "keyword_acceptance_gate_v1; not independent task verification",
+            "quality_basis": "task_facts_v2; keyword gate is advisory and never decides status",
             "completed_tasks": len(completed_tasks),
             "failed_tasks": len(failed_tasks),
             "cancelled_tasks": len(cancelled_tasks),

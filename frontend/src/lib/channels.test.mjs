@@ -47,10 +47,13 @@ export class ApiClientError extends Error {
 }
 export const GATEWAY_BASE = "http://gateway.test/api";
 let queue = [];
-export function setResponses(responses) { queue = [...responses]; }
-export async function apiFetch(_path, _init) {
+let calls = [];
+export function setResponses(responses) { queue = [...responses]; calls = []; }
+export function recorded() { return [...calls]; }
+export async function apiFetch(path, init = {}) {
+  calls.push({ path, method: init.method || "GET", body: init.body ? JSON.parse(init.body) : undefined });
   const r = queue.length > 0 ? queue.shift() : undefined;
-  if (!r) throw new Error("no canned response queued for " + _path);
+  if (!r) throw new Error("no canned response queued for " + path);
   if (r.error) throw r.error;
   const status = r.status ?? 200;
   const res = new Response(JSON.stringify(r.body), {
@@ -76,8 +79,8 @@ const httpUrl = toDataUrl(httpCode);
 let channelsCode = transpile(read("./channels.ts"));
 channelsCode = channelsCode.replace(/from\s+"\.\/http"/g, `from "${httpUrl}"`);
 assert.equal(channelsCode.includes('"./http"'), false, "channels.ts http specifier survived");
-const { channelStatus, listProviders, listConnections, larkStatus } = await import(toDataUrl(channelsCode));
-const { setResponses, ApiClientError } = await import(apiClientUrl);
+const { channelStatus, listProviders, listConnections, larkStatus, saveChannelRuntimeConfig } = await import(toDataUrl(channelsCode));
+const { setResponses, recorded, ApiClientError } = await import(apiClientUrl);
 
 // Verbatim from the live Gateway (GET /api/channels, 10 channels, all disabled).
 const LIVE_CHANNELS = {
@@ -245,4 +248,96 @@ test("the channels probe reports a dead gateway as down, not as a healthy subsys
   // ChannelsSection's catch is the surface that must become reachable again.
   const section = read("../components/sections/ChannelsSection.tsx");
   assert.match(section, /catch \(e\) \{\s*\n\s*setError\(errMsg\(e\)\)/);
+});
+
+/* ── runtime credentials: the catalog's field specs and the POST ──────────
+ *
+ * `GET /api/channels/providers` carries `credential_fields` (what the
+ * runtime-config route will accept) and `credential_values` (what the server
+ * holds, secrets masked as `********`). The configure form is built from
+ * those two fields alone, so dropping either would force it to invent a field
+ * the server refuses — or to demand a secret the server already has. Posting a
+ * masked value back reuses the stored one (`_required_runtime_values`,
+ * channel_connections.py:577-599).
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+// Verbatim shape from the live route (ChannelProviderResponse,
+// channel_connections.py:41-51). Telegram is the provider whose fields are
+// required in full.
+const TELEGRAM_PROVIDER_ROW = {
+  provider: "telegram",
+  display_name: "Telegram",
+  enabled: true,
+  configured: true,
+  connectable: true,
+  auth_mode: "runtime_config",
+  connection_status: "ready",
+  credential_fields: [
+    { name: "bot_token", label: "Bot token", type: "password", required: true },
+    { name: "bot_username", label: "Bot username", type: "text", required: true },
+  ],
+  credential_values: { bot_token: "********", bot_username: "alpha_bot" },
+};
+
+test("listProviders carries the credential field specs and the masked current values through", async () => {
+  setResponses([{ body: { enabled: true, providers: [TELEGRAM_PROVIDER_ROW] } }]);
+  const catalog = await listProviders();
+  assert.deepEqual(catalog.providers[0].credentialFields, [
+    { name: "bot_token", label: "Bot token", type: "password", required: true },
+    { name: "bot_username", label: "Bot username", type: "text", required: true },
+  ]);
+  assert.deepEqual(catalog.providers[0].credentialValues, {
+    bot_token: "********",
+    bot_username: "alpha_bot",
+  });
+});
+
+test("a provider row with no credential fields maps to none — the form invents nothing", async () => {
+  setResponses([{ body: { enabled: true, providers: [{ id: "slack", name: "Slack" }] } }]);
+  const [provider] = (await listProviders()).providers;
+  assert.deepEqual(provider.credentialFields, []);
+  assert.deepEqual(provider.credentialValues, {});
+});
+
+test("saveChannelRuntimeConfig POSTs the provider's own route with a values envelope", async () => {
+  setResponses([{ body: { provider: "telegram", configured: true } }]);
+  const saved = await saveChannelRuntimeConfig("telegram", {
+    bot_token: "********",
+    bot_username: "alpha_bot",
+  });
+  assert.deepEqual(saved, { provider: "telegram", configured: true });
+  assert.deepEqual(recorded(), [
+    {
+      path: "/channels/telegram/runtime-config",
+      method: "POST",
+      body: { values: { bot_token: "********", bot_username: "alpha_bot" } },
+    },
+  ]);
+});
+
+test("the save reports the server's post-write verdict, not an assumed success", async () => {
+  // 200 with `configured: false` is the provider saying "saved, but I still
+  // cannot start" — the form must be able to say so instead of claiming linked.
+  setResponses([{ body: { provider: "telegram", configured: false } }]);
+  const saved = await saveChannelRuntimeConfig("telegram", { bot_token: "t" });
+  assert.equal(saved.configured, false);
+});
+
+test("a non-admin runtime-config save rejects with the Gateway's own refusal", async () => {
+  setResponses([
+    { status: 403, body: { detail: "Admin privileges required to manage channel runtime credentials." } },
+  ]);
+  await assert.rejects(
+    () => saveChannelRuntimeConfig("telegram", { bot_token: "t" }),
+    /HTTP 403.*Admin privileges required/,
+  );
+});
+
+test("the configure form is wired to the runtime-config client and the server's field list", () => {
+  // The surface proof: the section renders inputs FROM credentialFields (not a
+  // hand-written field list) and submits through saveChannelRuntimeConfig.
+  const section = read("../components/sections/ChannelsSection.tsx");
+  assert.match(section, /saveChannelRuntimeConfig/);
+  assert.match(section, /p\.credentialFields\.map\(/);
+  assert.match(section, /<Badge tone=\{p\.configured \? "green" : "gray"\}>/);
 });

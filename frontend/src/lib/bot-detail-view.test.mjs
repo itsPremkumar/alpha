@@ -52,6 +52,7 @@ test("the client reads every route the page's sections render", () => {
     "/bots/organization-chart",
     "/bots/working",
     "/bots/events",
+    "/bots/${key}/capabilities",
   ]) {
     assert.ok(client.includes(route), `expected the client to read ${route}`);
   }

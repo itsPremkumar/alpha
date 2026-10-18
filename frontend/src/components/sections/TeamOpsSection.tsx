@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  listGroups, createGroup, postGroupMessage, groupMessages, startGroupRun, listSwarms, createSwarm, hasRefreshableSwarms,
+  listGroups, createGroup, groupMessages, startGroupRun, listSwarms, createSwarm, hasRefreshableSwarms,
   swarmAction, swarmMessages, publishSwarmMessage, SWARM_MESSAGE_WINDOW,
   swarmProgress, swarmProgressLabel,
   swarmDetails, swarmEvents, swarmMetrics,
@@ -21,7 +21,10 @@ import {
   KanbanTask, KanbanStatus,
 } from "@/lib/kanban";
 import { fetchRoster, registerRosterAgent, sendAgentMessage, fetchInbox, RosterAgent, InboxMessage } from "@/lib/inbox";
+import type { GroupRoom } from "@/lib/teamops";
 import { swarmProgressView } from "@/lib/teamops-progress";
+import { fetchRunTasks, type RunTasksProjection } from "@/lib/tasks";
+import { MentionComposer } from "@/components/groups/MentionComposer";
 import { ArenaPanel } from "@/components/sections/ArenaPanel";
 import { Section, EmptyState, ErrorBox, Notice, Btn, Badge, Field, SkeletonList, inputCls } from "@/components/ui";
 import { errMsg } from "@/lib/http";
@@ -106,11 +109,10 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [groups, setGroups] = useState<Array<{ name: string; members: string[]; status: string }>>([]);
+  const [groups, setGroups] = useState<GroupRoom[]>([]);
   const [groupName, setGroupName] = useState("");
   const [groupMembers, setGroupMembers] = useState("");
   const [openGroup, setOpenGroup] = useState<string | null>(null);
-  const [groupDraft, setGroupDraft] = useState("");
   const [groupObjective, setGroupObjective] = useState("");
 
   const [swarms, setSwarms] = useState<Swarm[]>([]);
@@ -464,13 +466,15 @@ export function TeamOpsSection(props: { threadId: string | null; mcpTasksAvailab
                         ))
                       )}
                     </div>
-                    <div className="flex gap-2">
-                      <input value={groupDraft} onChange={(e) => setGroupDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && groupDraft.trim() && act(() => postGroupMessage(g.name, groupDraft.trim()).then(() => setGroupDraft("")).then(() => groupMessages(g.name)).then((ms) => setGroupMsgs((p) => ({ ...p, [g.name]: ms }))))} placeholder="Message the room…" className={inputCls} aria-label={`Message ${g.name}`} />
-                      <Btn onClick={() => groupDraft.trim() && act(() => postGroupMessage(g.name, groupDraft.trim()).then(() => setGroupDraft("")).then(() => groupMessages(g.name)).then((ms) => setGroupMsgs((p) => ({ ...p, [g.name]: ms }))))} disabled={!groupDraft.trim()}>
-                        <Send className="size-3.5" aria-hidden="true" />
-                        <span className="sr-only">Send message to {g.name}</span>
-                      </Btn>
-                    </div>
+                    <MentionComposer
+                      room={g.name}
+                      mode={g.mode ?? null}
+                      moderator={g.moderator ?? null}
+                      onSent={async () => {
+                        const ms = await groupMessages(g.name);
+                        setGroupMsgs((p) => ({ ...p, [g.name]: ms }));
+                      }}
+                    />
                     <div className="flex gap-2">
                       <input value={groupObjective} onChange={(e) => setGroupObjective(e.target.value)} placeholder="Autonomous goal, e.g. Draft the launch plan…" className={inputCls} aria-label="Autonomous run objective" />
                       {/* Shape 5: POST /groups/{name}/runs mints a NEW run id per
@@ -768,6 +772,9 @@ function SwarmStructurePanel(props: { swarmId: string }) {
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [telemetry, setTelemetry] = useState<ReturnType<typeof swarmTelemetryView> | null>(null);
   const [modeBadge, setModeBadge] = useState<ReturnType<typeof swarmModeBadge> | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [runTasks, setRunTasks] = useState<RunTasksProjection | null>(null);
+  const [runTasksError, setRunTasksError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -791,6 +798,21 @@ function SwarmStructurePanel(props: { swarmId: string }) {
       // other reads.
       const root = (detail.value ?? {}) as Record<string, unknown>;
       setModeBadge(swarmModeBadge(root.mode));
+      // A plan correlated to a run (Bot Mode 1.x) also gets the run's whole
+      // task projection — the one read the graph plane and Team Ops share.
+      // It is a separate request settling on its own: a swarm whose run
+      // projection fails still has a DAG worth showing.
+      const correlated = typeof root.run_id === "string" && root.run_id ? root.run_id : null;
+      setRunId(correlated);
+      if (correlated) {
+        const forRun = correlated;
+        fetchRunTasks(forRun)
+          .then((projection) => setRunTasks(projection))
+          .catch((err: unknown) => setRunTasksError(errMsg(err)));
+      } else {
+        setRunTasks(null);
+        setRunTasksError(null);
+      }
     }
     setView(
       swarmStructureView(
@@ -862,6 +884,31 @@ function SwarmStructurePanel(props: { swarmId: string }) {
           </p>
           <p className="text-[10px] text-muted-foreground">{telemetry.note}</p>
         </div>
+      )}
+
+      {runId && (
+        <p className="text-[10px] text-muted-foreground" data-panel="run-tasks">
+          <span className="font-medium text-foreground">Run tasks ({runId}): </span>
+          {runTasksError ? (
+            <span className="text-destructive">could not be read ({runTasksError}); this is not a zero-task answer.</span>
+          ) : runTasks ? (
+            <>
+              {runTasks.count === 0
+                ? "0 — every engine read clean and reported none."
+                : `${runTasks.count} in the neutral contract (${Object.entries(runTasks.engines)
+                    .map(([engine, count]) => `${engine} ${count}`)
+                    .join(", ")}).`}
+              {Object.entries(runTasks.engine_errors).map(([engine, reason]) => (
+                <span key={engine} className="text-destructive">
+                  {" "}
+                  {engine} could not be read ({reason}).
+                </span>
+              ))}
+            </>
+          ) : (
+            "reading…"
+          )}
+        </p>
       )}
 
       {view && (

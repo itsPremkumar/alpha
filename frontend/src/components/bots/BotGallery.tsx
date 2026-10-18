@@ -45,10 +45,11 @@ import {
   type WorkingFacet,
 } from "@/lib/bot-roster-filters";
 import { BotProfileCard } from "./BotProfileCard";
+import { BotCreateDialog } from "./BotCreateDialog";
 import { FleetHealthBar } from "./FleetHealthBar";
 import { BotLivenessStrip } from "./BotLivenessStrip";
 import { Notice } from "@/components/ui";
-import { Search, RotateCcw, X } from "lucide-react";
+import { Search, RotateCcw, UserPlus, X } from "lucide-react";
 
 interface BotGalleryProps {
   bots: BotProfile[];
@@ -118,6 +119,10 @@ export function BotGallery({
     (p: Partial<BotFilterCriteria>) => setFilters((f) => ({ ...f, ...p })),
     [],
   );
+  // The create dialog is the roster's only write path on this surface, and it
+  // writes through the transactional forge (`POST /api/bots`) rather than an
+  // optimistic local add: the list afterwards is the server's roster, re-read.
+  const [createOpen, setCreateOpen] = useState(false);
 
   /* ---------------------------------------------------------------- health */
 
@@ -281,13 +286,22 @@ export function BotGallery({
             answers in chat.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={reload}
-          className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-border hover:bg-muted"
-        >
-          <RotateCcw className="size-3.5" /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+          >
+            <UserPlus className="size-3.5" /> New bot
+          </button>
+          <button
+            type="button"
+            onClick={reload}
+            className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-border hover:bg-muted"
+          >
+            <RotateCcw className="size-3.5" /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* The fleet strip must not render while the roster is still in flight.
@@ -617,6 +631,13 @@ export function BotGallery({
             ))}
           </div>
         </>
+      )}
+
+      {createOpen && (
+        <BotCreateDialog
+          onClose={() => setCreateOpen(false)}
+          onCreated={reload}
+        />
       )}
     </div>
   );

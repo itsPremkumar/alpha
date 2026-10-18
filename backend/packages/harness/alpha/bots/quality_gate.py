@@ -2,6 +2,14 @@
 
 Enforces automated acceptance gates, deliverable checks, and quality thresholds before tasks
 can be marked complete.
+
+**Advisory, and named so at the source.**  This module scores a deliverable by
+*keyword overlap* against declared criteria; it is not a semantic judge and it
+is not a terminal verdict.  Every response it returns carries
+``method: "keyword_overlap"`` and ``advisory: true`` so a consumer can never
+mistake a keyword match for verification.  ``POST /api/bots/quality-gate/verify``
+is the endpoint it serves; no status decision in the swarm runtime calls it
+(see ``docs/BOT_MODE_MULTI_AGENT_MASTER_PLAN.md`` section 9, item 3).
 """
 
 from __future__ import annotations
@@ -22,7 +30,14 @@ def evaluate_quality_gate(
     required_sections: list[str] | None = None,
     min_length: int = 40,
 ) -> dict[str, Any]:
-    """Verify that a worker's deliverable satisfies declared acceptance criteria (Inventory #175)."""
+    """Verify that a worker's deliverable satisfies declared acceptance criteria (Inventory #175).
+
+    The verdict is computed by keyword overlap only: a criterion passes when at
+    least 40% of its evaluable tokens appear in the deliverable.  That is a
+    disclosure, not a claim -- the returned dict carries ``method`` and
+    ``advisory`` so the caller can see what it is.  It must inform a report,
+    never decide a terminal status.
+    """
     text = (deliverable or "").strip()
     checks: list[dict[str, Any]] = []
 
@@ -121,4 +136,9 @@ def evaluate_quality_gate(
         "degenerate_criteria": degenerate_criteria,
         "feedback": feedback,
         "timestamp": _now(),
+        # Stamped at the source, not by callers: keyword overlap is what this
+        # is, and it is advisory.  A consumer reading only this dict cannot
+        # mistake a keyword match for a verification verdict.
+        "method": "keyword_overlap",
+        "advisory": True,
     }

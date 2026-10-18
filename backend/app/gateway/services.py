@@ -726,6 +726,25 @@ _CONTEXT_RUNTIME_ONLY_KEYS: frozenset[str] = frozenset({"github_token", "disable
 # checkpoint store.
 _INTERNAL_ONLY_CONTEXT_KEYS: frozenset[str] = _CONTEXT_INTERNAL_CALLER_KEYS | _CONTEXT_RUNTIME_ONLY_KEYS
 
+#: Bot-identity aliases the Gateway must never accept from a client payload, in
+#: either config section or at the config top level. The Gateway owns this
+#: binding: ``build_run_config`` derives ``agent_name`` from the validated
+#: ``assistant_id``, and the lead-agent assembly re-homes a roster bot name
+#: onto the ``bot_name`` carriers *after* these sanitizers run
+#: (``_clear_dangling_agent_identity``). Before this scrub a caller-supplied
+#: copy was read verbatim by ``resolve_runtime_bot_name`` — which gates the
+#: ``message_agent`` tool ("only available inside a bot chat session") and the
+#: per-turn roster reminder — so a forged value impersonated any roster bot and
+#: could DM teammates as it. The aliases match ``alpha.bots.dm``'s resolver.
+_CLIENT_FORBIDDEN_BOT_IDENTITY_KEYS: frozenset[str] = frozenset({"bot_name", "botName", "bot"})
+
+#: The metadata spellings that can grant a run a bot identity on the read
+#: paths: ``resolve_runtime_bot_name``'s run-metadata fallback and the group
+#: activity ledger's ``_activity_bot_name`` both read the forked run metadata.
+#: Caller copies are scrubbed for non-internal callers; server-stamped
+#: metadata (room bindings, trace ids) is untouched.
+_CLIENT_FORBIDDEN_BOT_METADATA_KEYS: frozenset[str] = frozenset({"bot_name", "botName"})
+
 
 def strip_internal_context_keys(config: dict[str, Any]) -> None:
     """Drop internal-only keys a non-internal caller smuggled into the run config.
@@ -742,6 +761,11 @@ def strip_internal_context_keys(config: dict[str, Any]) -> None:
     from the client payload: the ``configurable`` and ``context`` sub-dicts,
     AND the top level of the assembled config, must never carry a
     client-supplied copy of a key the server owns.
+
+    The bot-identity aliases are in the same class: the Gateway derives them
+    from the validated ``assistant_id`` and the lead-agent assembly re-homes
+    them onto the live carriers, so a client-supplied ``bot_name`` is a
+    forgery by construction — including in the forked run metadata.
     """
     for section in ("configurable", "context"):
         value = config.get(section)
@@ -750,9 +774,12 @@ def strip_internal_context_keys(config: dict[str, Any]) -> None:
                 value.pop(key, None)
             for key in _SERVER_OWNED_RUNTIME_CONTEXT_KEYS:
                 value.pop(key, None)
+            for key in _CLIENT_FORBIDDEN_BOT_IDENTITY_KEYS:
+                value.pop(key, None)
     for key in (
         _INTERNAL_ONLY_CONTEXT_KEYS
         | _SERVER_OWNED_RUNTIME_CONTEXT_KEYS
+        | _CLIENT_FORBIDDEN_BOT_IDENTITY_KEYS
         | {
             "run",
             "run_id",
@@ -761,6 +788,14 @@ def strip_internal_context_keys(config: dict[str, Any]) -> None:
         }
     ):
         config.pop(key, None)
+    # Run metadata is forked into the run record (echoed verbatim by the runs
+    # API) and read by the bot-identity resolver and the activity ledger; a
+    # caller's copy would impersonate a bot on those surfaces too. The
+    # server's own bindings are stamped after this scrub.
+    metadata = config.get("metadata")
+    if isinstance(metadata, dict):
+        for key in _CLIENT_FORBIDDEN_BOT_METADATA_KEYS:
+            metadata.pop(key, None)
 
 
 def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, Any] | None, *, internal: bool = False) -> None:
@@ -861,9 +896,18 @@ def inject_authenticated_user_context(
     internal_user_id = runtime_context.get("user_id") if is_internal_principal else None
     for key in _SERVER_OWNED_RUNTIME_CONTEXT_KEYS:
         runtime_context.pop(key, None)
+    # Bot identity is server-owned end to end: a run resolves it from the
+    # validated ``assistant_id`` during lead-agent assembly, which re-homes
+    # ``agent_name`` onto these carriers AFTER this sanitizer. A client copy is
+    # never legitimate — internal callers (channels, the scheduler) bind bots
+    # through ``assistant_id`` too — so the aliases are scrubbed for everyone.
+    for key in _CLIENT_FORBIDDEN_BOT_IDENTITY_KEYS:
+        runtime_context.pop(key, None)
     configurable = config.get("configurable")
     if isinstance(configurable, dict):
         for key in _SERVER_OWNED_RUNTIME_CONTEXT_KEYS:
+            configurable.pop(key, None)
+        for key in _CLIENT_FORBIDDEN_BOT_IDENTITY_KEYS:
             configurable.pop(key, None)
     if internal_user_id is not None:
         runtime_context["user_id"] = internal_user_id
@@ -2093,11 +2137,25 @@ async def launch_scheduled_thread_run(
             ),
             cookies={},
         )
+    run_metadata = dict(metadata) if isinstance(metadata, dict) else {}
+    if assistant_id:
+        # Bot-scoped launches carry the identity in the run metadata too. The
+        # lead agent's assembly re-homes a roster-bot ``agent_name`` onto the
+        # ``bot_name`` carriers (``_clear_dangling_agent_identity``), and the
+        # forked run record must agree about who ran: the runs API echoes this
+        # metadata verbatim and the group activity ledger reads the same
+        # fallback. Server-stamped and untouched by the client scrub (internal
+        # callers keep server-owned metadata).
+        from alpha.bots.mode import resolve_roster_bot
+
+        bot = await asyncio.to_thread(resolve_roster_bot, assistant_id)
+        if bot is not None:
+            run_metadata["botName"] = str(getattr(bot, "name", assistant_id))
     body = RunCreateRequest(
         assistant_id=assistant_id,
         input={"messages": [{"role": "user", "content": prompt}]},
         command=None,
-        metadata=metadata or {},
+        metadata=run_metadata,
         config={"recursion_limit": _resolve_scheduler_recursion_limit()},
         # ``user_id`` mirrors what IM channels put in ``body.context`` so
         # runtime-context consumers without a ContextVar fallback (e.g.
@@ -2119,7 +2177,7 @@ async def launch_scheduled_thread_run(
         if_not_exists="create",
         feedback_keys=None,
     )
-    scheduled_task_run_id = (metadata or {}).get("scheduled_task_run_id")
+    scheduled_task_run_id = run_metadata.get("scheduled_task_run_id")
     idempotency_key = f"scheduled-task:{scheduled_task_run_id}" if isinstance(scheduled_task_run_id, str) else None
     # Non-HTTP entry point: the lifespan scheduler calls this with a synthetic
     # request, so TraceMiddleware never runs. The scope is opened per launch,

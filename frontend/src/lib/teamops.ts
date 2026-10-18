@@ -6,6 +6,10 @@ export interface GroupRoom {
   name: string;
   members: string[];
   status: string;
+  /** Room orchestration mode, verbatim. Absent on an older Gateway — undefined, never a guessed default. */
+  mode?: string;
+  /** The room's moderator, when it has one. */
+  moderator?: string;
 }
 
 export async function listGroups(): Promise<GroupRoom[]> {
@@ -15,6 +19,8 @@ export async function listGroups(): Promise<GroupRoom[]> {
       name: String(pick(g, ["name"], "")),
       members: Array.isArray(g.members) ? (g.members as string[]) : [],
       status: String(pick(g, ["status"], "")),
+      mode: typeof g.mode === "string" ? g.mode : undefined,
+      moderator: typeof g.moderator === "string" ? g.moderator : undefined,
     }));
   } catch (err) {
     // Owner-visible read: reject with the server's reason, exactly as
@@ -29,8 +35,55 @@ export async function createGroup(name: string, members: string[]): Promise<void
   await send("/groups", "POST", { name, members });
 }
 
+/**
+ * Post a message as the operator. The route requires a sender and the
+ * orchestration grammar reads `sender == "user"` as the human — omitting it
+ * is a 422, and naming anything else would make the room read the operator
+ * as a bot.
+ */
 export async function postGroupMessage(name: string, message: string): Promise<void> {
-  await send(`/groups/${encodeURIComponent(name)}/messages`, "POST", { message });
+  await send(`/groups/${encodeURIComponent(name)}/messages`, "POST", { message, sender: "user" });
+}
+
+/** One room's membership split, from `GET /groups/{name}/roster`. */
+export interface GroupRoster {
+  room: string | null;
+  /**
+   * The handles the mention grammar resolves against — direct + rule-matched +
+   * inherited. `null` when the server sent no list at all (≠ an empty roster).
+   */
+  effective: string[] | null;
+  /** Hand-added members only; used to label autocomplete rows, never to filter. */
+  direct: string[] | null;
+  directCount: number | null;
+  effectiveCount: number | null;
+}
+
+/**
+ * Map the roster payload (exported for tests). Absent lists stay `null` —
+ * "the Gateway sent no list" and "the list is empty" drive opposite composer
+ * states (no autocomplete at all vs an empty one).
+ */
+export function normalizeGroupRoster(raw: Record<string, unknown>): GroupRoster {
+  const asList = (v: unknown): string[] | null => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : null);
+  const asNumber = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  return {
+    room: typeof raw.room === "string" ? raw.room : null,
+    effective: asList(raw.effective),
+    direct: asList(raw.direct),
+    directCount: asNumber(raw.direct_count),
+    effectiveCount: asNumber(raw.effective_count),
+  };
+}
+
+/**
+ * Read the roster the `@` autocomplete is built from. The roster is the
+ * grammar's own input (`GroupChatService.resolve_mentions` resolves against
+ * `room.members`), so the palette offers exactly the handles the server can
+ * resolve — no fabricated suggestions.
+ */
+export async function fetchGroupRoster(name: string): Promise<GroupRoster> {
+  return normalizeGroupRoster(await get<Record<string, unknown>>(`/groups/${encodeURIComponent(name)}/roster`));
 }
 
 // Rejects on failure. This used to `catch { return [] }`, so a 404/500 (a

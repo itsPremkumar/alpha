@@ -59,11 +59,29 @@ def _validate_interval_seconds(schedule_spec: dict[str, Any], min_seconds: int) 
     return every_seconds
 
 
+async def _is_roster_bot_name(name: str) -> bool:
+    """Whether *name* names a roster bot (Bot Mode routines bind to bots).
+
+    Bots and custom agents are separate namespaces with no sync, so the
+    roster is consulted only after ``load_agent_config`` misses — the same
+    precedence the lead agent's dangling-``agent_name`` handling applies
+    (``_roster_bot_name`` in ``lead_agent/agent.py``), so a stored id always
+    binds the identity the run will actually run as. ``resolve_roster_bot``
+    is advisory and never raises.
+    """
+    from alpha.bots.mode import resolve_roster_bot
+
+    return await asyncio.to_thread(resolve_roster_bot, name) is not None
+
+
 async def resolve_scheduled_task_assistant_id(raw: str | None, *, user_id: str) -> str:
     """Return a stored assistant id, defaulting to lead_agent.
 
     Custom names are normalized the same way IM/run creation already does
-    (lowercase, underscore to hyphen) and must exist for this owner.
+    (lowercase, underscore to hyphen) and must exist for this owner — as a
+    custom agent config, or as a roster bot (``GET /api/bots``): a routine
+    bound to a bot stores ``assistant_id=<bot>``, and the run assembly
+    re-homes that name onto the bot identity.
     """
     if raw is None:
         return _DEFAULT_ASSISTANT_ID
@@ -76,15 +94,19 @@ async def resolve_scheduled_task_assistant_id(raw: str | None, *, user_id: str) 
     if not AGENT_NAME_PATTERN.fullmatch(normalized):
         raise HTTPException(
             status_code=422,
-            detail=(f"Invalid assistant_id {raw!r}. Use 'lead_agent' or a custom agent name containing only letters, digits, and hyphens."),
+            detail=(f"Invalid assistant_id {raw!r}. Use 'lead_agent', a custom agent name or a roster bot name containing only letters, digits, and hyphens."),
         )
     try:
         config = await asyncio.to_thread(load_agent_config, normalized, user_id=user_id)
     except FileNotFoundError as exc:
+        if await _is_roster_bot_name(normalized):
+            return normalized
         raise HTTPException(status_code=422, detail=f"Unknown assistant_id {raw!r}") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if config is None:
+        if await _is_roster_bot_name(normalized):
+            return normalized
         raise HTTPException(status_code=422, detail=f"Unknown assistant_id {raw!r}")
     return normalized
 

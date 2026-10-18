@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
+from langchain.tools import ToolRuntime
 
 from alpha.bots.dm import (
     PROTOCOL_MARKER,
@@ -30,6 +33,7 @@ from alpha.bots.failure_reasons import (
     is_valid_agent_name,
 )
 from alpha.bots.inbox import BotInbox
+from alpha.tools.builtins.message_agent_tool import message_agent_tool
 
 
 @pytest.fixture(autouse=True)
@@ -79,6 +83,67 @@ def test_dm_schema_shape():
     schema = message_agent_tool_schema()
     assert schema["function"]["name"] == "message_agent"
     assert set(schema["function"]["parameters"]["required"]) == {"target", "message"}
+
+
+def _bot_runtime(**context) -> ToolRuntime:
+    """A dispatch runtime carrying the bot identity a DM is authorized from."""
+
+    return ToolRuntime(
+        state={},
+        context=context,
+        config={},
+        stream_writer=lambda _chunk: None,
+        tool_call_id="tool-call-dm",
+        store=None,
+    )
+
+
+def test_message_agent_is_registered_as_a_builtin_tool():
+    """The prompt, every bot SOUL and the dm-schema all name this tool; it must exist."""
+
+    from alpha.tools.tools import get_available_tools
+
+    assert message_agent_tool.name == "message_agent"
+    assert "message_agent" in {tool.name for tool in get_available_tools()}
+
+
+def test_message_agent_tool_delivers_inside_a_bot_chat_and_acks():
+    original = BotInbox("architect").deliver("coder", "please review auth.py")
+    out = json.loads(
+        message_agent_tool.invoke(
+            {
+                "runtime": _bot_runtime(thread_id="bot-chat-architect", bot_name="architect"),
+                "target": "coder",
+                "message": "Reviewed; see the diff in the thread.",
+                "reply_to": original.delivery_id,
+            }
+        )
+    )
+    assert out["status"] == "delivered"
+    assert out["delivery_id"]
+    assert out["reply_acknowledged"] is True
+    assert BotInbox("architect").ack(original.delivery_id) is None, "the ack must be observable and idempotent"
+
+
+def test_message_agent_tool_refuses_outside_a_bot_chat():
+    out = json.loads(message_agent_tool.invoke({"runtime": _bot_runtime(thread_id="t1"), "target": "coder", "message": "hi"}))
+    assert out["status"] == "rejected" and out["reason_code"] == "not_a_bot_chat"
+    assert BotInbox("coder").unread_count() == 0, "a refusal must not write"
+
+
+def test_message_agent_tool_writes_nothing_for_an_unknown_target():
+    out = json.loads(
+        message_agent_tool.invoke(
+            {
+                "runtime": _bot_runtime(thread_id="bot-chat-architect", bot_name="architect"),
+                "target": "ghost-xyz",
+                "message": "hi",
+            }
+        )
+    )
+    assert out["status"] == "rejected"
+    assert out.get("delivery_id") in (None, "")
+    assert BotInbox("architect").unread_count() == 0, "nothing must be queued for an unknown target"
 
 
 def test_send_dm_happy_path_delivers_to_inbox():

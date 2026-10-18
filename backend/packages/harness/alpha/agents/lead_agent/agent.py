@@ -1091,16 +1091,9 @@ def _roster_bot_name(name: str) -> str | None:
     """
     if not name:
         return None
-    try:
-        from alpha.bots.registry import get_bot_registry
+    from alpha.bots.mode import resolve_roster_bot
 
-        lowered = name.lower()
-        for bot in get_bot_registry().list_bots():
-            if str(getattr(bot, "name", "")).lower() == lowered:
-                return name
-    except Exception:  # noqa: BLE001 — roster is advisory on this path
-        return None
-    return None
+    return name if resolve_roster_bot(name) is not None else None
 
 
 def _resolve_bot_profile(cfg: dict) -> Any | None:
@@ -1115,13 +1108,13 @@ def _resolve_bot_profile(cfg: dict) -> Any | None:
     bot_name = _opt_str_runtime(cfg.get("bot_name"))
     if not bot_name:
         return None
-    try:
-        from alpha.bots.registry import get_bot_registry
+    from alpha.bots.mode import resolve_roster_bot
 
-        return get_bot_registry().get_bot(bot_name)
-    except Exception:  # noqa: BLE001 — advisory lookup, never fatal to the run
-        logger.warning("Bot profile %r could not be loaded; its model_config is ignored for this run.", bot_name, exc_info=True)
-        return None
+    # One roster resolver for every run-path consumer (see
+    # ``alpha.bots.mode.resolve_roster_bot``); a lookup failure degrades to
+    # "no bot model config" (global defaults) and is logged there, never
+    # raised.
+    return resolve_roster_bot(bot_name)
 
 
 def _opt_str_runtime(value: Any) -> str | None:

@@ -69,7 +69,23 @@ test("bots preserve normalized fleet, detail, templates and departments", async 
   assert.equal(bots[0].status, "active");
   assert.deepEqual(bots[0].task_stats, {});
   assert.deepEqual(await f.bots.fetchBot("alice"), bots[0]);
-  assert.deepEqual(await f.bots.fetchBotTemplates(), [{ name: "coder", role: "Engineer" }]);
+  // The catalog is normalized to the BotTemplate shape the UI types require.
+  // The live route keys the handle as `slug` (alpha/bots/templates.py
+  // `list_templates`); an object-keyed catalog (older shape) keys it by name.
+  // Fields the row did not carry are empty/null — not undefined, which would
+  // render as a blank card with no way to tell "absent" from "broken".
+  assert.deepEqual(await f.bots.fetchBotTemplates(), [
+    {
+      name: "coder",
+      display: "",
+      role: "Engineer",
+      avatar: "",
+      department: "",
+      reports_to: null,
+      responsibilities: [],
+      capabilities: [],
+    },
+  ]);
   assert.deepEqual(await f.bots.fetchDepartments(), ["engineering"]);
   assertRequest(f.calls[0], "GET", "/api/bots?status=active&department=R%26D");
 });
@@ -96,10 +112,17 @@ for (const kind of ["http", "network"]) {
     });
     assert.deepEqual(await f.bots.fetchBots(), []);
     assert.equal(await f.bots.fetchBot("alice"), null);
-    assert.deepEqual(await f.bots.fetchBotTemplates(), []);
+    // The template catalog deliberately does NOT fall back to `[]`: an empty
+    // catalog is a claim about the server ("listed no templates") and a failed
+    // read cannot make it. The create dialog turns this rejection into a
+    // visible "catalog could not be read" note instead of a silent degrade.
+    await assert.rejects(
+      () => f.bots.fetchBotTemplates(),
+      shaped(kind, kind === "http" ? 403 : 0),
+    );
     assert.deepEqual(await f.bots.fetchDepartments(), []);
     assert.equal(await f.bots.touchBot("alice"), undefined);
-    assert.equal(f.errors.length, 4);
+    assert.equal(f.errors.length, 3);
     for (const entry of f.errors) shaped(kind, kind === "http" ? 403 : 0)(entry.at(-1));
   });
 }

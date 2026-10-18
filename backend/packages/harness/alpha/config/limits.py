@@ -38,6 +38,7 @@ every consumer site's value equals the constant imported here.
 from __future__ import annotations
 
 __all__ = [
+    "MAX_ATTEMPTS_PER_TASK",
     "MAX_CHILDREN_PER_PARENT",
     "MAX_CONCURRENT_NATIVE_SUBAGENTS_HARD",
     "MAX_DELEGATION_DEPTH",
@@ -46,8 +47,11 @@ __all__ = [
     "MAX_GROUP_NESTING_DEPTH",
     "MAX_GROUP_PARALLEL_MEMBERS",
     "MAX_GROUP_RELAY_HOPS",
+    "MAX_REVISITS_PER_TASK",
     "MAX_SWARM_PLAN_CONCURRENCY",
+    "MAX_WALL_CLOCK_SECONDS",
     "MAX_WAVE_CONCURRENCY_CEILING",
+    "MAX_TOTAL_TASKS",
     "DEFAULT_CONCURRENT_NATIVE_SUBAGENTS",
     "DEFAULT_WAVE_CONCURRENCY",
 ]
@@ -158,3 +162,29 @@ MAX_SWARM_PLAN_ITEMS = 1000
 #: ceiling must follow the item ceiling rather than being an independent
 #: number that can silently refuse a legal plan size.
 MAX_SWARM_TASK_DEPENDENCIES = MAX_SWARM_PLAN_ITEMS
+
+# --------------------------------------------------------------------------
+# Delegation attempt / wall-clock / total-task / revisit axis
+# --------------------------------------------------------------------------
+#
+# These four were literals inside ``alpha.bots.autonomy_guard`` (and the
+# attempt ceiling was a second literal in ``alpha.subagents.lifecycle``) —
+# the same concepts as the depth/fan-out axis above, but with a private copy
+# of each number. They live here now so "one number, one value" holds for
+# the whole axis; the values are exactly what those modules enforced before
+#: the move, so no behaviour changes with it.
+
+#: How many times one task may be dispatched before it is refused. Both
+#: ``AutonomyBounds.max_attempts_per_task`` and the subagent lifecycle
+#: manager's ``DEFAULT_MAX_ATTEMPTS`` resolve to this.
+MAX_ATTEMPTS_PER_TASK = 3
+
+#: Wall-clock ceiling for one unattended delegation tree, in seconds.
+MAX_WALL_CLOCK_SECONDS = 1800.0
+
+#: Ceiling on the total number of tasks one unattended tree may dispatch.
+MAX_TOTAL_TASKS = 200
+
+#: How many times one task may be re-dispatched (the revisit half of the
+#: cycle guard) before the tree is stopped.
+MAX_REVISITS_PER_TASK = 2

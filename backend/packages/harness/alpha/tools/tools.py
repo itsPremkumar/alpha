@@ -233,6 +233,9 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
     # only the export that first failed would leave the same order-dependent
     # failure waiting behind whichever test module imports next.
     agent_message_tool = resolve_builtin_tool("agent_message_tool")
+    # Bot Mode DM.  Distinct from ``agent_message`` above: that one addresses
+    # in-process subagents, this one addresses the persistent bot roster.
+    message_agent_tool = resolve_builtin_tool("message_agent_tool")
     arena_tool = resolve_builtin_tool("arena_tool")
     bot_roster_tool = resolve_builtin_tool("bot_roster_tool")
     canvas_widget_tool = resolve_builtin_tool("canvas_widget_tool")
@@ -284,6 +287,11 @@ def _build_registries() -> tuple[list[BaseTool], list[BaseTool]]:
             invoke_python_skill_tool,
             # Ultra-Advanced Bot Mode & Collaborative Kanban extensions:
             bot_roster_tool,
+            # Bot-to-bot DM against the persistent roster.  Bound on every run
+            # because the bot identity that authorises it is only known at
+            # dispatch time; ``send_dm`` refuses outside a bot chat rather than
+            # the registry guessing from thread metadata it does not have.
+            message_agent_tool,
             group_chat_tool,
             alpha_peer_network_tool,
             kanban_board_tool,

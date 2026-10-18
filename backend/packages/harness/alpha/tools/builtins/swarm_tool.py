@@ -1,6 +1,11 @@
 """Model-visible control surface for the Alpha swarm v2 runtime."""
 
-from __future__ import annotations
+# NOTE: no ``from __future__ import annotations`` — under PEP 563 the
+# ``runtime: Runtime`` annotation becomes the *string* "Runtime", and
+# LangChain's injected-argument detection inspects the annotation object, so a
+# string never matches and ``runtime`` would never be injected. Run correlation
+# (``run_id``/``thread_id``) depends on that injection. See
+# ``alpha.tools.types.Runtime`` and the same note in ``agent_message_tool.py``.
 
 import asyncio
 import json
@@ -20,7 +25,34 @@ from alpha.swarm.incidents import get_swarm_incident_manager
 from alpha.swarm.models import SwarmBudget, SwarmMode, TaskNodeState
 from alpha.swarm.spec_lint import SpecLintReport, lint_plan
 from alpha.swarm.telemetry import SwarmTelemetry
+from alpha.tools.types import Runtime
 from alpha.utils.assembly_io import run_assembly
+
+
+def _run_correlation(runtime: Runtime | None) -> dict[str, str | None]:
+    """Run identity for swarm correlation, read from the runtime context only.
+
+    The Gateway installs ``run_id`` and ``thread_id`` into the run's context
+    (``runtime/runs/worker.py::_install_runtime_context``), so both are
+    server-owned. A tool invocation outside a run yields ``None`` for each, and
+    the swarm then carries no run link rather than a guessed one — a wrong link
+    would let one run cancel another run's swarm.
+    """
+    context = getattr(runtime, "context", None)
+    if not isinstance(context, dict):
+        return {"run_id": None, "thread_id": None, "requested_by": None}
+
+    def _clean(key: str) -> str | None:
+        value = context.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    return {
+        "run_id": _clean("run_id"),
+        "thread_id": _clean("thread_id"),
+        "requested_by": _clean("bot_name") or _clean("botName"),
+    }
 
 
 @tool("swarm", parse_docstring=True)
@@ -70,6 +102,11 @@ def swarm_tool(
     acceptance_waiver: bool = False,
     idempotency_key: str = "",
     reason: str = "",
+    # Injected by LangChain (excluded from the model-facing schema), and given a
+    # ``None`` default so a direct ``.invoke({...})`` without a runtime still
+    # works — tests and script callers do that. ``_run_correlation`` treats
+    # ``None`` as "no run link", never as a guessed one.
+    runtime: Runtime = None,
 ) -> str:
     """Evaluate, spawn, run, communicate with, and monitor bounded agent swarms.
 
@@ -182,6 +219,9 @@ def swarm_tool(
         except ValueError:
             swarm_mode = SwarmMode.AUTO
         budget = SwarmBudget(max_tokens=max_tokens, max_tool_calls=max_tool_calls, max_wall_seconds=max_wall_seconds)
+        # Link the swarm to the run that asked for it, so cancelling that run
+        # can cancel this swarm instead of leaving it spending budget alone.
+        correlation = _run_correlation(runtime)
         try:
             plan = coordinator.create_swarm(
                 goal=goal.strip(),
@@ -189,6 +229,9 @@ def swarm_tool(
                 items=items,
                 max_concurrency=min(max(0, max_concurrency), MAX_SWARM_PLAN_CONCURRENCY),
                 owner_id=owner_id,
+                run_id=correlation["run_id"],
+                thread_id=correlation["thread_id"],
+                requested_by=correlation["requested_by"],
                 budget=budget,
                 auto_replan=auto_replan,
                 requires_consensus=requires_consensus,

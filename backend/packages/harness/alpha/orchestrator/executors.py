@@ -68,6 +68,11 @@ LOCAL_SKILL_EXECUTOR = "alpha.local.skill"
 LOCAL_MCP_EXECUTOR = "alpha.local.mcp"
 LOCAL_MEMORY_EXECUTOR = "alpha.local.memory"
 
+# Registry key for executing a node as a named roster bot.  Declared by
+# ``POST /api/bots/{name}/workflow`` (``default_executor="alpha.local.bot"``),
+# which previously failed every time because nothing registered this name.
+BOT_EXECUTOR = "alpha.local.bot"
+
 
 def digest_input(node: WorkflowNode, run: WorkflowRun) -> bytes:
     """Canonical bytes hashed by :func:`local_digest_executor`."""
@@ -86,6 +91,96 @@ def local_digest_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any
         "output": {"executor": DIGEST_EXECUTOR, "node_id": node.id, "sha256": digest},
         "evidence": f"{DIGEST_EXECUTOR} sha256={digest} {DIGEST_EVIDENCE_SUFFIX}",
         # Real accounting: local hashing consumed zero model tokens.
+        "tokens_used": 0,
+    }
+
+
+def local_bot_executor(node: WorkflowNode, run: WorkflowRun) -> dict[str, Any]:
+    """Execute one workflow node as a named roster bot, with a real model call.
+
+    The node names its bot in ``node.config["bot"]``; the bot's SOUL becomes the
+    system prompt and the node's prompt is the objective.  Every refusal is a
+    failed result with a named reason (unknown bot, archived bot, engaged ESTOP,
+    no model configured, model error) — never a fabricated success.
+
+    ``tokens_used`` is 0 because the invocation seam does not surface usage; the
+    output carries ``tokens_measured: False`` so a consumer cannot read that
+    zero as "this call was free".
+    """
+    bot_name = (
+        str(
+            node.config.get("bot")
+            or node.config.get("bot_name")
+            # The bot workflow endpoint stamps the bot into the run's initial state
+            # rather than each node, so a node may not name it explicitly.
+            or run.state.get("bot_name")
+            or ""
+        )
+        .strip()
+        .lower()
+    )
+    if not bot_name:
+        return {
+            "status": "failed",
+            "output": "node.config['bot'] is required for the alpha.local.bot executor",
+            "evidence": "",
+            "tokens_used": 0,
+        }
+
+    try:
+        from alpha.runtime.estop import get_estop_manager
+
+        if get_estop_manager().is_engaged():
+            return {"status": "failed", "output": "fleet ESTOP is engaged; bot node not executed", "evidence": "", "tokens_used": 0}
+    except Exception as exc:
+        return {"status": "failed", "output": f"fleet ESTOP could not be evaluated: {exc}", "evidence": "", "tokens_used": 0}
+
+    try:
+        from alpha.bots.registry import get_bot_registry
+
+        bot = get_bot_registry().get_bot(bot_name)
+    except Exception as exc:
+        return {"status": "failed", "output": f"bot roster unavailable: {exc}", "evidence": "", "tokens_used": 0}
+    if bot is None:
+        return {"status": "failed", "output": f"no bot named {bot_name!r} on the roster", "evidence": "", "tokens_used": 0}
+    bot_status = str(getattr(bot, "status", "") or "")
+    if bot_status in ("archived", "suspended"):
+        return {"status": "failed", "output": f"bot {bot_name!r} is {bot_status} and cannot execute", "evidence": "", "tokens_used": 0}
+
+    prompt = str(node.prompt or run.state.get("goal") or "").strip()
+    if not prompt:
+        return {"status": "failed", "output": "node.prompt is empty; nothing to execute", "evidence": "", "tokens_used": 0}
+
+    model_name = str(getattr(bot, "model", "") or "").strip()
+    if not model_name:
+        try:
+            from alpha.config import get_app_config
+
+            model_name = str(getattr(get_app_config(), "default_model", "") or "").strip()
+        except Exception:
+            model_name = ""
+    if not model_name:
+        return {"status": "failed", "output": f"no model configured for bot {bot_name!r} and no default_model", "evidence": "", "tokens_used": 0}
+
+    system = str(getattr(bot, "soul", "") or "").strip() or f"You are {bot.name}, a {getattr(bot, 'role', 'specialist')}."
+    try:
+        from alpha.deliberation.invocation import invoke_model
+
+        text = invoke_model(model_name, system=system, user=prompt)
+    except Exception as exc:
+        return {"status": "failed", "output": f"model call failed for bot {bot_name!r}: {exc}", "evidence": "", "tokens_used": 0}
+
+    return {
+        "status": "completed",
+        "output": {
+            "executor": BOT_EXECUTOR,
+            "bot": bot.name,
+            "model": model_name,
+            "node_id": node.id,
+            "text": text,
+            "tokens_measured": False,
+        },
+        "evidence": f"{BOT_EXECUTOR} executed node '{node.id}' as bot '{bot.name}' with model '{model_name}'",
         "tokens_used": 0,
     }
 
@@ -344,6 +439,9 @@ _REGISTRY = ExecutorRegistry()
 
 _DEFAULT_EXECUTORS: dict[str, NodeExecutor] = {
     DIGEST_EXECUTOR: local_digest_executor,
+    # Bot-mode workflows declare this executor; without the binding every
+    # ``auto_execute=true`` bot workflow failed by construction.
+    BOT_EXECUTOR: local_bot_executor,
 }
 
 _PROJECTION_EXECUTORS: dict[str, NodeExecutor] = {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { AlertTriangle, Check, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Lock, Plus, Save, Trash2 } from "lucide-react";
 import {
   BOT_FIELDS,
   botFieldSpec,
@@ -180,6 +180,9 @@ function Field({
   const value = field.key in draft ? draft[field.key] : undefined;
   const operatorSet = isOperatorSet(field, original, draft);
   const id = `bot-field-${field.key}`;
+  // A field the PATCH surface refuses renders locked: an input that can never
+  // save is a control that lies about what it can do.
+  const locked = disabled || field.readOnly === true;
 
   const label = (
     <label htmlFor={id} className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
@@ -191,6 +194,15 @@ function Field({
         >
           <AlertTriangle className="size-2.5" />
           set by operator
+        </span>
+      )}
+      {field.readOnly && (
+        <span
+          className="inline-flex items-center gap-1 text-[9px] font-normal px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+          title="The server's PATCH route refuses this field; the hint below names where it is written."
+        >
+          <Lock className="size-2.5" />
+          not editable here
         </span>
       )}
     </label>
@@ -205,7 +217,7 @@ function Field({
         <textarea
           id={id}
           value={typeof value === "string" ? value : ""}
-          disabled={disabled}
+          disabled={locked}
           maxLength={field.maxLength}
           onChange={(e) => onChange(field.key, e.target.value)}
           className="w-full min-h-40 rounded-lg border border-border/70 bg-card/60 px-2.5 py-2 text-xs font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50"
@@ -224,7 +236,7 @@ function Field({
         hint={hint}
         value={Array.isArray(value) ? (value as string[]) : []}
         reported={field.key in original && Array.isArray(original[field.key])}
-        disabled={disabled}
+        disabled={locked}
         onChange={(next) => onChange(field.key, next)}
       />
     );
@@ -246,7 +258,7 @@ function Field({
                 <span className="truncate font-mono">{JSON.stringify(row)}</span>
                 <button
                   type="button"
-                  disabled={disabled}
+                  disabled={locked}
                   onClick={() => onChange(field.key, rows.filter((_, j) => j !== i))}
                   className="ml-auto p-0.5 rounded hover:text-destructive transition-colors cursor-pointer disabled:opacity-40"
                   aria-label={`Remove entry ${i + 1} of ${field.label}`}
@@ -269,7 +281,7 @@ function Field({
         <input
           id={id}
           type="number"
-          disabled={disabled}
+          disabled={locked}
           value={typeof value === "number" ? value : ""}
           min={field.min}
           max={field.max}
@@ -298,7 +310,7 @@ function Field({
       <input
         id={id}
         type="text"
-        disabled={disabled}
+        disabled={locked}
         value={typeof value === "string" ? value : ""}
         maxLength={field.maxLength}
         placeholder={reported ? "" : field.key === "model" ? "no model assigned" : "not reported"}

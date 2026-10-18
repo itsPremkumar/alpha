@@ -20,9 +20,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Building2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Building2, FlaskConical, PencilLine, RefreshCw } from "lucide-react";
 
 import { botDisplayName, botInitials, type BotProfile } from "@/types/bots";
+import { botSmokeBadge, runBotSmoke } from "@/lib/bots";
 import {
   fetchBotDetail,
   fetchKanbanTasks,
@@ -36,6 +37,10 @@ import { elapsedWords, type FleetHealthSummary } from "@/lib/bot-working-status"
 import { kanbanStatusLabel, type KanbanTask } from "@/lib/kanban";
 import { workspaceViewUrl, type WorkspaceView } from "@/lib/workspace-view";
 import { BotModelConfigPanel } from "./BotModelConfigPanel";
+import { BotRoutinesPanel } from "./BotRoutinesPanel";
+import { CapabilityScopePanel } from "./CapabilityScopePanel";
+import { Modal } from "@/components/ui";
+import { BotDetailPanel } from "@/components/chat-shell/BotDetailPanel";
 import {
   BotStatusBadge,
   CountRow,
@@ -43,6 +48,7 @@ import {
   Notice,
   Row,
   Section,
+  SmokeBadge,
   TagList,
   VerbatimBadge,
   ViewLink,
@@ -95,6 +101,16 @@ export function BotDetailView({ name }: { name: string }) {
   // read with its own failure — never folded into `fetchBotDetail`, where a
   // board outage would take the profile down with it.
   const [kanban, setKanban] = useState<KanbanState>({ state: "loading" });
+  // The page itself stays a read-only survey; editing opens the one editor
+  // that already exists (`chat-shell/BotDetailPanel`, which PATCHes through
+  // the server's own field list) rather than growing a second field form here.
+  const [editing, setEditing] = useState(false);
+  // The smoke probe is an ACTION over the read above, so it gets its own state
+  // and its own failure line: a probe that could not be started must not blank
+  // the profile, and after a run the badge must show the SERVER's recorded
+  // outcome (re-read), not the POST body.
+  const [smokeBusy, setSmokeBusy] = useState(false);
+  const [smokeError, setSmokeError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -105,6 +121,19 @@ export function BotDetailView({ name }: { name: string }) {
     setBundle(await fetchBotDetail(name));
     setLoading(false);
   }, [name]);
+
+  const runSmoke = useCallback(async () => {
+    setSmokeError(null);
+    setSmokeBusy(true);
+    try {
+      await runBotSmoke(name);
+      await load();
+    } catch (err) {
+      setSmokeError(errText(err));
+    } finally {
+      setSmokeBusy(false);
+    }
+  }, [name, load]);
 
   useEffect(() => {
     void load();
@@ -133,6 +162,7 @@ export function BotDetailView({ name }: { name: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">{bot ? botDisplayName(bot) : name}</h1>
             <BotStatusBadge status={bot?.status ?? null} />
+            <SmokeBadge badge={botSmokeBadge(bot)} />
             <span className="rounded-md border border-border/60 px-1.5 py-0.5 text-[11px] font-mono text-muted-foreground">
               {name}
             </span>
@@ -147,12 +177,41 @@ export function BotDetailView({ name }: { name: string }) {
         </Link>
         <button
           type="button"
+          onClick={() => setEditing(true)}
+          disabled={!bot}
+          title={bot ? "Edit this bot's profile" : "The profile could not be read, so there is nothing to edit"}
+          className="flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1.5 text-xs hover:bg-muted/40 disabled:opacity-40"
+        >
+          <PencilLine className="size-3" /> Edit
+        </button>
+        <button
+          type="button"
+          onClick={() => void runSmoke()}
+          disabled={!bot || smokeBusy}
+          title={
+            bot
+              ? "Run one real bot-scoped run and record the observed result"
+              : "The profile could not be read, so there is nothing to probe"
+          }
+          className="flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1.5 text-xs hover:bg-muted/40 disabled:opacity-40"
+        >
+          <FlaskConical className="size-3" /> {smokeBusy ? "Probing…" : "Run smoke"}
+        </button>
+        <button
+          type="button"
           onClick={() => void load()}
           className="flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1.5 text-xs hover:bg-muted/40"
         >
           <RefreshCw className="size-3" /> Refresh
         </button>
       </header>
+
+      {smokeError && (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive" role="alert">
+          The smoke probe could not be started: <span className="font-mono">{smokeError}</span>. Nothing was recorded —
+          the badge above still shows the last smoke the Gateway observed.
+        </p>
+      )}
 
       {/* ---- Where the rest of the record lives ---- */}
       <nav aria-label="Related views" className="rounded-xl border border-border/60 bg-card/40 p-4">
@@ -237,6 +296,15 @@ export function BotDetailView({ name }: { name: string }) {
                 <p className="mb-1.5 text-xs text-muted-foreground">Responsibilities</p>
                 <TagList items={b.responsibilities} empty="None recorded." />
               </div>
+              {/* The scoping read is its own route with its own failure, so it
+                  renders from the bundle's `capabilities` slot — never from the
+                  profile above (a failed profile read must not silently scope
+                  this panel out of existence, and vice versa). */}
+              <CapabilityScopePanel
+                name={name}
+                state={bundle?.capabilities ?? { state: "loading" }}
+                onSaved={load}
+              />
             </div>
           )}
         </Section>
@@ -698,20 +766,8 @@ export function BotDetailView({ name }: { name: string }) {
         </Section>
 
         {/* ---- Routines ---- */}
-        <Section title="Routines" state={profile ?? { state: "loading" }}>
-          {(b) =>
-            b.routines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No routines recorded for this bot.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {b.routines.map((r, i) => (
-                  <li key={i} className="rounded-lg border border-border/60 p-2 text-xs font-mono">
-                    {JSON.stringify(r)}
-                  </li>
-                ))}
-              </ul>
-            )
-          }
+        <Section title="Routines" state={bundle?.routines ?? { state: "loading" }}>
+          {(routines) => <BotRoutinesPanel name={name} routines={routines} onChanged={load} />}
         </Section>
 
         {/* ---- Org position ---- */}
@@ -845,6 +901,26 @@ export function BotDetailView({ name }: { name: string }) {
         Every value above is read from the Gateway. Anything it did not report is shown as &ldquo;not
         reported&rdquo; rather than as a default, and each section fails on its own.
       </p>
+
+      {/* The editor exists exactly once (`chat-shell/BotDetailPanel`, which
+          PATCHes through the server's own accepted field list). Editing here
+          opens that panel in a modal and re-reads the survey on save, so this
+          page shows the server's answer — never the draft that was typed. */}
+      {editing && bot && (
+        <Modal
+          title={`Edit ${botDisplayName(bot)}`}
+          subtitle="Saves PATCH this bot's profile on the Gateway; the page re-reads its answer on save."
+          onClose={() => setEditing(false)}
+          className="max-w-lg bg-card border-l border-border"
+        >
+          <BotDetailPanel
+            bot={bot}
+            onSaved={() => {
+              void load();
+            }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

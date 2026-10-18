@@ -15,6 +15,14 @@ const { emptyTodoPlan } = await import(moduleUrl("sse-reducer"));
 const { newIdempotencyKey, sendIdempotent } = await import(
   moduleUrl("idempotency")
 );
+// The swarm branch's decision builder. `sendMessage` evaluates it
+// unconditionally (only the branch that spends its result is gated by
+// `kind`), so the harness binds the REAL one rather than a shape-compatible
+// stub — a stub would silently accept an input the shipped composer rejects.
+const { buildSwarmSendRequest, SWARM_RUN_ASYNC_BODY } = await import(
+  moduleUrl("swarm-send")
+);
+const { pick } = await import(moduleUrl("http"));
 
 const compile = (source) =>
   ts.transpileModule(source, {
@@ -136,6 +144,27 @@ async function send(
     setUsage: () => {},
     // Live subagent receipt; this harness only needs it to be settable.
     setSubagentTasks: setter("subagentTasks"),
+    // The pinned-swarm board setter. `sendMessage` clears it at the start of
+    // every run (the previous turn's swarm is not this run's work), so an
+    // unbound name throws a ReferenceError *inside* the request and masks
+    // every status-code assertion below behind a generic failure — the same
+    // masking this harness already guards against for `setStreamReconnect`.
+    setPinnedSwarmId: setter("pinnedSwarmId"),
+    // The swarm dispatch branch. `sendMessage` evaluates
+    // `buildSwarmSendRequest({...})` before the `kind` gate on every call, so
+    // these bindings must resolve even in scenarios that never dispatch a
+    // swarm. The toggle stays off; `send` is referenced only inside the gated
+    // branch and refuses loudly if a future scenario reaches it without
+    // wiring a transport.
+    swarmModeEnabled: false,
+    swarmMode: "auto",
+    swarmConcurrency: 3,
+    buildSwarmSendRequest,
+    SWARM_RUN_ASYNC_BODY,
+    pick,
+    send: async () => {
+      throw new Error("send() reached: this suite keeps swarm mode off");
+    },
     // `sendMessage` resets the live execution plan at the start of every run.
     // The setter follows the standard state-stub pattern; `emptyTodoPlan` is
     // the reducer's real value (loaded via `moduleUrl`), so the harness cannot

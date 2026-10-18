@@ -110,6 +110,7 @@ from alpha.bots.lifecycle_governor import (
     RetirementError,
     RetirementResult,
 )
+from alpha.bots.mode import BotModeContext, resolve_bot_mode, resolve_roster_bot
 from alpha.bots.organization import generate_organization_for_goal, get_organization_chart
 from alpha.bots.permissions import ROLE_PERMISSION_RINGS, ToolPermissionGate, get_permission_gate
 from alpha.bots.profile import BotProfile, generate_default_soul
@@ -172,6 +173,9 @@ __all__ = [
     "generate_default_soul",
     "BotRegistry",
     "get_bot_registry",
+    "BotModeContext",
+    "resolve_bot_mode",
+    "resolve_roster_bot",
     "CapabilityEpochManager",
     "BOT_TEMPLATES",
     "BOT_STATUSES",

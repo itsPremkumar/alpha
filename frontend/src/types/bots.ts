@@ -20,6 +20,33 @@ export interface BotTaskStats {
   [key: string]: unknown;
 }
 
+/**
+ * The last RECORDED smoke outcome for one bot (`BotProfile.metadata.smoke`),
+ * projected onto the wire by `GET /api/bots/{name}` and written by
+ * `POST /api/bots/{name}/smoke`.
+ *
+ * `null`/absent means no probe has ever run — **"created · unverified"**, never
+ * "alive". `status` is the recorded verdict: `"passed"` means the smoke run
+ * reached the run system's own success terminal; `"failed"` and `"timeout"`
+ * are terminal answers of their own and never collapse into "passed".
+ */
+export interface BotSmokeOutcome {
+  /** The recorded verdict: `passed` / `failed` / `timeout` (verbatim elsewhere). */
+  status: string;
+  /** The run id the verdict was observed from — the badge shows this. */
+  run_id: string | null;
+  /** The bot's canonical chat thread the probe landed on. */
+  thread_id: string | null;
+  /** The run's own terminal status at observation time (`success`, `error`, …). */
+  observed_status: string | null;
+  /** Whether the run captured a last assistant reply. Never inferred. */
+  answered: boolean;
+  /** The run's error/stop reason when it did not pass; null on a pass. */
+  detail: string | null;
+  /** ISO timestamp of the observation. */
+  at: string | null;
+}
+
 export interface BotProfile {
   name: string;
   display_name: string;
@@ -68,6 +95,14 @@ export interface BotProfile {
   last_message_at?: number | null;
   last_message_sender?: string | null;
   last_message_withheld?: boolean | null;
+  /**
+   * The last recorded smoke outcome, or `null` when the bot has never been
+   * probed — "created · unverified". Only a `passed` outcome may read as
+   * alive; the badge never infers one.
+   */
+  smoke?: BotSmokeOutcome | null;
+  /** The server's own alive verdict: true only for a recorded passing smoke. */
+  alive?: boolean;
 }
 
 export interface BotTemplate {

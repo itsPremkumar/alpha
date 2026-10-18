@@ -212,6 +212,13 @@ class MentionPreviewResponse(BaseModel):
     resolved_handles: list[str]
     ok: bool
     human_line: str
+    # 2.6: the routing decision for this exact draft, so the composer can say
+    # "will route to X" BEFORE send. Computed by the SAME orchestrator method
+    # the landed message goes through (preview_next_speakers), never a second
+    # copy of the mode logic.
+    mode: str
+    moderator: str | None
+    next_speakers: list[str]
 
 
 @router.post("/mentions/preview", response_model=MentionPreviewResponse, summary="Preview how a draft will resolve in this room")
@@ -222,6 +229,11 @@ async def preview_mentions(body: MentionPreviewRequest) -> MentionPreviewRespons
     grammar runs inside `post_message`, but seeing the result beforehand lets
     the operator fix an unknown handle before the run starts. The response
     carries the server's own reason strings so the two surfaces never disagree.
+
+    The routing half (`mode` / `moderator` / `next_speakers`) answers the other
+    pre-send question — who will speak next — with the same method the send
+    will run, so a preview that disagrees with the landing message is a bug,
+    not a projection.
     """
     svc = _service()
     resolution = await asyncio.to_thread(
@@ -229,6 +241,17 @@ async def preview_mentions(body: MentionPreviewRequest) -> MentionPreviewRespons
         body.room_name,
         body.content,
         sender=body.sender,
+    )
+    room = svc.get_room(body.room_name)
+    if room is None:
+        raise HTTPException(status_code=404, detail=f"Room '{body.room_name}' not found")
+    role_index = await asyncio.to_thread(svc.build_role_index, room)
+    next_speakers = await asyncio.to_thread(
+        svc.orchestrator.preview_next_speakers,
+        room,
+        body.sender or "user",
+        body.content,
+        roles=role_index,
     )
     return MentionPreviewResponse(
         text=resolution.text,
@@ -238,6 +261,9 @@ async def preview_mentions(body: MentionPreviewRequest) -> MentionPreviewRespons
         resolved_handles=list(resolution.resolved_handles),
         ok=resolution.ok,
         human_line=resolution.human_line(),
+        mode=room.mode,
+        moderator=room.moderator,
+        next_speakers=list(next_speakers),
     )
 
 

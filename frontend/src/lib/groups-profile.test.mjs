@@ -243,3 +243,44 @@ test("a nonsensical bound is floored to one rather than unbounded", () => {
   assert.deepEqual(appendBounded([1, 2, 3], 4, -5), [4]);
   assert.deepEqual(appendBounded([1], 2, 1.7), [2]);
 });
+
+// ── Mention preview client ─────────────────────────────────────────────────
+//
+// The server is the only voice on how a draft resolves; the client's whole
+// job is to ask the right question and carry the answer's shape. The router
+// declares POST /groups/mentions/preview (not a per-room path), so a
+// per-room spelling would 404 — the strip would then spin on "checking
+// with the room…" while nothing can ever resolve.
+
+const httpStub = `
+let handler = (path, method, payload) => { throw new Error("no stub response configured"); };
+export function setHttpHandler(fn) { handler = fn; }
+export async function get(path) { return handler(path, "GET", undefined); }
+export async function send(path, method, payload) { return handler(path, method, payload); }
+`;
+const apiClientStub = `export function apiUrl(path) { return path; }`;
+const toStubUrl = (code) => `data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`;
+const httpStubUrl = toStubUrl(httpStub);
+const profileSource = ts
+  .transpileModule(readFileSync(new URL("./groups-profile.ts", import.meta.url), "utf8"), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  })
+  .outputText.replace(/from\s+"(\.\/http|@\/lib\/http)"/, `from "${httpStubUrl}"`)
+  .replace(/from\s+"@\/lib\/api-client"/, `from "${toStubUrl(apiClientStub)}"`)
+  // The model re-export is not under test here and cannot resolve through the
+  // data-URL loader; nothing in previewMentions touches it.
+  .replace(/export \* from "\.\/groups-profile-model";/, "");
+const groupsProfile = await import(toStubUrl(profileSource));
+const { setHttpHandler } = await import(httpStubUrl);
+
+test("previewMentions asks the server's own route and aliases the handle list", async () => {
+  setHttpHandler((path, method, payload) => {
+    assert.equal(path, "/groups/mentions/preview");
+    assert.equal(method, "POST");
+    assert.deepEqual(payload, { room_name: "alpha", content: "@coder", sender: "user" });
+    return { resolved_handles: ["coder"], ok: true };
+  });
+  const preview = await groupsProfile.previewMentions("alpha", "@coder", "user");
+  assert.deepEqual(preview.resolvedHandles, ["coder"], "the camel-case alias is populated from the wire key");
+  assert.equal(preview.ok, true);
+});

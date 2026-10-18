@@ -3183,6 +3183,59 @@ def test_strip_internal_context_keys_scrubs_project_context_from_both_sections()
     assert PROJECT_CONTEXT_RUNTIME_KEY not in config["configurable"]
 
 
+def test_strip_internal_context_keys_scrubs_forged_bot_identity_everywhere():
+    """A client must not be able to impersonate a bot chat.
+
+    ``build_run_config`` copies ``body.config`` verbatim, and
+    ``resolve_runtime_bot_name`` reads the ``bot_name`` aliases from the live
+    carriers — that resolver gates the ``message_agent`` tool and the per-turn
+    roster reminder, so a forged value would let a caller DM teammates *as* a
+    roster bot. The forked run metadata is scrubbed too: it is echoed by the
+    runs API and read by the activity ledger's bot attribution.
+    """
+    from app.gateway.services import build_run_config, strip_internal_context_keys
+
+    via_context = build_run_config(
+        "thread-1",
+        {"context": {"bot_name": "architect", "botName": "coder", "bot": "tester", "model_name": "gpt"}},
+        {"botName": "architect", "bot_name": "coder", "trace": "keep-me"},
+    )
+    strip_internal_context_keys(via_context)
+    assert "bot_name" not in via_context["context"]
+    assert "botName" not in via_context["context"]
+    assert "bot" not in via_context["context"]
+    assert via_context["context"]["model_name"] == "gpt", "ordinary context keys are untouched"
+    assert via_context["metadata"] == {"trace": "keep-me"}, "server-stamped and ordinary metadata survive"
+
+    via_configurable = build_run_config(
+        "thread-1",
+        {"configurable": {"bot_name": "architect", "botName": "coder"}},
+        None,
+    )
+    strip_internal_context_keys(via_configurable)
+    assert "bot_name" not in via_configurable["configurable"]
+    assert "botName" not in via_configurable["configurable"]
+
+
+def test_inject_authenticated_user_context_scrubs_forged_bot_identity_for_every_caller():
+    """Bot identity is bound by the server on every path, internal included.
+
+    The channel and scheduler adapters bind bots through ``assistant_id``;
+    nothing legitimately supplies ``bot_name`` in run context, so the sanitizer
+    (which runs before all early returns) clears it for internal principals too.
+    """
+    request = _make_request_with_auth_source(AUTH_SOURCE_INTERNAL)
+
+    via_context = _assemble_authz_run_config({"context": {"bot_name": "architect", "botName": "coder", "bot": "tester"}}, request)
+    assert "bot_name" not in via_context["context"]
+    assert "botName" not in via_context["context"]
+    assert "bot" not in via_context["context"]
+
+    via_configurable = _assemble_authz_run_config({"configurable": {"bot_name": "architect", "botName": "coder"}}, request)
+    assert "bot_name" not in via_configurable["configurable"]
+    assert "botName" not in via_configurable["configurable"]
+
+
 def test_start_run_sequence_drops_context_only_keys_for_session_caller():
     """Replay the real ``start_run`` assembly order for a session-authenticated caller
     that pushes the keys through *both* smuggling surfaces at once."""

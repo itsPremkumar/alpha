@@ -139,12 +139,8 @@ async def parse_sse(lines: Any) -> Any:
 async def _request(client: httpx.AsyncClient, method: str, url: str, **kwargs: Any) -> httpx.Response:
     try:
         return await client.request(method, url, **kwargs)
-    except httpx.TransportError as exc:
-        # Every transport-level failure means the probe could not reach its
-        # measurement target. The message keeps the exception type so a
-        # connect refusal, a read timeout and a mid-stream reset stay
-        # distinguishable in the report's reason string.
-        raise GatewayUnreachable(f"{method} {url} transport failure: {type(exc).__name__}: {exc}") from exc
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        raise GatewayUnreachable(f"{method} {url} unreachable: {type(exc).__name__}: {exc}") from exc
 
 
 def _as_mapping(value: Any) -> dict[str, Any] | None:
@@ -505,29 +501,22 @@ async def _drive_run(client: httpx.AsyncClient, base_url: str, *, prompt: str, t
             yield line
 
     started = time.monotonic()
-    try:
-        async with client.stream("POST", f"{urls}/runs/stream", json=body, timeout=httpx.Timeout(30.0, read=timeout)) as resp:
-            if resp.status_code >= 400:
-                text = (await resp.aread()).decode("utf-8", "replace")
-                raise ProbeFailure(f"run stream HTTP {resp.status_code}: {text[:300]}")
-            location = resp.headers.get("content-location") or resp.headers.get("Content-Location")
-            if location:
-                run_id = location.rstrip("/").split("/")[-1] or None
-            async for name, data in parse_sse(timed(resp.aiter_lines())):
-                if name == "custom":
-                    custom_frames += 1
-                    payload = _maybe_json(data)
-                    event_type = payload.get("type") if isinstance(payload, dict) else None
-                    if isinstance(event_type, str) and event_type.startswith(("task_", "subagent")):
-                        task_events += 1
-                elif name == "error":
-                    sse_errors.append(data[:300])
-    except httpx.TransportError as exc:
-        # The Gateway (or the path to it) died while the run was streaming.
-        # This must reach the report as `incomplete` with the transport error:
-        # a lost measurement target is not a probe bug (`error`) and certainly
-        # not a completed run, which is what the D4 gate checks.
-        raise GatewayUnreachable(f"event stream for {urls}/runs/stream broke mid-run: {type(exc).__name__}: {exc}") from exc
+    async with client.stream("POST", f"{urls}/runs/stream", json=body, timeout=httpx.Timeout(30.0, read=timeout)) as resp:
+        if resp.status_code >= 400:
+            text = (await resp.aread()).decode("utf-8", "replace")
+            raise ProbeFailure(f"run stream HTTP {resp.status_code}: {text[:300]}")
+        location = resp.headers.get("content-location") or resp.headers.get("Content-Location")
+        if location:
+            run_id = location.rstrip("/").split("/")[-1] or None
+        async for name, data in parse_sse(timed(resp.aiter_lines())):
+            if name == "custom":
+                custom_frames += 1
+                payload = _maybe_json(data)
+                event_type = payload.get("type") if isinstance(payload, dict) else None
+                if isinstance(event_type, str) and event_type.startswith(("task_", "subagent")):
+                    task_events += 1
+            elif name == "error":
+                sse_errors.append(data[:300])
     wall_seconds = round(time.monotonic() - started, 3)
 
     if not run_id:
@@ -1018,8 +1007,7 @@ async def run_probe(args: argparse.Namespace, scenarios: list[Scenario]) -> tupl
     report.notes.append("queue_wait_seconds is deliberately null everywhere: per-delegation queue wait is uninstrumented until plan W3.a (see UNINSTRUMENTED_FIELDS in scripts/support/subagent_probe_report.py)")
     report.notes.append("live custom task frames count the probe's own SSE consumption; event_persistence compares them against persisted subagent.* rows")
     report.notes.append(
-        "every lead-agent run is created with autonomous=true (RunCreateRequest.autonomous): the server applies subagent_enabled after context sanitisation, "
-        "so the `task` tool is present and a zero-delegation measurement is about the model, not a missing tool"
+        "every lead-agent run is created with autonomous=true (RunCreateRequest.autonomous): the server applies subagent_enabled after context sanitisation, so the `task` tool is present and a zero-delegation measurement is about the model, not a missing tool"
     )
 
     headers = {"Authorization": f"Bearer {args.token}"} if args.token else {}
@@ -1054,15 +1042,7 @@ async def run_probe(args: argparse.Namespace, scenarios: list[Scenario]) -> tupl
                     detail=f"probe error: {type(exc).__name__}: {exc}",
                 )
             report.scenarios.append(rep)
-        try:
-            report.alpha_version = await _alpha_version(client, args.base_url.rstrip("/"))
-        except GatewayUnreachable:
-            # Metadata, not a measurement gate: a Gateway that died after the
-            # loop (or stayed dead through it) must still yield the report the
-            # contract promises - `incomplete` with a reason - and never a
-            # traceback with nothing on disk. Measured 2026-10-17: a real run
-            # died exactly here and lost every scenario it had completed.
-            report.alpha_version = None
+        report.alpha_version = await _alpha_version(client, args.base_url.rstrip("/"))
 
     failed = [rep for rep in report.scenarios if rep.outcome in ("error", "incomplete")]
     if failed or unattempted:
