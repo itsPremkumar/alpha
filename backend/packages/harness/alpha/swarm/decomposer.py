@@ -7,6 +7,9 @@ from collections.abc import Sequence
 
 from alpha.capabilities.eligibility import infer_capability_tags
 from alpha.swarm.models import SwarmMode, SwarmPlan, SwarmTaskNode, TaskNodeState
+from alpha.swarm.planner import MAX_CANDIDATES, PlanCandidate, build_candidate, select_best_candidate
+from alpha.swarm.strategy import StrategyResolution, resolve_strategy
+from alpha.swarm.topology import compute_dag_features
 
 #: Capability-tag -> model-routing tier.  The tier names are the same keys the
 #: operator already declares under ``model_routing.tiers`` (frontier/coding/fast/
@@ -92,10 +95,6 @@ def _apply_capability_model_routing(task: SwarmTaskNode) -> None:
     if name:
         task.model_override = name
 
-
-from alpha.swarm.planner import MAX_CANDIDATES, PlanCandidate, build_candidate, select_best_candidate  # noqa: E402
-from alpha.swarm.strategy import StrategyResolution, resolve_strategy  # noqa: E402
-from alpha.swarm.topology import compute_dag_features  # noqa: E402
 
 _CAPABILITY_TIER: dict[str, str] = {
     "code_generation": "coding",

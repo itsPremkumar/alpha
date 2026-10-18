@@ -396,6 +396,8 @@ async def test_gateway_bots_extended_endpoints():
         )
     )
     assert q_res["verdict"] == "passed"
+    assert q_res["method"] == "keyword_overlap"
+    assert q_res["advisory"] is True
 
     # 6. Events query
     e_res = await bots.get_org_events()

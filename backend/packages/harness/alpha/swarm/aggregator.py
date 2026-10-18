@@ -236,9 +236,9 @@ class SwarmAggregator:
         # cannot establish that work succeeded, and it passed on the
         # "no successful worker summaries" boilerplate.  Status below is
         # derived from task facts (executed? completed? acceptance passed?).
+        # ``method``/``advisory`` are stamped by the gate itself, so this
+        # caller cannot drift from the module that computes them.
         quality_gate = evaluate_quality_gate(deliverable_text, criteria)
-        quality_gate["method"] = "keyword_overlap"
-        quality_gate["advisory"] = True
         plan.final_result = deliverable_text
         score = quality_gate.get("score")
         plan.quality_score = float(score) if isinstance(score, (int, float)) else 0.0

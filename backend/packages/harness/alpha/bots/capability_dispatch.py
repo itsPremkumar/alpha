@@ -125,6 +125,11 @@ class DispatchDecision:
     required_capability_tags: tuple[str, ...] = ()
     matched_capability_tags: tuple[str, ...] = ()
     missing_capability_tags: tuple[str, ...] = ()
+    #: ``"strict"`` (every required tag must be covered -- a declared
+    #: requirement) or ``"hint"`` (at least one must be covered, survivors are
+    #: ranked by coverage -- an inferred requirement).  Recorded so a reader can
+    #: tell a full capability match from a ranked hint without re-deriving it.
+    requirement_mode: str = "strict"
     candidates: list[dict[str, Any]] = field(default_factory=list)
     rejected: list[dict[str, Any]] = field(default_factory=list)
     award: dict[str, Any] | None = None
@@ -153,6 +158,7 @@ class DispatchDecision:
             "required_capability_tags": list(self.required_capability_tags),
             "matched_capability_tags": list(self.matched_capability_tags),
             "missing_capability_tags": list(self.missing_capability_tags),
+            "requirement_mode": self.requirement_mode,
             "candidates": [dict(item) for item in self.candidates],
             "rejected": [dict(item) for item in self.rejected],
             "award": dict(self.award) if self.award else None,
@@ -186,6 +192,7 @@ def _refusal(
     max_attempts: int = 3,
     context: DelegationContext | None = None,
     record: bool = True,
+    requirement_mode: str = "strict",
 ) -> DispatchDecision:
     """Build, record and return a refusal.
 
@@ -200,6 +207,7 @@ def _refusal(
         reason=reason,
         issuer=issuer,
         required_capability_tags=tuple(sorted(normalize_tags(required))),
+        requirement_mode=requirement_mode,
         rejected=list(rejected or []),
         refusal_code=code,
         guard=guard.to_dict() if guard is not None else {"allowed": False, "code": code, "detail": reason},
@@ -216,7 +224,7 @@ def _refusal(
             reason=code,
             attempt=attempt,
             max_attempts=max_attempts,
-            details={"detail": reason, "refused": True, "method": DISPATCH_METHOD},
+            details={"detail": reason, "refused": True, "method": DISPATCH_METHOD, "requirement_mode": requirement_mode},
         )
         decision.ledger_seq = seq
     return decision
@@ -391,13 +399,27 @@ class CapabilityDispatcher:
         token_budget: int = DEFAULT_TASK_TOKEN_BUDGET,
         deadline_seconds: float = DEFAULT_DEADLINE_SECONDS,
         enforce_authority: bool = True,
+        requirement_mode: str = "strict",
     ) -> DispatchDecision:
         """Select the target for ``task_id`` and record why.
 
         The single production entry point for "a task is being assigned". Every
         refusal is a returned decision, never an exception, so a caller cannot
         accidentally treat a bounded stop as a dispatch.
+
+        ``requirement_mode`` selects how ``required_capability_tags`` is read:
+
+        * ``"strict"`` (default) -- the declared-requirement rule: a candidate
+          that does not cover **every** tag is removed from the pool.
+        * ``"hint"`` -- the inferred-requirement rule: covering at least one tag
+          keeps a candidate, and the auction ranks survivors by coverage. A
+          four-tag keyword inference treated as a hard conjunction made every
+          task ineligible for every specialist; the floor keeps that from
+          happening while an agent that covers nothing stays unreachable.
         """
+        mode = str(requirement_mode or "strict").strip().lower()
+        if mode not in ("strict", "hint"):
+            raise ValueError(f"requirement_mode must be 'strict' or 'hint', got {requirement_mode!r}")
         registry = self.registry
         issuer = self._context.node_id or ALPHA_LEADER_NAME
         mod_routing_note: str | None = None
@@ -417,6 +439,7 @@ class CapabilityDispatcher:
                     attempt=attempt,
                     max_attempts=max_attempts,
                     context=self._context,
+                    requirement_mode=mode,
                 )
         except Exception as exc:
             return _refusal(
@@ -428,6 +451,7 @@ class CapabilityDispatcher:
                 attempt=attempt,
                 max_attempts=max_attempts,
                 context=self._context,
+                requirement_mode=mode,
             )
 
         try:
@@ -452,6 +476,7 @@ class CapabilityDispatcher:
                     attempt=attempt,
                     max_attempts=max_attempts,
                     context=self._context,
+                    requirement_mode=mode,
                 )
             if res.outcome == EventOutcome.ANSWER:
                 mod_bot = str((res.response_payload or {}).get("selected_bot") or "").strip()
@@ -475,6 +500,7 @@ class CapabilityDispatcher:
                 attempt=attempt,
                 max_attempts=max_attempts,
                 context=self._context,
+                requirement_mode=mode,
             )
 
         # 1. Required capability tags, in strict precedence order:
@@ -486,7 +512,7 @@ class CapabilityDispatcher:
         #         as a fallback so it is never mistaken for a capability match.
         if required_capability_tags:
             required = normalize_tags(required_capability_tags)
-            requirement_reason = "required tags supplied by the caller"
+            requirement_reason = f"required tags supplied by the caller as ranked hints: {sorted(required)}" if mode == "hint" else "required tags supplied by the caller"
         else:
             inferred = infer_capability_tags(objective)
             if inferred:
@@ -508,6 +534,7 @@ class CapabilityDispatcher:
                     attempt=attempt,
                     max_attempts=max_attempts,
                     context=self._context,
+                    requirement_mode=mode,
                 )
             requirement_reason = f"{requirement_reason}; {why}"
 
@@ -524,6 +551,7 @@ class CapabilityDispatcher:
                 attempt=attempt,
                 max_attempts=max_attempts,
                 context=self._context,
+                requirement_mode=mode,
             )
 
         # 4. Candidate pool, then the HARD capability filter. The lineage is NOT
@@ -534,21 +562,26 @@ class CapabilityDispatcher:
         if candidate_names:
             wanted = {str(item).strip().lower() for item in candidate_names}
             profiles = [p for p in profiles if p.name.lower() in wanted]
-        eligibility = eligible_candidates(profiles, required, exclude=list(exclude or []))
+        eligibility = eligible_candidates(profiles, required, exclude=list(exclude or []), min_matches=1 if (mode == "hint" and required) else 0)
         if not eligibility.eligible:
             detail = "; ".join(f"{item['bot']}: {item['detail']}" for item in eligibility.rejected[:8]) or "no live agent on the roster"
             if mod_routing_note:
                 detail = f"{detail}; advisory task router: {mod_routing_note}"
+            if mode == "hint":
+                missing_clause = f"no agent covers even one of the required capability hints {sorted(required)}"
+            else:
+                missing_clause = f"no agent declares the required capability {sorted(required) or '(none)'}"
             return _refusal(
                 task_id,
                 REFUSAL_NO_ELIGIBLE_AGENT,
-                f"no agent declares the required capability {sorted(required) or '(none)'}. Rejected: {detail}",
+                f"{missing_clause}. Rejected: {detail}",
                 issuer=issuer,
                 rejected=eligibility.rejected,
                 required=required,
                 attempt=attempt,
                 max_attempts=max_attempts,
                 context=self._context,
+                requirement_mode=mode,
             )
 
         # 5. Cycle guard, over the capability SURVIVORS. ``check_cycle`` is the
@@ -578,6 +611,7 @@ class CapabilityDispatcher:
                 attempt=attempt,
                 max_attempts=max_attempts,
                 context=self._context,
+                requirement_mode=mode,
             )
         # Agents in the lineage stay out of the auction, and stay in the record.
         for name in eligibility.eligible:
@@ -653,10 +687,16 @@ class CapabilityDispatcher:
                 attempt=attempt,
                 max_attempts=max_attempts,
                 context=self._context,
+                requirement_mode=mode,
             )
         target = award.contractor_agent_id
         target_profile = by_name.get(target)
         matched = sorted(required & profile_capability_tags(target_profile)) if target_profile is not None else sorted(required)
+        # A hint-mode winner may cover only part of the required hints; the
+        # unmatched ones are RECORDED, not silently zeroed. In strict mode a
+        # dispatch only ever happens at full coverage, so this stays empty by
+        # construction rather than by assumption.
+        missing = tuple(sorted(required - set(matched)))
 
         # 8. Record the choice AND the reason, in the same call.
         reason = _build_reason(
@@ -682,7 +722,8 @@ class CapabilityDispatcher:
             issuer=issuer,
             required_capability_tags=tuple(sorted(required)),
             matched_capability_tags=tuple(matched),
-            missing_capability_tags=(),
+            missing_capability_tags=missing,
+            requirement_mode=mode,
             candidates=[
                 {
                     "bot_name": name,
@@ -715,6 +756,7 @@ class CapabilityDispatcher:
                 "method": DISPATCH_METHOD,
                 "required_capability_tags": sorted(required),
                 "matched_capability_tags": matched,
+                "requirement_mode": mode,
                 "eligible": eligibility.eligible,
                 "rejected": eligibility.rejected,
                 "award": award.to_dict(),
@@ -814,7 +856,14 @@ def _build_reason(
     actually taken.
     """
     if required:
-        capability_clause = f"@{target} declares the required capability {matched} ({len(eligible)} eligible agent(s): {', '.join(eligible)})"
+        if len(matched) == len(required):
+            capability_clause = f"@{target} declares the required capability {matched} ({len(eligible)} eligible agent(s): {', '.join(eligible)})"
+        else:
+            # The hint tier: a winner may cover only SOME of the required
+            # hints, and the reason must say so instead of implying the full
+            # match the strict tier requires.
+            missing = sorted(set(required) - set(matched))
+            capability_clause = f"@{target} covers {len(matched)} of {len(required)} required capability hints {matched} (missing {missing}; {len(eligible)} eligible agent(s): {', '.join(eligible)})"
     else:
         capability_clause = f"no capability constraint; @{target} won the auction over {', '.join(eligible)}"
     fit_clause = f"; declared fit: {'; '.join(fit_reasons)}" if fit_reasons else ""
@@ -852,8 +901,18 @@ def dispatch_task(
     attempt: int = 1,
     max_attempts: int = 3,
     exclude: Sequence[str] | None = None,
+    requirement_mode: str = "strict",
+    enforce_authority: bool = True,
 ) -> DispatchDecision:
-    """Convenience wrapper: one leader-initiated dispatch, no object ceremony."""
+    """Convenience wrapper: one leader-initiated dispatch, no object ceremony.
+
+    ``requirement_mode`` and ``enforce_authority`` pass straight through to
+    :meth:`CapabilityDispatcher.dispatch`; the defaults keep the leader-facing
+    behaviour. The swarm composer is the production caller and uses both: its
+    inferred requirements are ranked hints (``"hint"``), and its roster is an
+    operator-shipped team whose assignments are not bounded by the leader's
+    ``DIRECTABLE_CAPABILITIES`` allowlist (``enforce_authority=False``).
+    """
     dispatcher = CapabilityDispatcher(context, registry=registry) if context is not None else get_leader_dispatcher(task_id, registry=registry, limits=limits)
     return dispatcher.dispatch(
         task_id,
@@ -863,6 +922,8 @@ def dispatch_task(
         exclude=exclude,
         attempt=attempt,
         max_attempts=max_attempts,
+        requirement_mode=requirement_mode,
+        enforce_authority=enforce_authority,
     )
 
 

@@ -317,6 +317,7 @@ def eligible_candidates(
     required_tags: Iterable[Any] | None,
     *,
     exclude: Iterable[str] | None = None,
+    min_matches: int = 0,
 ) -> EligibilityResult:
     """Filter ``profiles`` to the agents eligible for a task, with the reasons.
 
@@ -325,12 +326,20 @@ def eligible_candidates(
     failed), or does not cover the required capability tags. Every drop is
     reported so the dispatcher's recorded reason can explain the whole decision,
     not just the winner.
+
+    ``min_matches`` is the floor for the *hint* tier: the default ``0`` means a
+    candidate must cover **all** required tags (the strict rule). ``1`` means
+    covering at least one tag is enough to stay eligible -- the caller must then
+    rank the survivors rather than report the match as full coverage. The
+    distinction is not cosmetic: a four-tag hint treated as a hard conjunction
+    made every task ineligible for every specialist, measured, not assumed.
     """
     required = normalize_tags(required_tags)
     if len(required) > MAX_REQUIRED_TAGS:
         raise ValueError(f"A task may declare at most {MAX_REQUIRED_TAGS} capability tags; got {len(required)}.")
     excluded = {str(item or "").strip().lower() for item in (exclude or []) if str(item or "").strip()}
     constrained = bool(required)
+    floor = max(0, int(min_matches))
 
     eligible: list[str] = []
     rejected: list[dict[str, Any]] = []
@@ -344,12 +353,18 @@ def eligible_candidates(
             rejected.append({"bot": name, "code": "not_assignable", "detail": f"status '{status}' cannot receive work"})
             continue
         match = match_capabilities(required, profile)
-        if not match.eligible:
+        covered = len(match.matched)
+        # ``match.eligible`` is the STRICT rule (covers every tag). The hint
+        # floor replaces it, never adds to it: OR-ing the two re-imposed the
+        # conjunction the floor exists to relax, and every multi-tag hint came
+        # back "no agent covers even one of the required capability hints".
+        within_floor = covered >= floor if floor > 0 else match.eligible
+        if not within_floor:
             rejected.append(
                 {
                     "bot": name,
                     "code": "capability_mismatch",
-                    "detail": f"missing capability tags: {', '.join(sorted(match.missing))}",
+                    "detail": (f"covers {covered} of the required capability hints (floor {floor}): missing {', '.join(sorted(match.missing))}" if floor > 0 else f"missing capability tags: {', '.join(sorted(match.missing))}"),
                     "missing": sorted(match.missing),
                 }
             )
@@ -358,6 +373,8 @@ def eligible_candidates(
 
     if not constrained:
         reason = "no capability tags declared for this task; every live agent stayed eligible and selection fell to the auction"
+    elif floor > 0:
+        reason = f"capability hint match: at least {floor} of {sorted(required)} must be covered, survivors ranked by coverage"
     else:
         reason = f"capability match: required {sorted(required)}"
     return EligibilityResult(required=required, constrained=constrained, eligible=eligible, rejected=rejected, reason=reason)

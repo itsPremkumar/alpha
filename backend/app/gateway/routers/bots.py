@@ -94,6 +94,30 @@ def _registry():
     return get_bot_registry()
 
 
+def _forge_result_to_response(result) -> dict:
+    """Project a harness-layer ``ForgeResult`` onto the wire.
+
+    ``alive`` is the load-bearing field: it is true ONLY when the forge ran a
+    smoke probe and that probe answered. A clean build with no probe supplied
+    is ``alive: false`` with ``smoke_tested: false`` — "created · unverified",
+    never "alive". ``steps``/``warnings``/``rollback_report`` travel with the
+    result so a refusal that rolled back is readable without a log dive.
+    """
+    return {
+        "ok": bool(result.ok),
+        "name": result.name,
+        "reason": result.reason,
+        "alive": bool(result.ok and result.smoke_tested),
+        "smoke_tested": bool(result.smoke_tested),
+        "rolled_back": bool(result.rolled_back),
+        "steps": result.step_names,
+        "warnings": list(result.warnings),
+        "rollback_report": list(result.rollback_report),
+        "elapsed_seconds": round(float(result.elapsed_seconds), 3),
+        "reply": result.reply(),
+    }
+
+
 class BotEnsureRequest(BaseModel):
     display_name: str | None = Field(default=None, max_length=100)
     role: str | None = Field(default=None, max_length=200)
@@ -105,6 +129,28 @@ class BotEnsureRequest(BaseModel):
     responsibilities: list[str] | None = None
     capabilities: list[str] | None = None
     succession_fallback: str | None = Field(default=None, max_length=64)
+
+
+class BotCreateRequest(BaseModel):
+    """The forge's create contract, mirroring ``forge_bot``'s own parameters.
+
+    ``role`` and ``template`` may be combined: the template supplies the
+    display name / role / avatar / department / responsibilities it owns, and
+    the explicit fields override. Unknown templates and models that are not
+    declared in ``config.yaml models[]`` are refused by the forge with a
+    reason (``ok: false``), never silently ignored.
+    """
+
+    name: str = Field(min_length=1, max_length=64, description="Bot handle: letters, digits, '_' or '-'")
+    role: str = Field(default="", max_length=200, description="One-line specialty")
+    template: str | None = Field(default=None, max_length=64)
+    display_name: str | None = Field(default=None, max_length=100)
+    department: str | None = Field(default=None, max_length=64)
+    model: str | None = Field(default=None, max_length=200, description="Must be declared in config.yaml models[]")
+    skills: list[str] | None = Field(default=None, max_length=100)
+    capabilities: list[str] | None = Field(default=None, max_length=100)
+    allow_overlap: bool = Field(default=False, description="Operator override for the duplicate-role refusal")
+    workspace_survey: bool = Field(default=True, description="Survey the workspace at birth and write it into the bot's memory")
 
 
 class BotUpdateRequest(BaseModel):
@@ -216,6 +262,41 @@ class KillSwitchRequest(BaseModel):
 
 class BotPauseRequest(BaseModel):
     reason: str = Field(default="Operator paused", max_length=500)
+
+
+@router.post("", status_code=200, summary="Forge a new bot (transactional)")
+async def create_bot(request: Request, body: BotCreateRequest) -> dict:
+    """Create one bot through the transactional forge.
+
+    The forge never raises — a refusal is a *result*, and its ``steps`` and
+    ``rollback_report`` are part of what the caller must see, so this route
+    answers 200 with ``ok: false`` and the reason instead of translating the
+    refusal into an error that would drop them. Callers read ``ok``.
+    """
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    key = _validate_bot_name(body.name)
+    if not body.role.strip() and not body.template:
+        raise _validation_error("Provide a role, a template, or both.")
+
+    def _forge():
+        from alpha.bots.forge import forge_bot
+
+        return forge_bot(
+            name=key,
+            role=body.role,
+            registry=_registry(),
+            template=body.template,
+            display_name=body.display_name,
+            department=body.department,
+            model=body.model,
+            skills=body.skills,
+            capabilities=body.capabilities,
+            allow_overlap=body.allow_overlap,
+            workspace_survey=body.workspace_survey,
+        )
+
+    result = await asyncio.to_thread(_forge)
+    return _forge_result_to_response(result)
 
 
 @router.get("/templates", summary="List bot role templates")
