@@ -199,6 +199,38 @@ Tests: `backend/tests/test_swarm_recovery.py` (a real two-coordinator restart
 over one storage dir), `frontend/src/lib/teamops.test.mjs`,
 `frontend/src/lib/swarm-run-board.test.mjs`.
 
+**Acceptance judge (phase 3.3).** `swarm/judge.py` is the single source of
+`SwarmPlan.quality_score`: a bounded rubric judge over the goal plus per-task
+evidence returning `{verdict, score, reasons, evidence_refs, model, basis}`,
+where `score` is `None` unless it was actually measured and **judge failure
+means `unverified`, never a pass** — an empty reply, non-JSON output, an
+unknown verdict, a `passed` without a bounded 0..1 score (out-of-range is
+refused, never clamped), a raising `invoke`, or no `invoke` at all each funnel
+through `unverified_report` with the reason named. The plan's
+`acceptance_mode` (`"evidence"` default | `"judge"` | `"both"`; unknown
+spellings read as the default) decides whether a judge runs at all, so the
+default costs nothing — plan §11.3 needs no judge flag because the free mode
+*is* the cost gate. `evaluate_quality_gate` still computes the advisory
+keyword figure into `result["quality_gate"]` but no longer writes
+`quality_score`; without a judge the plan reports `None`, never a fabricated
+`0.0`, and `to_dict`/`from_dict` round-trip that honestly
+(`_as_optional_float`; a keyword-era number already persisted by an older
+checkpoint is left untouched on read rather than rewritten). The judge's model
+call is **caller-supplied** (`aggregate(plan, judge_invoke=..., judge_model=
+...)`) because aggregation is synchronous and may hold the coordinator's state
+lock — the module never opens a model call itself (event-loop discipline), and
+the `model` label comes from the caller, never from the model's own output.
+Status: `completed` requires the judge to have passed whenever one ran, via a
+guard that can only *demote* (terminal_reason `judge_unverified` /
+`judge_rejected`); it never grants status the task facts did not earn, and the
+deterministic per-task gate keeps its own authority in `"both"` mode (a judge
+pass cannot lift tasks whose declared acceptance never passed).
+`plan.judge_report` persists the report beside the score; Team Ops already
+renders `terminal_reason` ("Stopped because: …") and maps a non-number
+`quality_score` to null, so `unverified` stays visible without a new surface.
+`promote_to_org_memory` declines an unmeasured score or a non-passed verdict.
+Tests: `backend/tests/test_swarm_judge.py`.
+
 Specialist swarm tasks must run the same advisory receipt-citation audit as
 ordinary delegated tasks when the executor harvested receipts. Surface
 uncorroborated action claims in the team report and task UI. A resolved receipt

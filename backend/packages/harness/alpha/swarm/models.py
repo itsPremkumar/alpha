@@ -10,6 +10,11 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any
 
+# The judge owns the acceptance vocabulary (mode names and verdicts); this
+# module only reads it.  ``alpha.swarm.judge`` is stdlib-only at runtime, so
+# the dependency stays one-directional and cannot cycle.
+from alpha.swarm.judge import DEFAULT_ACCEPTANCE_MODE, normalize_acceptance_mode
+
 
 class SwarmMode(StrEnum):
     AUTO = "auto"
@@ -449,7 +454,11 @@ class SwarmPlan:
     created_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
     completed_at: str | None = None
     final_result: str | None = None
-    quality_score: float = 0.0
+    # Measured by the rubric judge (`swarm/judge.py`) and by nothing else
+    # (phase 3.3).  ``None`` means "no judge ran" — an unmeasured figure must
+    # not read as a measured zero, and the advisory keyword-overlap gate no
+    # longer writes this field.
+    quality_score: float | None = None
     metrics: dict[str, Any] = field(default_factory=dict)
     # Swarm v2 state and policy fields.
     # v3 adds run/thread correlation.  Readers accept any version; a v2
@@ -472,6 +481,18 @@ class SwarmPlan:
     consensus: dict[str, Any] = field(default_factory=dict)
     auto_replan: bool = False
     requires_consensus: bool = False
+    # Phase 3.3: which acceptance gate decides this plan.  ``evidence`` (the
+    # default) is the deterministic per-task gate and costs nothing; ``judge``
+    # runs the rubric judge in `swarm/judge.py`; ``both`` requires the
+    # deterministic gate and the judge to agree.  Unknown spellings read as the
+    # default — the same tolerant read ``mode`` gets in ``from_dict``, and a
+    # typo may never become a silent opt-in to a model call.
+    acceptance_mode: str = DEFAULT_ACCEPTANCE_MODE
+    # The judge's last report — ``{verdict, score, reasons, evidence_refs,
+    # model, basis, ...}`` — persisted with the plan so a later read can tell
+    # a judged score from an unmeasured one.  Empty means no judge has run,
+    # which is exactly what the default ``evidence`` mode should show.
+    judge_report: dict[str, Any] = field(default_factory=dict)
 
     def progress(self) -> dict[str, int]:
         """Return a cheap, derived task-state projection for API clients."""
@@ -509,7 +530,12 @@ class SwarmPlan:
             "created_at": self.created_at,
             "completed_at": self.completed_at,
             "final_result": self.final_result,
+            # ``None`` serializes as JSON ``null``: the frontend projection
+            # (`lib/teamops.ts`) already renders a non-number as null, so an
+            # unmeasured score never reaches a reader as 0.0.
             "quality_score": self.quality_score,
+            "acceptance_mode": self.acceptance_mode,
+            "judge_report": dict(self.judge_report),
             "metrics": dict(self.metrics),
             "budget": self.budget.to_dict(),
             "replan_count": self.replan_count,
@@ -549,7 +575,11 @@ class SwarmPlan:
             created_at=str(data.get("created_at", "")),
             completed_at=data.get("completed_at"),
             final_result=data.get("final_result"),
-            quality_score=_as_float(data.get("quality_score")),
+            # A missing or unparsable score reads as ``None`` ("never
+            # judged"), not as a defaulted 0.0; a number persisted by an
+            # older checkpoint round-trips untouched rather than being
+            # rewritten on read.
+            quality_score=_as_optional_float(data.get("quality_score")),
             metrics=_as_mapping(data.get("metrics")),
             schema_version=_as_int(data.get("schema_version"), 1),
             revision=max(0, _as_int(data.get("revision"))),
@@ -560,6 +590,8 @@ class SwarmPlan:
             consensus=_as_mapping(data.get("consensus")),
             auto_replan=bool(data.get("auto_replan", False)),
             requires_consensus=bool(data.get("requires_consensus", False)),
+            acceptance_mode=normalize_acceptance_mode(data.get("acceptance_mode")),
+            judge_report=_as_mapping(data.get("judge_report")),
         )
 
 

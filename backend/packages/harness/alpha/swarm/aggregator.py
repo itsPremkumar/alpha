@@ -11,6 +11,7 @@ from alpha.runtime.runs.verification import verify_acceptance_criteria
 from alpha.swarm.consensus import ConsensusPolicy, evaluate_consensus, votes_from_evidence
 from alpha.swarm.deliberation import DeliberationPolicy, rounds_from_evidence, run_deliberation
 from alpha.swarm.grounding import grounding_unresolved
+from alpha.swarm.judge import VERDICT_PASSED, VERDICT_UNVERIFIED, JudgeInvoke, judge_required, run_acceptance_judge
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode, TaskNodeState
 
 
@@ -135,7 +136,22 @@ class SwarmAggregator:
         return report
 
     @classmethod
-    def aggregate(cls, plan: SwarmPlan) -> dict[str, Any]:
+    def aggregate(
+        cls,
+        plan: SwarmPlan,
+        *,
+        judge_invoke: JudgeInvoke | None = None,
+        judge_model: str | None = None,
+    ) -> dict[str, Any]:
+        """Aggregate a plan's task facts and decide its terminal status.
+
+        ``judge_invoke`` is the model round-trip for a plan whose
+        ``acceptance_mode`` asked for the rubric judge (phase 3.3).  It is
+        caller-supplied on purpose: aggregation is synchronous and can run
+        under the coordinator's state lock, so no model call may be opened
+        here.  Without it a judge-requiring plan reports ``unverified`` and
+        never ``completed``.
+        """
         completed_tasks = [task for task in plan.tasks.values() if task.state == TaskNodeState.COMPLETED]
         failed_tasks = [task for task in plan.tasks.values() if task.state == TaskNodeState.FAILED]
         cancelled_tasks = [task for task in plan.tasks.values() if task.state == TaskNodeState.CANCELLED]
@@ -240,8 +256,19 @@ class SwarmAggregator:
         # caller cannot drift from the module that computes them.
         quality_gate = evaluate_quality_gate(deliverable_text, criteria)
         plan.final_result = deliverable_text
-        score = quality_gate.get("score")
-        plan.quality_score = float(score) if isinstance(score, (int, float)) else 0.0
+        # Phase 3.3: ``quality_score`` is measured by the rubric judge and by
+        # nothing else.  The keyword gate above still answers its own question
+        # in the report (``result["quality_gate"]``, advisory and stamped by
+        # the gate itself), but its number no longer masquerades as a quality
+        # measurement.  A plan that never opted into a judge reports ``None``
+        # — "not judged" — rather than a fabricated score.
+        if judge_required(plan.acceptance_mode):
+            plan.judge_report = run_acceptance_judge(plan, invoke=judge_invoke, model=judge_model)
+            judge_score = plan.judge_report.get("score")
+            plan.quality_score = float(judge_score) if isinstance(judge_score, (int, float)) else None
+        else:
+            plan.judge_report = {}
+            plan.quality_score = None
 
         if not plan.tasks:
             # A plan with no nodes executed no work; it can never be completed.
@@ -267,6 +294,17 @@ class SwarmAggregator:
         else:
             plan.status = "completed"
 
+        # Phase 3.3 acceptance gate: a judge that ran and did not pass may
+        # never read as ``completed``, whatever the execution ladder above
+        # concluded — "completed requires accepted tasks" now holds for the
+        # model judgement as well as the per-task one.  The guard can only
+        # *demote*: a judge withholds acceptance, it never grants status the
+        # task facts did not already earn.
+        judge_verdict = plan.judge_report.get("verdict") if plan.judge_report else None
+        if plan.status == "completed" and judge_verdict is not None and judge_verdict != VERDICT_PASSED:
+            plan.status = "partial_success"
+            plan.terminal_reason = "judge_unverified" if judge_verdict == VERDICT_UNVERIFIED else "judge_rejected"
+
         # The team report is composed LAST, after the terminal status is
         # decided, so the `execution_status` it prints is the final one rather
         # than the transient `aggregating` the plan held a moment earlier. It
@@ -280,7 +318,11 @@ class SwarmAggregator:
         return {
             "deliverable": deliverable_text,
             "quality_gate": quality_gate,
-            "quality_basis": "task_facts_v2; keyword gate is advisory and never decides status",
+            # The judge's report travels with every aggregate result so a
+            # caller can tell "judged and passed" from "never judged" without
+            # reading ``quality_score`` alone (empty = no judge ran).
+            "judge": dict(plan.judge_report),
+            "quality_basis": "task_facts_v2; quality_score is judge-measured only (None = not judged); the keyword gate is advisory and never decides status",
             "completed_tasks": len(completed_tasks),
             "failed_tasks": len(failed_tasks),
             "cancelled_tasks": len(cancelled_tasks),

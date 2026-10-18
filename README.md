@@ -562,6 +562,14 @@ make doctor    # verify the environment
 - **Swarm acceptance in Team Ops** — each task shows the Gateway's typed
   acceptance verdict. A completed task with no declared criteria is explicitly
   labeled unverified; task completion alone is never presented as proof.
+- **Opt-in rubric acceptance judge** — `acceptance_mode: "judge"` (or `"both"`)
+  runs a bounded rubric judge over the goal and per-task evidence, and
+  `quality_score` becomes that judge's measurement; the default `"evidence"`
+  mode runs no model call, so the Team Ops score renders as unmeasured (null)
+  until a judge measures it. Keyword overlap remains an advisory figure in the
+  report and never sets the score. A judge that fails, returns junk, or never
+  ran reports `unverified` — never a pass — and a plan the judge did not accept
+  cannot reach `completed`.
 - **Specialist report citation audit** — swarm tasks cross-check cited receipt
   IDs against the specialist's recorded tool calls. Missing or unresolved
   citations are surfaced as uncorroborated; a resolved call receipt is execution

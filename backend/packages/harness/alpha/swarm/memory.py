@@ -11,6 +11,7 @@ import time
 from typing import Any
 
 from alpha.bots.events import get_org_event_store
+from alpha.swarm.judge import VERDICT_PASSED
 from alpha.swarm.models import SwarmPlan
 
 logger = logging.getLogger(__name__)
@@ -131,9 +132,26 @@ class SwarmMemoryManager:
     # -- Tier 3: Organization Memory Promotion ---------------------------
 
     def promote_to_org_memory(self, swarm_id: str, plan: SwarmPlan, min_quality: float = 0.8) -> bool:
-        """Promotes verified deliverables to permanent organization memory only if passing quality gate."""
-        if plan.quality_score < min_quality or not plan.final_result:
-            logger.info(f"Swarm {swarm_id} deliverable quality ({plan.quality_score:.2f}) below promotion threshold ({min_quality:.2f}). Skipped.")
+        """Promotes a deliverable to permanent organization memory only when a
+        measured quality score clears the threshold.
+
+        Phase 3.3: ``quality_score`` is judge-measured, so ``None`` means no
+        judge ever ran — an unmeasured deliverable is never promoted, and never
+        logged as a fabricated 0.0 quality figure.  A recorded judge verdict
+        other than ``passed`` blocks promotion for the same reason: a
+        deliverable the judge left ``unverified`` or rejected is not accepted
+        work.
+        """
+        verdict = plan.judge_report.get("verdict") if plan.judge_report else None
+        if verdict is not None and verdict != VERDICT_PASSED:
+            logger.info(f"Swarm {swarm_id} acceptance verdict is '{verdict}'; promotion requires an accepted deliverable. Skipped.")
+            return False
+        score = plan.quality_score
+        if score is None:
+            logger.info(f"Swarm {swarm_id} deliverable has no judged quality score (no judge ran); promotion needs a measured score >= {min_quality:.2f}. Skipped.")
+            return False
+        if score < min_quality or not plan.final_result:
+            logger.info(f"Swarm {swarm_id} deliverable quality ({score:.2f}) below promotion threshold ({min_quality:.2f}). Skipped.")
             return False
 
         # Record into permanent organizational event store
@@ -145,10 +163,10 @@ class SwarmMemoryManager:
             details={
                 "swarm_id": swarm_id,
                 "goal": plan.goal,
-                "quality_score": plan.quality_score,
+                "quality_score": score,
                 "speedup_factor": plan.estimated_speedup,
                 "deliverable_summary": plan.final_result[:500],
             },
         )
-        logger.info(f"Swarm {swarm_id} successfully promoted to Organization Memory with score {plan.quality_score:.2f}.")
+        logger.info(f"Swarm {swarm_id} successfully promoted to Organization Memory with score {score:.2f}.")
         return True

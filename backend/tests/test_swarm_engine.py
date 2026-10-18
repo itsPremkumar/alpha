@@ -201,7 +201,13 @@ def test_swarm_aggregator_conflict_and_deduplication():
     assert result["conflicts_detected"] >= 1
     assert "Reconciled Contradictions" in result["deliverable"]
     assert plan.status in ("completed", "partial_success")
-    assert plan.quality_score > 0.0
+    # Phase 3.3: ``quality_score`` is judge-measured only.  This plan never
+    # asked for a judge (``acceptance_mode`` defaults to ``evidence``), so the
+    # honest answer is "not judged" — the advisory keyword gate must no longer
+    # fill the score in behind the report's back.
+    assert plan.quality_score is None
+    assert plan.judge_report == {}
+    assert result["judge"] == {}
 
 
 # 6. Master Coordinator Lifecycle & Checkpointing
