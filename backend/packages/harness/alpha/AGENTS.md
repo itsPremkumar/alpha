@@ -500,6 +500,38 @@ autostart may register `Alpha_Update`, but the policy is the kill switch. Comman
 `make update-status|check|apply|recover`. Operations and recovery:
 `docs/AUTO_UPDATE.md`; tests `backend/tests/test_auto_update.py`.
 
+## Recursive harness improvement (`harness_improvement/`)
+
+`alpha.harness_improvement` implements the Harness²-inspired method of
+`docs/ALPHA_HARNESS2_IMPLEMENTATION_GUIDE.md`: one improvement run snapshots the
+editable harness as an immutable content-addressed `HarnessBundle`, probes
+candidate diffs in isolated workspaces, contrasts them against the baseline,
+composes the cheapest evidence-supported successor, and **never promotes
+anything itself** — promotion is a separate gated ladder. A candidate is a new
+bundle whose parent is the baseline, never an edit to the active one.
+
+The three rules most likely to be broken by a well-meaning change: **a gate
+that did not run is not a gate that passed** (`NOT_RUN`/unmeasured is never a
+pass, a required approval flag survives `force`, and the regression-suite gate
+refuses because the Gateway runs no suite); **the engine never fabricates a
+result** (no executor/editor is wired in production, so a run parks at
+`BLOCKED` naming the missing collaborator); and **"no change" is a valid
+composition** (an unsupported edit is rejected with its reason and the baseline
+is retained as the successor).
+
+The production posture is machine-readable: the Gateway wires no executor,
+editor or baseline provider, and `GET /api/harness/status` carries a
+`harness_capability` row (`state: absent`, `smart: false`) naming the wiring a
+deployment would have to add — reachable even while the feature is disabled,
+because the client checking whether this plane *can* execute is the one that
+should be told first. `POST /api/harness/runs` refuses with
+`409 harness_baseline_absent` rather than parking a run that could never
+progress. Full contract, ladder, store honesty rules and the HTTP surface:
+**[harness_improvement/AGENTS.md](harness_improvement/AGENTS.md)**. Frontend
+surface: the Harness Lab workspace view. Tests:
+`backend/tests/test_harness_improvement_{engine,patches,config,promotion,router}.py`
+(all offline, scripted actors, zero model calls).
+
 ## Peer network boundary
 
 `alpha.peer_network` is the single harness owner for cross-installation Alpha

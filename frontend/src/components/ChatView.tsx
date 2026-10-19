@@ -411,6 +411,17 @@ const ExecutionModesSection = dynamic(
     })),
   { loading: () => <SectionFallback /> },
 );
+// The recursive harness improvement lab. Executes nothing in a production
+// posture (no executor/editor/baseline provider is wired) and promotes nothing
+// on its own: the promotion ladder is read from the Gateway and every mutation
+// re-reads the authoritative views.
+const HarnessLabSection = dynamic(
+  () =>
+    import("@/components/sections/HarnessLabSection").then((m) => ({
+      default: m.HarnessLabSection,
+    })),
+  { loading: () => <SectionFallback /> },
+);
 const ForgeSection = dynamic(
   () =>
     import("@/components/sections/ForgeSection").then((m) => ({
@@ -3757,6 +3768,10 @@ export default function ChatView({
             ) : view === "execution-modes" ? (
               <Suspense fallback={<SectionFallback />}>
                 <ExecutionModesSection onOpenView={(target) => setView(target as WorkspaceView)} />
+              </Suspense>
+            ) : view === "harness-lab" ? (
+              <Suspense fallback={<SectionFallback />}>
+                <HarnessLabSection />
               </Suspense>
             ) : view === "supervisor" ? (
               <Suspense fallback={<SectionFallback />}>

@@ -1,6 +1,6 @@
 {
  "version": "1.0",
- "generated_at": "2026-10-18T15:15:12Z",
+ "generated_at": "2026-10-18T15:57:56Z",
  "generator": "backend/scripts/generate_feature_manifest.py",
  "tools": [
   {
@@ -1414,6 +1414,14 @@
    "state": "wired"
   },
   {
+   "id": "app.gateway.routers.harness",
+   "module": "app.gateway.routers.harness",
+   "symbol": "router",
+   "wiring_point": "app.gateway.app:include_router",
+   "wired": true,
+   "state": "wired"
+  },
+  {
    "id": "app.gateway.routers.input_polish",
    "module": "app.gateway.routers.input_polish",
    "symbol": "router",
@@ -2511,6 +2519,11 @@
     "continual",
     "continuous"
    ]
+  },
+  {
+   "id": "alpha.harness_improvement",
+   "kind": "package",
+   "submodules": []
   },
   {
    "id": "alpha.integrations",

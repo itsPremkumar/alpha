@@ -92,6 +92,7 @@ source for exact route mappings and honest display states.
 | Sentinel repair and reports | `components/sections/SentinelSection.tsx`, `lib/sentinel.ts` | `lib/sentinel.test.mjs`, `lib/sentinel-view.test.mjs` |
 | Side-effect journal | `components/sections/EffectsSection.tsx`, `lib/side-effects.ts` | `lib/side-effects.test.mjs`, `lib/effects-view.test.mjs` |
 | Completion gates | `components/sections/CompletionSection.tsx`, `lib/completion.ts` | `lib/completion.test.mjs`, `lib/completion-view.test.mjs` |
+| Harness Lab (recursive harness improvement) | `components/sections/HarnessLabSection.tsx`, `lib/harness-lab.ts` | `lib/harness-lab.test.mjs`, `lib/harness-lab-view.test.mjs` |
 | Mod kernel | `components/sections/ModsSection.tsx`, `lib/mods.ts` | `lib/mods.test.mjs`, `lib/mods-view.test.mjs` |
 | Memory overview, extraction health and L1 capture status | `components/sections/MemorySection.tsx`, `lib/memory.ts` | `lib/memory.test.mjs` |
 | Specialist catalog and orchestration controls | subagent catalog, composer selectors, Team Ops swarm DAG, per-task acceptance and receipt-citation audit display | `lib/subagent-catalog-view.test.mjs`, `lib/swarm-structure-view.test.mjs`, `lib/swarm-structure-wiring.test.mjs` |

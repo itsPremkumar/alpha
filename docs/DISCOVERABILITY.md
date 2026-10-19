@@ -113,7 +113,7 @@ in this repository:
 
 ### 2.4 Collapsible depth
 
-The README keeps exhaustive catalogs - 127 engines, 24 skills, the full
+The README keeps exhaustive catalogs - 128 engines, 24 skills, the full
 architecture — inside `<details>` blocks, so the answer-first content dominates the
 first screen while the reference depth stays one click away. This serves humans and
 retrieval-based agents equally.
@@ -138,7 +138,7 @@ registries and enforced by CI:
 python backend/scripts/generate_feature_manifest.py   # -> contracts/feature_manifest.json
 ```
 
-`contracts/feature_manifest.json` pins 140 tools, 75 routers, 49 middleware modules, and 13
+`contracts/feature_manifest.json` pins 140 tools, 76 routers, 49 middleware modules, and 13
 supervisor loops, and the generated-drift gate fails the build if the *generated
 artifact* and a fresh regeneration disagree. That gate byte-compares
 `contracts/feature_manifest.json` against its own generator's output

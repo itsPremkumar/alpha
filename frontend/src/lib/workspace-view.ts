@@ -75,6 +75,11 @@ export const WORKSPACE_VIEW_IDS = [
   // `?view=execution-modes` silently falls back to `chat` while the nav offers a
   // tab that appears to go nowhere.
   "execution-modes",
+  // The recursive harness improvement lab (bundle tree, promotion ladder,
+  // experience library, budget ledger). Declared for the same reason as the ids
+  // above: without this entry the view falls back to `chat` while the nav
+  // offers a tab that appears to go nowhere.
+  "harness-lab",
 ] as const;
 
 export type WorkspaceView = (typeof WORKSPACE_VIEW_IDS)[number];

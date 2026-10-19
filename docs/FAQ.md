@@ -22,7 +22,7 @@ Nginx reverse proxy on port `2026`. Maintained by
 ### Is Alpha a framework or a finished application?
 
 Both. It ships as a finished, self-hostable application, and its agent framework is
-also importable as `alpha-harness` (import name `alpha.*`) with 127 engine
+also importable as `alpha-harness` (import name `alpha.*`) with 128 engine
 modules you can use to build your own runtime.
 
 ### Is Alpha a chatbot?
@@ -138,8 +138,8 @@ Discord, Buzz, and Signal.
 
 ### How many tools, skills, routers, and middlewares ship?
 
-140 native tools, Gateway 75 routers, 49 middleware modules, and 13 background
-supervisor loops, plus 24 public skills and 127 harness engine packages. Tools,
+140 native tools, Gateway 76 routers, 49 middleware modules, and 13 background
+supervisor loops, plus 24 public skills and 128 harness engine packages. Tools,
 routers, middleware, loop, and engine package counts are generated into
 [`contracts/feature_manifest.json`](../contracts/feature_manifest.json) and checked
 by CI. [`ENGINE_INVENTORY.md`](../ENGINE_INVENTORY.md) adds package size and tier

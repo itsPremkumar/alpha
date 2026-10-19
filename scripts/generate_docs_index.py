@@ -170,6 +170,11 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
         "Research-backed plan mapping Tencent Hy-Memory 2.0's dual-process memory features onto Alpha's implemented stacks, with EXISTS/PARTIAL/ABSENT verdicts, "
         "phased default-off adoption phases, not-adopting list, and honesty boundaries.",
     ),
+    "ALPHA_HARNESS2_IMPLEMENTATION_GUIDE.md": DocumentSpec(
+        "plans",
+        "Implementation guide for the Harness²-inspired recursive harness improvement subsystem: immutable harness bundles, proposal validation, isolated probes, "
+        "contrast reports, conservative composition, the gated promotion ladder, budgets and redaction, adapted to Alpha's Python runtime.",
+    ),
     "MEMORY_RUNTIME_AUDIT.md": DocumentSpec(
         "architecture",
         "Evidence-backed map of Alpha memory types, stores, capture and recall wiring, configuration gates, tests, current runtime limits and the recommended first vertical slice.",
@@ -189,6 +194,10 @@ FILE_OVERRIDES: dict[str, DocumentSpec] = {
     "CAPABILITY_MESH.md": DocumentSpec(
         "operations",
         "Operating the capability mesh: the 23 library modules by phase, the model's 12 actions, the HTTP routes, the default-off config slice, and the honesty boundaries that make a preview read as a preview.",
+    ),
+    "HARNESS_LAB.md": DocumentSpec(
+        "operations",
+        "Operating Alpha's recursive harness improvement (Harness²-inspired): the run lifecycle, bundle and promotion contracts, the executor-absent production posture, the HTTP routes, configuration, and the Harness Lab workspace view.",
     ),
     "ADVANCED_MULTI_AGENT_BUILD_PLAN.md": DocumentSpec(
         "plans",

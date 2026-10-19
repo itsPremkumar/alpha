@@ -56,6 +56,7 @@ from app.gateway.routers import (
     goal_integrity,
     group_coordination,
     groups,
+    harness,
     input_polish,
     integrations,
     intelligence,
@@ -1371,6 +1372,12 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Predictive RSI: the read-only operator surface over the advisory forecast
     # ledger. It exposes posture and calibration and mutates nothing.
     app.include_router(predictive_rsi.router)
+    # Recursive harness improvement (Harness²-inspired): run state machine,
+    # immutable bundle tree, experience library, promotion ladder and budgets.
+    # The Gateway wires no executor/editor/baseline provider, so nothing here
+    # executes a candidate; the posture endpoint says so in machine-readable
+    # form and a start attempt refuses naming the missing wiring.
+    app.include_router(harness.router)
     app.include_router(swarms.router)
     # The run-scoped task projection (Bot Mode 3.5): one read over every
     # engine's tasks for a run, in the neutral `alpha.tasks` contract. The

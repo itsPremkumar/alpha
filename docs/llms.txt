@@ -27,7 +27,7 @@ the [root `/llms.txt`](../llms.txt); for expanded context see
 
 ## Architecture
 
-- [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 127 harness engine packages.
+- [Architecture](https://github.com/itsPremkumar/alpha/blob/main/docs/ARCHITECTURE.md): runtime planes, the middleware chain, sandbox tiers, and the 128 harness engine packages.
 - [Arena tournaments](https://github.com/itsPremkumar/alpha/blob/main/docs/ARENA.md): one task, N strategy-carded sub-agents, a durable single-elimination bracket with the call arithmetic, confirmation gate, judge blinding, hard gates, and the honest limits of what a tournament proves.
 - [Capability mesh](https://github.com/itsPremkumar/alpha/blob/main/docs/CAPABILITY_MESH.md): the 23 library modules by phase, the 12 model-tool actions (one write), the `/api/capability-mesh` routes, the `enabled: false` config slice, and the honesty boundaries — a read/preview plane where nothing is dispatched.
 - [Group-relative orchestration](ALPHA_GRPO_INSPIRED_ORCHESTRATION_PLAN.md): a bounded group of candidate attempts under distinct strategies, absolute-gate eligibility (relative rank only ranks the eligible), one bounded repair round, and an explicit UNVERIFIED partial result when nothing passes; `swarm` tool `compete`/`compete_status`, off by default behind `gro.enabled`.

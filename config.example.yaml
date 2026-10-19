@@ -39,7 +39,7 @@
 # resolved every one of them to no model and booted with a WARNING saying so.
 # A merge-only upgrade cannot add the key to a file that already sits at the
 # previous version, so this needs its own version to reach existing installs.
-config_version: 64
+config_version: 65
 
 # ============================================================================
 # Logging
@@ -4897,6 +4897,53 @@ gro:
   require_final_verification: true   # re-check the winner's gates before reporting it
   relative_rank_is_tiebreaker_only: true  # pinned by design: rank orders eligible candidates only
   require_approval_for_external_side_effects: true  # external/destructive work needs a human first
+
+# ============================================================================
+# Recursive harness improvement (Harness²-inspired; method guide in
+# docs/ALPHA_HARNESS2_IMPLEMENTATION_GUIDE.md). Active harnesses are immutable,
+# content-addressed bundles; improvement runs store a baseline trace, general
+# and task/domain proposals with falsifiable hypotheses, isolated probes,
+# deterministic contrast, and a conservative composition that keeps the baseline
+# when evidence is weak. The experience library is separate from conversation
+# memory, and promotion is a gated ladder with atomic activation and rollback.
+# Default OFF: every surface refuses with the reason named while disabled, and a
+# run with no executor/editor wired parks honestly instead of faking work.
+# Runtime guardrails and permissions are never part of the editable surface.
+# Ceilings below are refused, never clamped.
+# ============================================================================
+harness_improvement:
+  enabled: false                # master switch; off = every surface refuses with the reason named
+  mode: "sequential"            # the only implemented mode; any other value is refused by name
+  max_steps: 1                  # improvement cycles per run
+  max_candidates_per_scope: 1   # candidate proposals per scope (general and task/domain)
+  max_concurrent_probes: 1      # probes running at once; candidate count multiplies cost
+  max_wall_time_seconds: 300    # whole-run wall-clock ceiling
+  max_tool_calls_per_probe: 60  # tool calls one probe may spend
+  max_model_turns_per_probe: 80 # model turns one probe may spend
+  max_diff_files: 8             # files one candidate proposal may touch; a bigger diff is refused, never truncated
+  max_changed_bytes: 32768      # changed bytes one candidate proposal may total; refused, never truncated
+  max_model_calls: 24           # measured model-call ceiling for the whole run; null = unstated
+  max_cost_usd: null            # measured cost ceiling in USD; null = unstated. Unreported usage leaves the dimension unenforceable, and that is reported, never read as "under budget".
+  max_experience_entries_in_context: 5   # bounded experience-library reads a later run may load
+  min_evidence_for_positive_lesson: 1    # distinct evidence refs a positive lesson needs before it is stored
+  model: null                   # optional model name from `models[]` probes and the successor run use; null = runtime default. Validated at load.
+  seed: null                    # optional fixed seed recorded in every probe environment; null = unstated
+
+  sandbox:
+    isolate_filesystem: true    # every probe gets its own workspace root
+    isolate_memory_writes: true # probes cannot write durable memory; lessons go through the experience library only
+    allow_external_side_effects: false  # on = explicit opt-in for externally visible effects
+    network_mode: "deny_by_default"     # or "allow" (explicit operator opt-in); recorded in every probe environment
+    allow_candidate_middleware_changes: false          # on = candidates may propose middleware edits
+    allow_candidate_guardrail_policy_changes: false    # on = guardrail *guidance* edits allowed; the enforced policy core stays non-editable either way
+
+  promotion:
+    automatic_global_promotion: false   # on = a fully gated candidate may promote without a human step; privileged kinds still need approval
+    require_regression_suite: true      # promotion without a passing regression suite is refused, naming the missing suite
+    require_human_approval_for_scripts: true
+    require_human_approval_for_middleware: true
+    require_human_approval_for_permissions: true
+    keep_last_known_good: true          # the prior active bundle stays addressable, so rollback always has a target
 
 # ============================================================================
 # Swarm engine operator policy. A Gateway restart cannot know which worker still

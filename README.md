@@ -116,7 +116,7 @@ In one sentence:
 | **Current version** | `2.1.0` |
 | **Language / runtime** | Python 3.12+ (backend), TypeScript (frontend) |
 | **Agent runtime** | LangGraph (async, checkpointed, interruptible) |
-| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 74 routers |
+| **Gateway** | FastAPI 0.115+ / Starlette / Uvicorn — 76 routers |
 | **Startup imports** | Checkpoint and deferred-tool implementations load when their route or prompt path is used, not while importing the Gateway router modules. |
 | **Frontend** | Next.js 15 (App Router) + React 19 + Tailwind |
 | **Desktop app** | Electron (Windows), self-contained runtimes, one-click NSIS installer |
@@ -130,7 +130,7 @@ In one sentence:
 | **Public skills** | 24 in `skills/public/` |
 | **Integrations** | Telegram, Slack, Feishu/Lark, WeChat, WeCom, DingTalk, Discord, Buzz, Signal, GitHub webhooks, MCP, generic REST |
 | **API compatibility** | OpenAI-compatible `POST /api/compat/openai/chat/completions` |
-| **Harness subsystems** | 127 engine packages under `backend/packages/harness/alpha/` (counted in [`contracts/feature_manifest.json`](contracts/feature_manifest.json); per-package detail: [`ENGINE_INVENTORY.md`](ENGINE_INVENTORY.md)) |
+| **Harness subsystems** | 128 engine packages under `backend/packages/harness/alpha/` (counted in [`contracts/feature_manifest.json`](contracts/feature_manifest.json); per-package detail: [`ENGINE_INVENTORY.md`](ENGINE_INVENTORY.md)) |
 | **Backend tests** | pytest suite under `backend/tests/` (1,000+ test modules) |
 | **License** | MIT |
 
@@ -1045,9 +1045,9 @@ exactly-once execution.
 </details>
 
 <details>
-<summary><b>Full subsystem map (127 harness engines)</b></summary>
+<summary><b>Full subsystem map (128 harness engines)</b></summary>
 
-Each of the 127 engine packages under `backend/packages/harness/alpha/` (counted in
+Each of the 128 engine packages under `backend/packages/harness/alpha/` (counted in
 `contracts/feature_manifest.json`; `backend/` and `scratch/` sit outside that package
 directory) is a dedicated engine:
 
@@ -1056,7 +1056,7 @@ directory) is a dedicated engine:
 `commands` `community` `company` `company_os` `computer_use` `config` `consequence` `context`
 `council` `critic` `debugging` `deepagent` `deliberation` `diagnostics` `editing`
 `enterprise` `epistemics` `errors` `evaluation` `events` `evidence` `evolution`
-`extensions` `goals` `governance` `groups` `guardrails` `harness` `integrations`
+`extensions` `goals` `governance` `groups` `guardrails` `harness` `harness_improvement` `integrations`
 `jobs` `kanban` `knowledge` `learning` `ledger` `lineage` `mcp` `media` `memory`
 `metacognition` `metacompiler` `mission` `missions` `models` `multimodal`
 `observability` `ops` `orchestration` `orchestrator` `peer_network` `perpetual`
@@ -1218,7 +1218,7 @@ it sees that.
 | [docs/USE_CASES.md](docs/USE_CASES.md) | End-to-end jobs and the subsystem behind each |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Runtime planes, middleware chain, engine map |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every setting, resolved order, env vars |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 74 Gateway routers, SSE events, auth |
+| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All 76 Gateway routers, SSE events, auth |
 | [docs/SECURITY.md](docs/SECURITY.md) | Enclave, approvals, sandbox boundaries, threat model |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, Helm, Nginx, Windows installer |
 | [docs/PRODUCTION.md](docs/PRODUCTION.md) | Runbook, probes, `/api/ops/*`, disaster recovery |
@@ -1293,7 +1293,7 @@ scanning, while continuing to watch the project tree.
 Three contracts are worth calling out because they are unusual and load-bearing:
 
 - **`contracts/feature_manifest.json`** is generated from the live registries and
-  pins all 140 tools, 75 routers, 49 middleware modules, and 13 supervisor loops. CI fails
+  pins all 140 tools, 76 routers, 49 middleware modules, and 13 supervisor loops. CI fails
   on drift **of that generated artifact** (`scripts/check_generated_drift.py`
   byte-compares it against a fresh regeneration), so the manifest cannot silently
   rot. The gate does not read Markdown: a prose count elsewhere is still checked

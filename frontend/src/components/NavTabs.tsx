@@ -40,6 +40,7 @@ import {
   ListOrdered,
   ClipboardCheck,
   Route,
+  FlaskConical,
 } from "lucide-react";
 
 // Every member of this union is one quarter of the four-place wiring rule: a
@@ -93,6 +94,12 @@ export type WorkspaceView =
   // interleaved into it. (No quoted ids in here: `unionIds()` reads every quoted
   // token between the union and the first semicolon.)
   | "execution-modes"
+  // The recursive harness improvement lab. It goes here (immediately above the
+  // completion entry below, never inside or after the sentinel/effects/
+  // reliability triple) because that triple is pinned as a contiguous run and
+  // the last member is pinned as terminal. (No quoted ids in here: `unionIds()`
+  // reads every quoted token between the union and the first semicolon.)
+  | "harness-lab"
   // The Alpha Mod Kernel's operator surface. It sits *here* rather than at the
   // end for two reasons: `reliability-view.test.mjs` pins reliability as the
   // terminal member of this union, and `sentinel-view.test.mjs` plus
@@ -164,6 +171,7 @@ export const WORKSPACE_TABS: WorkspaceTabItem[] = [
   { id: "intelligence", label: "Intelligence", icon: <Gauge className="size-3.5" />, blurb: "Control plane: loop health, evidence, metrics & honesty basis", category: "system" },
   { id: "sentinel", label: "Sentinel", icon: <ShieldAlert className="size-3.5" />, blurb: "Repair loop: observed faults, verified fixes, reverts & human handoffs", category: "system" },
   { id: "effects", label: "Effects", icon: <ScrollText className="size-3.5" />, blurb: "Effect journal: external effects, digests & reconciliation verdicts", category: "system" },
+  { id: "harness-lab", label: "Harness Lab", icon: <FlaskConical className="size-3.5" />, blurb: "Recursive harness improvement: candidate bundles, contrasts, the promotion ladder & budgets", category: "system" },
   { id: "completion", label: "Completion", icon: <ClipboardCheck className="size-3.5" />, blurb: "Acceptance contracts: scope, gates, evidence & the finalization guard", category: "system" },
   { id: "mods", label: "Mods", icon: <ListOrdered className="size-3.5" />, blurb: "Mod kernel: ordered policy chain, commands, audit ledger, holds & impact preview", category: "system" },
   { id: "settings", label: "Settings", icon: <Settings className="size-3.5" />, blurb: "Model selection, theme, API diagnostics", category: "system", isPrimary: true },

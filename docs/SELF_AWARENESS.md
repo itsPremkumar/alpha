@@ -229,8 +229,8 @@ read the generated `contracts/feature_manifest.json`; `models` reads the live
 `scripts/check_generated_drift.py`, so a registry that formed its own opinion would
 be an unreviewed second answer to a question the build already settles — the exact
 drift class that has bitten this repo repeatedly (89 → 97 → 99 engines, 127 → 130 →
-134 tools, 55 → 57 → 60 → 61 routers, 8 → 9 loops; today **127 engines, 139
-declared tools, 74 routers, 13 loops**). The gate byte-compares the artifact
+134 tools, 55 → 57 → 60 → 61 routers, 8 → 9 loops; today **128 engines, 140
+declared tools, 76 routers, 13 loops**). The gate byte-compares the artifact
 against its generator's output and never reads prose, so a count written in
 Markdown — including in this file — is verified by hand against the manifest,
 not by CI.

@@ -32,6 +32,7 @@ EXPECTED_GUIDANCE_PATHS = {
     "backend/packages/harness/alpha/goals/AGENTS.md",
     "backend/packages/harness/alpha/grounding/AGENTS.md",
     "backend/packages/harness/alpha/groups/AGENTS.md",
+    "backend/packages/harness/alpha/harness_improvement/AGENTS.md",
     "backend/packages/harness/alpha/memory/prospective/AGENTS.md",
     "backend/packages/harness/alpha/intelligence/AGENTS.md",
     "backend/packages/harness/alpha/peer_network/AGENTS.md",

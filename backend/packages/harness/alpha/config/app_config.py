@@ -83,6 +83,7 @@ from alpha.config.voice_config import VoiceConfig
 from alpha.evolution.evidence.config import EvolutionEvidenceConfig
 from alpha.extensions.loader import ExtensionSpec
 from alpha.gro.config import GroConfig
+from alpha.harness_improvement.config import HarnessImprovementConfig
 from alpha.intelligence.config import IntelligenceConfig
 
 load_dotenv()
@@ -484,6 +485,16 @@ class AppConfig(BaseModel):
             "bounded failure-directed repair round, never 'the best of a bad lot, verified'. Ceilings here "
             "are refused, never clamped, and externally-visible or destructive work resolves to human "
             "approval before any candidate executes."
+        ),
+    )
+    harness_improvement: HarnessImprovementConfig = Field(
+        default_factory=HarnessImprovementConfig,
+        description=(
+            "Recursive harness improvement (alpha.harness_improvement, docs/ALPHA_HARNESS2_IMPLEMENTATION_GUIDE.md): "
+            "versioned harness bundles, evidence-gated proposals/probes/contrast/composition, the experience library and "
+            "the promotion ladder. Default OFF; while disabled every surface refuses with the reason named. Runtime "
+            "guardrails and permissions stay outside the model-editable surface, promotion needs the configured gates, "
+            "and rollback restores the prior known-good harness."
         ),
     )
     specialists: SpecialistCatalogConfig = Field(
@@ -911,6 +922,7 @@ class AppConfig(BaseModel):
         self._validate_default_model()
         self._validate_model_routing()
         self._validate_specialists()
+        self._validate_harness_improvement()
         return self
 
     def _validate_model_routing(self) -> None:
@@ -1019,6 +1031,26 @@ class AppConfig(BaseModel):
         specialist per task does not scan the list.
         """
         return self._specialists_by_name.get((name or "").strip().lower())
+
+    def _validate_harness_improvement(self) -> None:
+        """Fail closed when ``harness_improvement.model`` names a model that does not exist.
+
+        The field is deliberately *not* a free string: when a real executor is
+        wired it will resolve this name, and a typo that only surfaces at probe
+        time would let a run start, spend the baseline, and die mid-flight.
+        Only checked when a name is declared and at least one model is
+        configured, matching the other model-name validators.
+        """
+        name = self.harness_improvement.model
+        if name is None:
+            return
+        if not name.strip():
+            raise ValueError("`harness_improvement.model` must be a non-empty model name from `models`, or omitted to keep the runtime default.")
+        if not self.models:
+            return
+        if name not in self._models_by_name:
+            known = ", ".join(m.name for m in self.models) or "<none configured>"
+            raise ValueError(f"`harness_improvement.model: {name}` is not present in `models`. Configured models: {known}.")
 
     def _validate_default_model(self) -> None:
         """Fail closed when ``default_model`` names a model that does not exist.
