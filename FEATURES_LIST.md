@@ -379,6 +379,13 @@ Alpha exposes 454 slash commands across 15 categories, each binding to a real ba
 - **Errors** — error registry and error code management.
 - **Experts** — expert panel and expert management for specialized task routing.
 
+
+- **Mod manifest & describe** — manifest = ModManifest.create(...) declares the contract; describe_mod returns declared and observed side by side with discrepancies list.
+- **Mod durable holds** — pprovals.py::HoldStore is the durable approval queue behind a mod DEFER: atomic JSON, idempotency key, restart-recoverable for one Gateway.
+- **Mod command projection** — mod commands are /command that run with no model turn; projection into Gateway catalog with pruning.
+- **Mod preview** — preview_impact never executes anything; bounded command parsing plus read-only filesystem walk.
+- **Mod replay** — replay records what was on disk verbatim; absent ledger reported as error.
+
 ---
 
-*Generated from the Alpha repository at commit 73ed133. See README.md for the full feature catalog with links, and docs/INDEX.md for the documentation index.*
+*Generated from the Alpha repository at commit 3924358. See README.md for the full feature catalog with links, and docs/INDEX.md for the documentation index.*
