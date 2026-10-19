@@ -347,3 +347,55 @@ class TestPlanAcceptanceGates:
         # the unmeasured tail stays null — never a fabricated terminal state.
         assert died["scenarios"][0]["run_status"] is None
         assert died["scenarios"][0]["delegations"] is None
+
+
+def test_probe_import_survives_a_shadowed_support_package() -> None:
+    """Full-suite collection order regression (found 2026-10-19).
+
+    ``pytest`` puts ``backend/tests/`` on ``sys.path`` first, so any earlier
+    test that does ``from support.detectors import ...`` binds
+    ``sys.modules["support"]`` to **tests/support** — a different package with
+    no ``subagent_probe_report`` submodule. That cache entry wins over the
+    probe's own ``sys.path`` fix, and collection of this module died with
+    ``ModuleNotFoundError: No module named 'support.subagent_probe_report'``
+    while the probe ran standalone (34/34 green) — one poisoned cache entry,
+    two opposite answers.
+
+    The probe must import its own schema anyway and hand the suite's package
+    back untouched afterwards.
+    """
+    import sys
+    import types
+    from pathlib import Path
+
+    tests_support_dir = Path(__file__).resolve().parent / "support"
+    shadow = types.ModuleType("support")
+    shadow.__path__ = [str(tests_support_dir)]  # type: ignore[attr-defined]  # the suite's poisoned binding
+
+    def _support_keys() -> set[str]:
+        return {k for k in sys.modules if k == "support" or k.startswith("support.")}
+
+    prior_support = {k: sys.modules[k] for k in _support_keys()}
+    prior_probe = sys.modules.pop("scripts.subagent_delegation_probe", None)
+    for _name in prior_support:
+        del sys.modules[_name]
+    sys.modules["support"] = shadow
+    try:
+        # Re-executes the probe with the shadow active: without the script's
+        # save/around-import restore this line raises ModuleNotFoundError.
+        import scripts.subagent_delegation_probe as reimported
+
+        assert reimported.validate_report is not None
+        assert reimported.ProbeReport is not None
+        # The suite's package is handed back byte-identical, and the probe's
+        # own freshly bound submodule is not left masquerading under it.
+        assert sys.modules.get("support") is shadow
+        assert "support.subagent_probe_report" not in sys.modules
+    finally:
+        for _name in _support_keys() - set(prior_support):
+            del sys.modules[_name]
+        sys.modules.update(prior_support)
+        if prior_probe is None:
+            sys.modules.pop("scripts.subagent_delegation_probe", None)
+        else:
+            sys.modules["scripts.subagent_delegation_probe"] = prior_probe

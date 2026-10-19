@@ -71,16 +71,34 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from support.subagent_probe_report import (  # noqa: E402
-    TERMINAL_RUN_STATUSES,
-    ProbeReport,
-    ScenarioReport,
-    new_run_id,
-    render_markdown,
-    report_exit_code,
-    to_jsonable,
-    validate_report,
-)
+# Full-suite collection puts backend/tests/ on sys.path first, so an earlier
+# test's `from support.detectors import ...` binds sys.modules["support"] to
+# backend/tests/support — a *different* package — and that cache entry wins
+# over the path fix above (ModuleNotFoundError: support.subagent_probe_report;
+# the probe then fails at collection while running standalone). Bind our own
+# subtree for exactly this import and hand the suite's package back afterwards,
+# so already-imported references and later `support.detectors` imports keep
+# resolving the way the suite established them.
+_SUPPORT_CACHE = {k: v for k, v in sys.modules.items() if k == "support" or k.startswith("support.")}
+for _shadowed in _SUPPORT_CACHE:
+    del sys.modules[_shadowed]
+try:
+    from support.subagent_probe_report import (  # noqa: E402
+        TERMINAL_RUN_STATUSES,
+        ProbeReport,
+        ScenarioReport,
+        new_run_id,
+        render_markdown,
+        report_exit_code,
+        to_jsonable,
+        validate_report,
+    )
+finally:
+    if _SUPPORT_CACHE:
+        for _fresh in [k for k in sys.modules if k == "support" or k.startswith("support.")]:
+            if _fresh not in _SUPPORT_CACHE:
+                del sys.modules[_fresh]
+        sys.modules.update(_SUPPORT_CACHE)
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = BACKEND_ROOT / ".alpha" / "subagent_probe"
@@ -1007,7 +1025,8 @@ async def run_probe(args: argparse.Namespace, scenarios: list[Scenario]) -> tupl
     report.notes.append("queue_wait_seconds is deliberately null everywhere: per-delegation queue wait is uninstrumented until plan W3.a (see UNINSTRUMENTED_FIELDS in scripts/support/subagent_probe_report.py)")
     report.notes.append("live custom task frames count the probe's own SSE consumption; event_persistence compares them against persisted subagent.* rows")
     report.notes.append(
-        "every lead-agent run is created with autonomous=true (RunCreateRequest.autonomous): the server applies subagent_enabled after context sanitisation, so the `task` tool is present and a zero-delegation measurement is about the model, not a missing tool"
+        "every lead-agent run is created with autonomous=true (RunCreateRequest.autonomous): the server applies subagent_enabled after context sanitisation, "
+        "so the `task` tool is present and a zero-delegation measurement is about the model, not a missing tool"
     )
 
     headers = {"Authorization": f"Bearer {args.token}"} if args.token else {}
