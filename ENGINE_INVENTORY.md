@@ -6,8 +6,8 @@
 > hand-maintaining a list that drifts.
 
 - **Packages:** 128
-- **Python files:** 2122
-- **Total lines:** 576336
+- **Python files:** 2123
+- **Total lines:** 576591
 - **Packages with preview/simulated markers:** 30
 
 Tier `preview/partial` means the package's source mentions a preview-only,
@@ -41,8 +41,8 @@ simulated, or unimplemented path — inspect before relying on it as production.
 | `alpha/apex` | 13 | 7107 | core |
 | `alpha/mission` | 19 | 6728 | core |
 | `alpha/graph` | 11 | 6461 | core |
+| `alpha/harness_improvement` | 19 | 6401 | preview/partial |
 | `alpha/completion` | 20 | 6159 | core |
-| `alpha/harness_improvement` | 18 | 6146 | preview/partial |
 | `alpha/projects` | 32 | 6001 | preview/partial |
 | `alpha/arena` | 19 | 5550 | preview/partial |
 | `alpha/peer_network` | 12 | 5415 | core |
