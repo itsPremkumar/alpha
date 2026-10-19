@@ -187,7 +187,10 @@
 - **Failure classification** â€” 19 deterministic `NodeFailureClass` values (auth, rate limit, security block, worker lost, â€¦) disclosing the matching rule.
 - **Company OS** â€” durable multi-tenant organizations indexed over real subsystems; every figure carries a `MeasurementBasis`; a proposal is never an action.
 - **Autonomous AI Software Enterprise** â€” C-Suite hierarchy, mission-to-sprint DAG, RFC/blackboard consensus, token treasury with circuit breakers, multi-sig release attestations.
-- **Nested groups** â€” "visibility may fan out to many parents; authority is at most ONE"; relay with `forwarded_from` provenance and hop guard.
+- **Swarm modes** â€” ten execution topologies: `auto`, `parallel`, `map_reduce`, `scatter_gather`, `hierarchical`, `debate`, `ensemble`, `coding_worktree`, `read_fanout`, `critical_path_split`.
+- **Swarm worker types** â€” `SpecialistSubagentWorker`, `SpecialistBotWorker`, `EphemeralSubagentWorker`, `CodingWorktreeWorker` (isolated git worktree per task).
+- **Subagent types** â€” `general-purpose`, `bash`, `deep-architect`, `deep-code-reviewer`, `deep-debugger`, `deep-performance`, `deep-security`, `deep-test-synthesizer`.
+- **Memory subsystems** â€” 15 memory engines: affective (mood tracking), codebase (AST/structure snapshots), cognitive (belief graph, episodic, semantic, procedural, working), dreaming (consolidation), entities (entity extraction), evaluation (memory quality metrics), fabric (memory fabric), fusion (multi-source fusion), health (extraction health), narrative (narrative memory), policy (memory policy), prospective (reminders/commitments), scenarios (scenario memory), social (social memory), utility (utility scoring), wiki_vault (wiki-style knowledge vault).
 - **Alpha-to-Alpha peer network** â€” cross-installation identity, discovery, pairing, transport, delivery receipts, DM bridging; invites as QR codes; libp2p reports unavailable until real adapter wired.
 - **Free model gateways & fail-closed routing** â€” keyless `alpha-free` routing over daily-refreshed free catalogs; automatic failover; bounded concurrent health probes; async cancellation closes local provider requests; routing table resolving to nothing returns empty chain + reason.
 - **System One computer control** â€” opt-in Windows desktop control where the model returns only semantic element indexes (never coordinates, selectors, keys, typed text); re-observed and locally resolved before sentinel-guarded dispatch; disabled by default.
@@ -264,6 +267,11 @@ Alpha exposes 454 slash commands across 15 categories, each binding to a real ba
 ## 14. APEX, Autonomy & Self-Improvement
 
 - **APEX executive control plane** â€” one autonomy contract, one bounded decision cycle, one read-only status projection and one control surface.
+- **APEX agent roles** â€” `ApexAgentRole` with specialization assessment, delegation limits, isolated workspace requirement, reviewer detection.
+- **APEX agent factory** â€” spawn agents with lifecycle and ephemeral resolution; `AgentSpawnResult` with refusal tracking.
+- **APEX auto-acceptance** â€” automatic acceptance gate with contract validation.
+- **APEX locking** â€” distributed locking for executive decisions.
+- **APEX strategy** â€” strategy resolution and execution planning.
 - **Autonomous upkeep** â€” `run_upkeep_pass()` driver: ingest, reconcile skill lifecycle, replay, verify; degraded verification blocks action.
 - **APEX invariants** â€” fail-loud runtime self-checks; `InvariantRegistry` with named `InvariantCheck`s.
 - **RSI (Recursive Self-Improvement)** â€” predictive RSI with advisory forecasts, calibration metrics (Brier, calibration error, coverage).
@@ -335,6 +343,42 @@ Alpha exposes 454 slash commands across 15 categories, each binding to a real ba
 - **Health checks** â€” `GET /health`, `GET /health/ready` with concurrent ORM engine + checkpointer probes.
 - **CI/CD** â€” backend unit tests, lint, frontend unit tests, replay E2E, drift gate, Windows installer, release.
 
+
+## 16. Additional Engine Subsystems (Deep Dive)
+
+- **Experts** — expert panel and expert management for specialized task routing.
+- **Guardrails** — governance guardrail provider with risk class enforcement, ask fail-closed, malformed declaration fails agent assembly.
+- **Learning** — learning review queue, deferred learning reviews, learning fork reviews.
+- **Metacognition** — kibitzer metacognitive supervision; detects loops, thrashing, prompt drift.
+- **Metacompiler** — metacompiler for self-modifying code generation.
+- **Orchestrator** — swarm orchestrator with adaptive mode selection, deliberation, failure-aware telemetry.
+- **Perpetual daemon** — perpetual daemon heartbeat: discovery, consolidation, stagnation.
+- **Protocols** — A2A protocol adapter, MCP tasks protocol.
+- **Reflection** — reflection engine for post-execution analysis.
+- **Reproduction** — reproduction gates and reproducibility verification.
+- **Rules** — rules engine for policy enforcement.
+- **Scheduler** — swarm scheduler with DAG validation, lease assignment, backoff, stale result fencing.
+- **Skills market** — skills marketplace with supply-chain controls.
+- **Stream JSON** — streaming JSON utilities for real-time data.
+- **System One** — System One decision models (hosted Jev or self-hosted Laya) with confidence gating.
+- **Testing** — automated test & repair, test command execution, traceback parsing.
+- **Tracing** — trajectory flight recorder, lead-agent turn recording.
+- **TUI** — terminal user interface for Alpha.
+- **Wire contracts** — cross-component JSON contracts (subagent status, skill review).
+- **Workspace changes** — workspace change review with pre-run/post-run snapshots, text diffs.
+- **Agency** — agency subsystem for autonomous agent behavior.
+- **Authz** — authorization facade with sandbox execution authorization.
+- **Autoconfig** — automatic configuration management.
+- **Community** — 28 community integrations (agent_eye, aio_sandbox, boxlite, brave, browser_automation, browser_use, browserless, crawl4ai, ddg_search, e2b_sandbox, exa, fastcrw, firecrawl, groundroute, image_search, infoquest, jina_ai, lightrag, opensandbox, ragflow, search_federation, searxng, serper, serply, sofya, tavily, tencent_wsa, tenki).
+- **Company OS** — durable multi-tenant organizations indexed over real subsystems.
+- **Computer use** — System One indexed computer control with UI Automation.
+- **Critique** — critique engine for code and output review.
+- **Debugging** — debugging subsystem for error analysis.
+- **Deepagent** — deep-agent working plane with bounded thread-scoped virtual filesystem.
+- **Epistemics** — epistemic belief evaluation against ground-truth base.
+- **Errors** — error registry and error code management.
+- **Experts** — expert panel and expert management for specialized task routing.
+
 ---
 
-*Generated from the Alpha repository at commit `3d40280`. See `README.md` for the full feature catalog with links, and `docs/INDEX.md` for the documentation index.*
+*Generated from the Alpha repository at commit 73ed133. See README.md for the full feature catalog with links, and docs/INDEX.md for the documentation index.*
