@@ -833,6 +833,13 @@ exactly-once execution.
   cryptographic attestation).
 - **Deterministic token budgeting & cost telemetry** — per-run ceilings and
   real-time spend with cache-aware pricing.
+- **Deterministic security audit** — eight local, offline checks (skill Python
+  AST, transcript credential leakage, tool-allowlist drift, bot capability
+  ceiling, channel webhook auth, swarm worktree path escapes, MCP trust) with
+  severity/evidence findings via `/security audit`, admin-only
+  `POST /api/security/audit`, and `python -m alpha.security.audit --json`. It
+  computes **no aggregate score**: a check that cannot run is disclosed as
+  `not_checked`, never reported clean.
 
 → [docs/SECURITY.md](docs/SECURITY.md)
 </details>

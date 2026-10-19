@@ -976,6 +976,23 @@ def handle_security_review(args: str, context: dict[str, Any] | None = None) -> 
     )
 
 
+def handle_security_audit(args: str, context: dict[str, Any] | None = None) -> CommandExecutionResult:
+    """Runs the deterministic security audit (bot plan 4.4) and returns its report.
+
+    ``alpha.security.audit`` stays imported inside the function so registering
+    the command surface never pays the audit module's import cost.
+    """
+    from alpha.security.audit import render_text, run_security_audit
+
+    report = run_security_audit()
+    return CommandExecutionResult(
+        status="success",
+        command="/security audit",
+        output=render_text(report),
+        data={"report": report.to_dict()},
+    )
+
+
 # ==============================================================================
 # UNIFIED EXECUTION MODE (/mode — WorkSwarm gap 7)
 # ==============================================================================
@@ -1084,6 +1101,7 @@ def register_all_backend_handlers() -> None:
         "/compress": handle_compact,
         "/security-review": handle_security_review,
         "/security review": handle_security_review,
+        "/security audit": handle_security_audit,
         # Self-Improvement Workshop
         "/learn": handle_learn,
         "/moa": handle_moa,

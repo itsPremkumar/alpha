@@ -43,6 +43,11 @@ deploy verification, dashboards, and monitoring gates beyond ``/health`` and
   response and next-turn reserves, plus the larger-window escalation target the
   exhaustion ladder would pick. A model that declares no window reports ``null``
   and is named in ``notes`` rather than silently reading as a small window.
+* ``POST /api/security/audit`` - run the deterministic security audit
+  (``alpha.security.audit``) for an administrator: severity/evidence findings
+  plus an explicit ``scanned`` / ``not_checked`` split. It computes **no
+  aggregate score**, and a check that cannot run is disclosed, never reported
+  clean. The synchronous audit runs off the event loop via ``asyncio.to_thread``.
 """
 
 from __future__ import annotations
@@ -58,6 +63,7 @@ import time
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
@@ -975,3 +981,36 @@ async def ops_context_windows() -> ContextWindowsResponse:
     if escalation_enabled and len(declared_by_name) == len(rows) and len(set(declared_by_name.values())) == 1:
         notes.append("every declared window is the same size, so the ladder has no larger-window escalation target and would fall through to compaction or parking")
     return ContextWindowsResponse(reported=True, reason="context_windows_projected", models=rows, escalation_enabled=escalation_enabled, notes=notes)
+
+
+class SecurityAuditRequest(BaseModel):
+    """Scope for the deterministic security audit (bot plan 4.4)."""
+
+    thread_ids: list[str] = Field(default_factory=list, description="Optional explicit thread ids for the transcript check; empty enumerates recent threads.")
+    max_threads: int = Field(default=10, ge=1, le=200, description="Maximum threads the transcript check enumerates when thread_ids is empty.")
+    max_messages_per_thread: int = Field(default=50, ge=1, le=1000, description="Maximum messages read per thread by the transcript check.")
+
+
+@router.post(
+    "/security/audit",
+    summary="Run the deterministic security audit",
+    description=(
+        "Run the eight local, offline security checks (skill AST audit, transcript credential leakage, tool-allowlist drift, bot capability ceiling, channel webhook auth, "
+        "swarm worktree path escapes, MCP trust) and return severity/evidence findings plus an explicit scanned / not_checked split. No aggregate score is computed, and a "
+        "check that cannot run is disclosed as not_checked, never reported clean. The synchronous audit runs off the event loop via asyncio.to_thread."
+    ),
+)
+async def ops_security_audit(request: Request, body: SecurityAuditRequest | None = None) -> dict[str, Any]:
+    """Run the security audit for an administrator and return its report."""
+    from alpha.security.audit import run_security_audit
+    from app.gateway.deps import require_admin_user
+
+    await require_admin_user(request, detail="The security audit requires an administrator.")
+    scope = body or SecurityAuditRequest()
+    report = await asyncio.to_thread(
+        run_security_audit,
+        thread_ids=list(scope.thread_ids),
+        max_threads=scope.max_threads,
+        max_messages=scope.max_messages_per_thread,
+    )
+    return report.to_dict()

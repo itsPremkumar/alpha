@@ -98,6 +98,7 @@ IMPLEMENTED_COMMANDS: frozenset[str] = frozenset(
         "/loop resume",
         "/loop start",
         "/loop status",
+        "/security audit",
         "/security review",
         "/security-review",
         "/skill create",
@@ -122,7 +123,9 @@ IMPLEMENTED_COMMANDS: frozenset[str] = frozenset(
 # ``status="success"`` with "Directive /help accepted [...]" — a test that
 # certified the lie. 410 was also wrong: it excluded the 14 production handlers
 # bound by ``alpha.mission.goalloop.bindings``.
-NO_HANDLER_ROW_COUNT = 407
+# handler-less rows may do that. 407 -> 406 when `/security audit` (the
+# catalog row added by bot plan 4.4) gained its bound handler.
+NO_HANDLER_ROW_COUNT = 406
 # The 14 ``/apex`` rows added for the autopilot are bound to real
 # handlers, so they deliberately do NOT move this number. Shipping
 # working commands is not a reason the known gap shrank; only closing
