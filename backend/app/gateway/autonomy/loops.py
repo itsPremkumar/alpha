@@ -304,6 +304,34 @@ def memory_upkeep_tick(*, trials: int = 5) -> dict[str, Any]:
     return {"owners_swept": len(systems), "applied": passed, "blocked_by_verification": blocked, "reports": reports}
 
 
+def harness_improvement_maintenance_tick() -> dict[str, Any]:
+    """One experience-library maintenance pass (guide §16 Phase 7).
+
+    Runs the whole-library analysis: supersedes duplicate lessons onto their
+    newest keeper, marks expired entries stale, and reports opposing findings.
+    Analysis and application are both additive — nothing is deleted.  The pass
+    is gated on ``harness_improvement.enabled`` and runs only when an operator
+    has opted in; a disabled plane reports ``skipped`` with the reason.
+    """
+    try:
+        from alpha.config import get_app_config
+
+        config = get_app_config()
+        if not getattr(config, "harness_improvement", None) or not config.harness_improvement.enabled:
+            return {"status": "skipped", "reason": "harness_improvement is disabled"}
+    except Exception as exc:
+        return {"status": "skipped", "reason": f"config unavailable: {exc}"}
+
+    try:
+        from alpha.harness_improvement import HarnessImprovementStore, run_experience_maintenance
+
+        store = HarnessImprovementStore()
+        report = run_experience_maintenance(store, apply=True)
+        return {"status": "completed", "report": report}
+    except Exception as exc:
+        return {"status": "failed", "reason": str(exc)}
+
+
 def enterprise_heartbeat_tick() -> dict[str, Any]:
     """One enterprise heartbeat cycle."""
     from alpha.enterprise.heartbeat import get_enterprise_heartbeat_coordinator

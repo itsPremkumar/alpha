@@ -12,6 +12,15 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **harness2-periodic-revalidation:** Periodic revalidation for the Harness²
+  experience library (guide §16 Phase 7). New
+  ``harness_improvement_maintenance_tick`` in the autonomy supervisor runs
+  the maintenance pass (supersede duplicates, mark expired entries stale,
+  report conflicts) on a 3600s interval, gated on
+  ``harness_improvement.enabled``. The tick is model-free and reports
+  ``skipped`` when the plane is disabled. Tests: autonomy supervisor
+  (24 tests, offline).
+
 - **harness2-parallel-exploration:** Bounded parallel exploration (guide §16
   Phase 6). The engine now accepts ``parallel`` mode in addition to
   ``sequential``. In parallel mode, both proposal scopes (INVARIANT and
