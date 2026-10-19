@@ -290,3 +290,35 @@ class TestGatewayLifespanWiring:
         stop_at = source.index("stall_watchdog.stop")
         assert stop_at > close_at, "the watchdog must stop with admission close, not later"
         assert source.count("ShutdownPhase.ADMISSION_CLOSED,") == 1, "compose into the existing step; register() replaces per phase"
+
+
+async def test_thread_operation_reservations_are_never_stall_claimed():
+    """A non-run thread operation (a checkpoint-write reservation) is fenced by
+    its own lease, never by the stall watchdog.
+
+    ``RunStore.list_inflight`` deliberately includes non-run rows so run
+    admission and its regression tests can see active thread operations
+    (``test_run_repository.py`` asserts one inflight row inside the reservation
+    block), so the exclusion lives at this call site: any row whose
+    ``operation_kind`` is absent (pre-field rows) or not ``run`` is left
+    untouched even when it looks like a stale running run.
+    """
+    clock = FakeClock()
+    store = MemoryRunStore()
+    manager = RunManager(store=store)
+    await store.put(
+        "resv-stale",
+        thread_id="t-resv",
+        status=RunStatus.running,
+        operation_kind="checkpoint_write",
+    )
+    record = await _running_run(manager, store, "t-run")
+    watchdog = RunStallWatchdog(run_manager=manager, run_store=store, settings=RunStallSettings(timeout_seconds=900), now_fn=clock)
+
+    clock.advance(1000)
+    acted = await watchdog.scan_once()
+    assert acted == [record.run_id], "the genuine stalled run is still claimed"
+
+    reservation = await store.get("resv-stale")
+    assert reservation is not None
+    assert reservation["status"] == RunStatus.running, "the reservation is left to its own lease"

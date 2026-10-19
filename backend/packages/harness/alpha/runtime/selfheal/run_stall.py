@@ -114,6 +114,13 @@ class RunStallWatchdog:
         return acted
 
     async def _claim_if_stalled(self, row: dict[str, Any]) -> bool:
+        if row.get("operation_kind", "run") != "run":
+            # ``list_inflight`` deliberately includes thread-operation
+            # reservations (checkpoint writes) so run admission and its
+            # regression tests can see active thread operations; they are
+            # fenced by their own lease, never by this watchdog. Rows
+            # predating the field count as runs.
+            return False
         if row.get("status") != RunStatus.running:
             return False  # pending runs have no heartbeat by design; terminals are done
         run_id = str(row.get("run_id"))
