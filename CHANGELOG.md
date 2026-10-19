@@ -12,6 +12,18 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **a2a-peer-transport:** A2A interop on the existing peer network (bot plan
+  4.1). New `PeerA2ATransport` dispatches delegations as real `task_request`
+  envelopes to paired peers via the peer-network transport, returning
+  `accepted` — never `completed` — because results arrive asynchronously.
+  Fake pre-populated cards (`agent-researcher`, `agent-security-auditor`,
+  `primary-orchestrator`) are removed from both the tool and the router;
+  cards are now built from the real BotRegistry and paired peers. New
+  `POST /api/a2a/tasks` creates a durable inbox message via the peer network
+  service. The A2A protocol adapter now supports async transports.
+  `config.example.yaml` gains `a2a.enabled: false`. Tests:
+  `test_a2a_peer_transport.py` (15 tests, offline).
+
 - **harness2-library-maintenance:** the Harness² experience library gains the
   guide's Phase-7 maintenance pass (`alpha.harness_improvement.maintenance`):
   one whole-library analysis supersedes duplicate lessons onto their newest

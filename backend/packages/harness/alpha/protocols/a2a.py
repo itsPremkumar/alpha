@@ -6,6 +6,7 @@ and inter-agent task delegation across organizations and runtime boundaries.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import time
 import uuid
@@ -147,6 +148,10 @@ class A2AProtocolAdapter:
         # A transport exists: it owns the outcome, including the evidence, and it
         # is the only component permitted to assert that work happened.
         response = self._transport.dispatch(card, request)
+        if inspect.isawaitable(response):
+            import asyncio
+
+            response = asyncio.run(response)
         if response.request_id != request.request_id:
             response = response.model_copy(update={"request_id": request.request_id})
         self._history[request.request_id] = response

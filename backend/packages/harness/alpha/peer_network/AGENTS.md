@@ -74,6 +74,22 @@ unconditionally, so the local half is already durable. Do not widen
 `hide_from_ui` semantics to "expose" this — that flag has ~15 middleware writers
 plus memory, channels and the runs inspector. This surface stays opt-in by route.
 
+## A2A transport (`a2a_transport.py`)
+
+`PeerA2ATransport` is the only A2A transport that can honestly report
+`accepted`: it delivers a real `task_request` envelope to a paired peer
+through the existing peer transport, and the peer's inbox is the durable
+record that the task was received. It never reports `completed` — a result
+comes back asynchronously via the peer network, and no synchronous dispatch
+can know one exists.
+
+The transport is deliberately narrow: paired peers only (a discovered-but-
+unpaired agent is refused with the reason), real envelopes only (every
+dispatch is a `PeerEnvelope` with `kind="task_request"` carrying the A2A
+request id), and honest statuses (`accepted` = delivered to inbox,
+`rejected` = not a paired peer, `failed` = transport raised). Tests:
+`backend/tests/test_a2a_peer_transport.py`.
+
 ## Retry (`storage.py`, `service.py`)
 
 Every delivery attempt is **counted** and the next one **scheduled**

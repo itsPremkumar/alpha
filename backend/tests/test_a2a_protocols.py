@@ -172,20 +172,33 @@ def test_mcp_tasks_async_lifecycle():
 
 
 def test_a2a_tool_invocation():
+    # Cards are no longer pre-populated with fictional agents; register a real one.
+    from alpha.tools.builtins.a2a_tool import _GLOBAL_A2A
+
+    _GLOBAL_A2A.register_card(
+        AgentCapabilityCard(
+            agent_id="agent-coder",
+            name="Lead Python Coder",
+            description="Writes idiomatic, typed Python code and tests.",
+            skills=["python", "fastapi", "testing"],
+            availability="available",
+        )
+    )
+
     # Inspect card
     out = a2a_tool.invoke(
         {
             "action": "inspect_card",
-            "agent_id": "agent-researcher",
+            "agent_id": "agent-coder",
         }
     )
-    assert "Lead Research Specialist" in out
+    assert "Lead Python Coder" in out
 
     # Delegate task
     del_out = a2a_tool.invoke(
         {
             "action": "delegate",
-            "target_agent_id": "agent-researcher",
+            "target_agent_id": "agent-coder",
             "task_objective": "Gather research papers on multi-agent consensus",
         }
     )
@@ -203,13 +216,24 @@ def test_a2a_tool_invocation():
 async def test_gateway_a2a_router():
     from app.gateway.routers import a2a as a2a_router
 
+    # Cards are no longer pre-populated; register a real one for the test.
+    a2a_router._GLOBAL_A2A.register_card(
+        AgentCapabilityCard(
+            agent_id="agent-coder",
+            name="Lead Python Coder",
+            description="Writes idiomatic, typed Python code and tests.",
+            skills=["python", "fastapi", "testing"],
+            availability="available",
+        )
+    )
+
     # List cards
     cards = await a2a_router.list_capability_cards()
     assert len(cards) >= 1
 
     # Delegate via router
     req = a2a_router.DelegateTaskRequest(
-        target_agent_id="agent-researcher",
+        target_agent_id="agent-coder",
         task_objective="Analyze quantum computing breakthroughs",
     )
     resp = await a2a_router.delegate_task(req)

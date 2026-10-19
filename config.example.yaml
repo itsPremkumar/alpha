@@ -4901,6 +4901,15 @@ harness_improvement:
 # parking, and is startup-only: an edit needs a Gateway restart. decomposition is
 # read on every swarm spawn, so an edit applies to the next plan.
 # ============================================================================
+# A2A interop (bot plan 4.1). Off by default: the A2A plane dispatches real
+# tasks to paired peers and requires the peer network to be enabled. When
+# disabled, POST /api/a2a/tasks refuses with 503 and the a2a_protocol tool
+# reports no transport.
+# ============================================================================
+a2a:
+  enabled: false                   # master switch for the A2A interop plane
+
+# ============================================================================
 swarm:
   resume_on_start: "none"        # none = park and wait for an explicit resume (default)
                                 # owned = also resume recovered plans owned by the
