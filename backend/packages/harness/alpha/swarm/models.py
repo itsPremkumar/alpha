@@ -479,6 +479,11 @@ class SwarmPlan:
     round: int = 0
     terminal_reason: str | None = None
     consensus: dict[str, Any] = field(default_factory=dict)
+    # The git HEAD SHA captured at plan creation time.  Coding worktree workers
+    # pin their worktrees to this SHA so every coding task in a swarm branches
+    # from the same commit.  ``None`` means "not captured" (older plans, or
+    # plans created outside a git repository); workers fall back to ``HEAD``.
+    start_sha: str | None = None
     auto_replan: bool = False
     requires_consensus: bool = False
     # Phase 3.3: which acceptance gate decides this plan.  ``evidence`` (the
@@ -544,6 +549,7 @@ class SwarmPlan:
             "consensus": dict(self.consensus),
             "auto_replan": self.auto_replan,
             "requires_consensus": self.requires_consensus,
+            "start_sha": self.start_sha,
         }
 
     @classmethod
@@ -592,6 +598,7 @@ class SwarmPlan:
             requires_consensus=bool(data.get("requires_consensus", False)),
             acceptance_mode=normalize_acceptance_mode(data.get("acceptance_mode")),
             judge_report=_as_mapping(data.get("judge_report")),
+            start_sha=(str(data["start_sha"]) if data.get("start_sha") else None),
         )
 
 

@@ -27,6 +27,7 @@ from alpha.sandbox.worktree_strategy import (
 from alpha.swarm.aggregator import SwarmAggregator
 from alpha.swarm.governor import get_swarm_resource_governor
 from alpha.swarm.grounding import ground_claims
+from alpha.swarm.merge_queue import get_merge_queue
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode, TaskNodeState, is_terminal_swarm_status
 from alpha.swarm.reflection import SwarmReflector
 from alpha.swarm.scheduler import SwarmPlanValidationError, SwarmScheduler
@@ -123,7 +124,7 @@ class AsyncSwarmRunner:
             task = _ACTIVE_SWARM_TASKS.get(swarm_id) or self._active_tasks.get(swarm_id)
             return task is not None and not task.done()
 
-    def _build_worker(self, task_node: SwarmTaskNode):
+    def _build_worker(self, task_node: SwarmTaskNode, plan: SwarmPlan | None = None):
         if task_node.worker_type == SPECIALIST_WORKER_TYPE and task_node.assigned_worker:
             # A declared specialist: a real tool-using subagent with its own
             # system prompt and tool allowlist, not a renamed generalist.
@@ -196,6 +197,10 @@ class AsyncSwarmRunner:
                 # task is called done.
                 auto_commit=selection.mergeable,
                 simulate_merge=selection.mergeable,
+                # Pin the worktree to the plan's start SHA, not HEAD, so every
+                # coding task in a swarm branches from the same commit.
+                base_ref=getattr(plan, "start_sha", None) or "HEAD" if plan is not None else "HEAD",
+                merge_queue=get_merge_queue(),
             )
         return EphemeralSubagentWorker(task_node.task_id, model=task_node.model_override)
 
@@ -327,7 +332,7 @@ class AsyncSwarmRunner:
             # Capture the claim before entering the provider thread.  A retry,
             # cancellation, or backup can replace it while the call is running.
             lease_id = task_node.lease_id
-            worker = self._build_worker(task_node)
+            worker = self._build_worker(task_node, plan)
             try:
                 context = self.coordinator.task_context(swarm_id, task_node)
                 set_context = getattr(worker, "set_context", None)

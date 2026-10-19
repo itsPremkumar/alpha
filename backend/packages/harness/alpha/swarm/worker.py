@@ -13,6 +13,7 @@ tests replace to stay offline (``test_swarm_worker_execution.py`` and the
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections.abc import Mapping
@@ -25,6 +26,7 @@ from alpha.bots.registry import BotRegistry
 from alpha.mcp.untrusted import UNTRUSTED_DESCRIPTION_PREFIX
 from alpha.sandbox.worktrees import WorktreeManager
 from alpha.subagents.workspace_version import WORKSPACE_WRITE_TOOLS
+from alpha.swarm.merge_queue import MergeQueue
 from alpha.swarm.models import SwarmPlan, SwarmTaskNode
 from alpha.tools.governance import GovernanceError, GovernanceRegistry, RiskClass
 
@@ -556,9 +558,18 @@ class CodingWorktreeWorker:
       ``conflicted`` (with the files git named), or ``failed`` — and never
       labels a clean textual merge as correct, tested, or safe.
 
+    ``base_ref`` pins the worktree to the plan's start SHA (not ``HEAD``), so
+    every coding task in a swarm branches from the same commit. Without this,
+    a task that starts after another task has merged would silently branch
+    from the wrong base and report a conflict that is an artifact of timing,
+    not of the code.
+
     ``base_worktree_dir`` places the worktree in runtime-owned state rather
     than inside the repository tree, matching how every other worktree caller
     in this package scopes its directory.
+
+    Merge simulations are serialized through the process-local ``MergeQueue``
+    so parallel coding tasks cannot interfere with each other's git operations.
     """
 
     #: Committer identity used for the inline ``-c`` flags on ``git commit``.
@@ -574,11 +585,15 @@ class CodingWorktreeWorker:
         base_worktree_dir: Path | str | None = None,
         auto_commit: bool = False,
         simulate_merge: bool = False,
+        base_ref: str = "HEAD",
+        merge_queue: MergeQueue | None = None,
     ):
         self.manager = WorktreeManager(repo_root=repo_root, base_worktree_dir=base_worktree_dir)
         self.branch_name = branch_name
         self.auto_commit = bool(auto_commit)
         self.simulate_merge = bool(simulate_merge)
+        self.base_ref = base_ref
+        self.merge_queue = merge_queue
         self.context: object = None
 
     def set_context(self, context: object) -> None:
@@ -657,7 +672,7 @@ class CodingWorktreeWorker:
                 "result_payload": {"branch": self.branch_name, "changes_authored": False},
             }
 
-        worktree = self.manager.create_worktree(branch_name=self.branch_name)
+        worktree = self.manager.create_worktree(branch_name=self.branch_name, base_ref=self.base_ref)
         worktree_path = Path(worktree.path)
         patch_file = worktree_path / f"{task.task_id}.patch"
         # A unified diff is an LF format. Writing it with the platform default
@@ -679,18 +694,32 @@ class CodingWorktreeWorker:
                 commit_sha = self._commit(worktree_path, task)
             if self.simulate_merge:
                 safe_task_id = re.sub(r"[^A-Za-z0-9._-]", "-", task.task_id).strip("-.") or "task"
-                simulation = self.manager.simulate_merge(
-                    base_ref="HEAD",
-                    head_ref=self.branch_name,
-                    name=f"sim-{safe_task_id}"[:100],
-                )
+                if self.merge_queue is not None:
+                    # Merge simulations are serialized through the queue so
+                    # parallel coding tasks cannot interfere with each other's
+                    # git operations on the shared repository.
+                    loop = asyncio.get_running_loop()
+                    sim_result = loop.run_until_complete(
+                        self.merge_queue.simulate_merge(
+                            self.manager,
+                            base_ref=self.base_ref,
+                            head_ref=self.branch_name,
+                            name=f"sim-{safe_task_id}"[:100],
+                        )
+                    )
+                else:
+                    sim_result = self.manager.simulate_merge(
+                        base_ref=self.base_ref,
+                        head_ref=self.branch_name,
+                        name=f"sim-{safe_task_id}"[:100],
+                    )
                 simulation = {
-                    **simulation.to_dict(),
+                    **sim_result.to_dict(),
                     # ``to_dict`` deliberately omits the operator-facing
                     # statement; a swarm evidence record must carry it, or the
                     # "clean means mergeable, not correct" caveat never reaches
                     # the operator reading the task result.
-                    "disclosure": simulation.disclosure(),
+                    "disclosure": sim_result.disclosure(),
                 }
         except Exception:
             # An apply that failed leaves the patch on disk: it is the only

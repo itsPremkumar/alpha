@@ -12,6 +12,15 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **swarm-worktree-isolation:** Worktree isolation for coding swarms (bot plan
+  4.3). New `swarm/merge_queue.py` serializes merge simulations through a
+  process-local queue so parallel coding tasks cannot interfere with each
+  other's git operations. `CodingWorktreeWorker` now pins worktrees to the
+  plan's start SHA (not HEAD), so every coding task branches from the same
+  commit. `SwarmPlan` gains a `start_sha` field (backward-compatible
+  round-trip). Runner passes the plan's start SHA and the merge queue to
+  each worker. Tests: `test_swarm_merge_queue.py` (12 tests, offline).
+
 - **a2a-peer-transport:** A2A interop on the existing peer network (bot plan
   4.1). New `PeerA2ATransport` dispatches delegations as real `task_request`
   envelopes to paired peers via the peer-network transport, returning

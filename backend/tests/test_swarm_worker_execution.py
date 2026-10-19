@@ -184,7 +184,7 @@ def test_worktree_worker_applies_model_authored_patch(tmp_path, monkeypatch):
         def __init__(self, repo_root=None, **kwargs):
             pass
 
-        def create_worktree(self, *, branch_name):
+        def create_worktree(self, *, branch_name, base_ref="HEAD"):
             return SimpleNamespace(path=fake_wt)
 
         def run_in_worktree(self, path, args, *, check=False):
