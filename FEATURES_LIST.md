@@ -59,6 +59,35 @@
 - **Boulder checkpointing & safe durable replay** — multi-session snapshots; disconnects never cancel work; resumes after crash, expired lease, restart, or recoverable model failure.
 - **Effect journal & reconciliation console** — side-effect queue with counts by status/level, oldest unaccounted effect age, `POST /api/side-effects/{id}/reconcile` for verdict recording.
 - **Mod kernel console** — reads Alpha's ordered policy chain end to end; commands, audit ledger, durable hold queue, preview endpoint.
+- **Multimodal** — vision support (ViewImageMiddleware, view_image_tool), image processing, multimodal chain for T1→T2→T3 capability routing.
+- **Subagents** — `task` delegation tool, `batch_task`/`batch_status`/`cancel_batch` durable batch submission, subagent catalog, capacity management, read-only worker tool isolation.
+- **File uploads** — all-or-nothing uploads to thread-isolated user buckets, staging through hidden `.upload-*.part` files, atomic replace, sandbox sync.
+- **Thread management** — thread branching, regeneration, edit replay, archive/search, owner isolation, activity-time preservation, thread runs with SSE streaming.
+- **Peer network** — cross-installation identity, discovery, pairing, transport, delivery receipts, DM bridging; invites as QR codes; libp2p reports unavailable.
+- **Plan mode** — TodoList middleware for complex multi-step tasks with `write_todos` tool.
+- **Scheduled tasks** — cron schedules, pre-flight wake gates, incident tracking, auto-pause; scheduled-task runtime sets `non_interactive=true`.
+- **Side effects** — effect journal and reconciliation console; per-effect `UNKNOWN` + reconciliation ledger; admin-only verdict recording.
+- **System monitor** — host CPU/RAM/disk/network/process state with best-effort timeout-bounded cached samplers.
+- **War rooms** — staged group deliberation with quorum policy; 20-subsystem aggregate; coordination policy, decision log, event feed, locks, handoffs, approvals, checkpoints.
+- **Teams** — team composition, roster management, team operations surface.
+- **Companies** — company OS with durable multi-tenant organizations indexed over real subsystems.
+- **Skills workshop** — skill authoring, validation, static scan, SkillProposal queuing, admin approve gate.
+- **Subagent batches** — durable batch submission/progress/cancellation with acceptance criteria and verdict tracking.
+- **Input polish** — `POST /api/input-polish` rewrites composer drafts before sending.
+- **Suggestions** — `POST /api/threads/{id}/suggestions` generates follow-up questions.
+- **Ops integration** — deployment metadata, version, status, resources, advice, runtime, network connectivity.
+- **Deliveries** — run delivery receipts; idempotent persistence of run-scoped delivery receipts.
+- **GitHub webhooks** — agent invocations from pull requests, issues, comments, releases; HMAC verification.
+- **MCP tasks** — durable task runtime with lease-based recovery for long-running MCP work.
+- **Agent messages** — structured agent-to-agent messaging with inbox.
+- **Assistants compat** — OpenAI-compatible assistant API for drop-in client compatibility.
+- **Goal contracts** — goal contract management for thread-level goals.
+- **Goal integrity** — goal integrity verification and enforcement.
+- **Group coordination** — group coordination panel, group activity, group profile management.
+- **Jobs** — job management and execution tracking.
+- **Features** — feature manifest and capability discovery endpoint.
+- **Predictive RSI** — advisory forecast service with calibration metrics (Brier, calibration error, coverage).
+- **Capabilities** — capability mesh with evidence-backed records and learned instruments.
 - **Sentinel repair loop** — autonomous repair loop with per-fault-kind verdict, human handoff queue, checkpoint-before-edit, revert on failure.
 - **Kibitzer metacognitive supervision** — background supervision detecting loops, thrashing, and prompt drift.
 - **Dynamic workflow plane** — intent perception, capability discovery, task decomposition, bounded DAG waves, typed graph patches, approval gates, retry/replan, evidence-gated replay, saga compensation.
@@ -141,7 +170,7 @@
 - **Arena tournaments** — runs one task through N strategy-carded sub-agents with single-elimination bracket (attack, defend, revise, judge); durable budget-gated orchestration; judge quality engineered with blinded neutral copies, deterministic position swapping, per-task hard gates, bounded repair loop; `compare`/`synthesize` refused by name; task-contract/candidate-coverage/evidence-ledger/synthesis wired into executor.
 - **War Room** — staged group deliberation with quorum policy; open the **War Room** view for the 20-subsystem aggregate, coordination policy, decision log, event feed, locks, handoffs, approvals, checkpoints.
 - **External Alpha** — cross-installation peer network view; transcript read scope; bounded reports with truncation; `hide_from_ui` unchanged.
-- **Capability mesh** — evidence-backed capability records for every dispatchable configuration; learned instruments (cross-run memory, calibration, drift, decision-policy table, routing, team selection, composition, independence, shadow); read/preview-only, no executor wiring; `enabled: false` by default.
+- **Dashboard** — overview dashboard with system health, run summaries, and quick actions. learned instruments (cross-run memory, calibration, drift, decision-policy table, routing, team selection, composition, independence, shadow); read/preview-only, no executor wiring; `enabled: false` by default.
 - **Vitals & reliability view** — frontend VitalsSection and ReliabilitySection for system health monitoring and reliability metrics.
 - **Self-knowledge (self-inventory plane)** — eleven read-only registries behind one `list`/`describe`/`health` protocol; `alpha_capability` tool and `GET /api/intelligence/inventory`. do?": eleven read-only registries (tools, skills, MCP, models, bots, commands, capabilities, engines, wiring, memory) behind the `alpha_capability` tool and `GET /api/intelligence/inventory`; unreadable sources report `count: null`, never `0`.
 - **Code index** — bounded, query-driven symbol lookup returning names, signatures, `path:line`, one-line docstrings; never a function body; TypeScript rows labelled `extraction="regex"`.
