@@ -168,6 +168,7 @@ class ImprovementRun:
     contrasts: list[ContrastReport] = field(default_factory=list)
     composition: CompositionDecision | None = None
     successor_bundle_id: str | None = None
+    marginal_improvement: bool | None = None
     deliverable: dict[str, Any] | None = None
     experiences: list[str] = field(default_factory=list)
     budget_state: dict[str, Any] = field(default_factory=dict)
@@ -239,6 +240,7 @@ class ImprovementRun:
             "task": self.task.to_dict(),
             "base_bundle_id": self.base_bundle_id,
             "successor_bundle_id": self.successor_bundle_id,
+            "marginal_improvement": self.marginal_improvement,
             "created_by": self.created_by,
             "history": [h.to_dict() for h in self.history],
             "checkpoints": {key: cp.to_dict() for key, cp in self.checkpoints.items()},
@@ -276,6 +278,7 @@ class ImprovementRun:
             task=TaskContract.from_dict(data.get("task", {})),
             base_bundle_id=str(data.get("base_bundle_id", "")),
             successor_bundle_id=data.get("successor_bundle_id"),
+            marginal_improvement=data.get("marginal_improvement"),
             created_by=str(data.get("created_by", "")),
             history=[StageEvent(stage=ImprovementStage(h["stage"]), at=str(h.get("at", "")), reason=str(h.get("reason", "")), event=str(h.get("event", "stage.changed"))) for h in data.get("history", [])],
             checkpoints={key: StageCheckpoint.from_dict(value) for key, value in data.get("checkpoints", {}).items()},

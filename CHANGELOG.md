@@ -12,6 +12,17 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **harness2-adaptive-recursion:** Adaptive recursion for Harness² (guide §16
+  Phase 7). The engine's ``start()`` now accepts an optional
+  ``base_bundle_id`` override, so run N+1 can compound run N's improvement
+  instead of always branching from the active bundle. The router's
+  ``POST /runs`` body gains the same field. After composition, the run
+  records ``marginal_improvement`` (true only when the composer did not
+  retain the baseline), giving callers an honest signal for chaining.
+  ``ImprovementRun`` gains the ``marginal_improvement`` field with full
+  round-trip. Tests: `test_harness_adaptive_recursion.py` (9 tests,
+  offline).
+
 - **memory-consolidation-provenance:** Honest memory consolidation with
   provenance (bot plan 4.2). New `alpha/memory/consolidation.py` replaces
   the fabricated arithmetic path with a real consolidation surface: reads

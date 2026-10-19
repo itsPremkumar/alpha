@@ -224,8 +224,13 @@ class HarnessImprovementEngine:
         self._clock = clock
 
     # ------------------------------------------------------------------ API
-    async def start(self, *, task: TaskContract, created_by: str = "operator", run_id: str | None = None) -> ImprovementRun:
-        """Qualify the task, create the durable run record, and drive it."""
+    async def start(self, *, task: TaskContract, created_by: str = "operator", run_id: str | None = None, base_bundle_id: str | None = None) -> ImprovementRun:
+        """Qualify the task, create the durable run record, and drive it.
+
+        ``base_bundle_id`` overrides the active bundle as the run's baseline.
+        This is the adaptive-recursion seam: run N+1 can start from run N's
+        successor bundle instead of the active one, so improvement compounds.
+        """
         if not self.settings.enabled:
             raise ImprovementRunError("harness_improvement is disabled; enable it in config.yaml before starting a run")
         if self.settings.mode != "sequential":
@@ -233,7 +238,12 @@ class HarnessImprovementEngine:
         refusal = qualify_task(task)
         if refusal:
             raise ImprovementRunError(f"task is not eligible for harness improvement: {refusal}")
-        base_bundle = self._resolve_or_bootstrap_baseline()
+        if base_bundle_id is not None:
+            base_bundle = await asyncio.to_thread(self.store.load_bundle, base_bundle_id)
+            if base_bundle is None:
+                raise ImprovementRunError(f"base bundle {base_bundle_id!r} is not stored; cannot start a recursive run from a missing baseline")
+        else:
+            base_bundle = self._resolve_or_bootstrap_baseline()
         if base_bundle is None:
             raise ImprovementRunError("no active harness bundle exists and no baseline_provider is wired; refusing to invent a baseline")
         chosen_run_id = run_id or f"run-{sha256_hex(f'{created_by}:{task.task_fingerprint}:{utc_now()}')[:16]}"
@@ -637,6 +647,11 @@ class HarnessImprovementEngine:
             inputs.append(ComposerInput(proposal=proposal, contrast=contrast, candidate_bundle=candidate_bundle, candidate_contents=candidate_contents))
         decision, successor, successor_contents = compose_successor(base_bundle=bundle, base_contents=contents, inputs=inputs)
         run.composition = decision
+        # Marginal improvement: the run found an improvement only if the
+        # composer did not retain the baseline.  This is the honest signal
+        # for adaptive recursion — a run that retained the baseline added
+        # no information worth chaining from.
+        run.marginal_improvement = not decision.retained_baseline
         if not decision.retained_baseline:
             # Same stamping rule as an accepted candidate: the composed
             # successor records the run that produced it, so the promotion

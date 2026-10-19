@@ -170,6 +170,7 @@ class HarnessRunRequest(BaseModel):
     task_type: str = Field(default="general", max_length=100)
     uncertainties: list[str] = Field(default_factory=list)
     run_id: str | None = Field(default=None, max_length=128)
+    base_bundle_id: str | None = Field(default=None, max_length=256, description="Override the active bundle as the run's baseline (adaptive recursion).")
 
 
 class HarnessCancelRequest(BaseModel):
@@ -656,7 +657,7 @@ async def start_run(
             missing_wiring=[dict(row) for row in _MISSING_WIRING],
         )
     try:
-        run = await engine.start(task=task, created_by=actor, run_id=body.run_id)
+        run = await engine.start(task=task, created_by=actor, run_id=body.run_id, base_bundle_id=body.base_bundle_id)
     except _STORE_ERRORS as exc:
         return _store_error(exc)
     except ImprovementRunError as exc:
