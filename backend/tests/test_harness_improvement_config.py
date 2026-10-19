@@ -90,11 +90,12 @@ def test_the_default_posture_is_the_guide_conservative_one() -> None:
     assert config.promotion.keep_last_known_good is True
 
 
-def test_only_sequential_mode_is_expressible_and_default_off() -> None:
+def test_only_sequential_and_parallel_modes_are_expressible() -> None:
     assert HarnessImprovementConfig().mode == "sequential"
     assert HarnessImprovementConfig(mode="sequential").mode == "sequential"
+    assert HarnessImprovementConfig(mode="parallel").mode == "parallel"
     with pytest.raises(ValidationError):
-        HarnessImprovementConfig(mode="parallel")
+        HarnessImprovementConfig(mode="distributed")
 
 
 # ---------------------------------------------------------------- template

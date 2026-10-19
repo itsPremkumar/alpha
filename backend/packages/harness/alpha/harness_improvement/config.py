@@ -100,9 +100,9 @@ class HarnessImprovementConfig(BaseModel):
         default=False,
         description="Feature flag: off = every harness-improvement surface refuses with the reason named, and nothing is written.",
     )
-    mode: Literal["sequential"] = Field(
+    mode: Literal["sequential", "parallel"] = Field(
         default="sequential",
-        description="Execution mode. ``sequential`` is the only mode implemented; any other value is refused by name rather than silently degraded.",
+        description="Execution mode. ``sequential`` runs one proposal per scope in order; ``parallel`` runs all scopes and probes concurrently with isolated workspaces.",
     )
     max_steps: int = Field(
         default=1,

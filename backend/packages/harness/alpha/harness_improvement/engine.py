@@ -233,8 +233,8 @@ class HarnessImprovementEngine:
         """
         if not self.settings.enabled:
             raise ImprovementRunError("harness_improvement is disabled; enable it in config.yaml before starting a run")
-        if self.settings.mode != "sequential":
-            raise ImprovementRunError(f"mode {self.settings.mode!r} is not implemented in the MVP; use 'sequential'")
+        if self.settings.mode not in ("sequential", "parallel"):
+            raise ImprovementRunError(f"mode {self.settings.mode!r} is not implemented; use 'sequential' or 'parallel'")
         refusal = qualify_task(task)
         if refusal:
             raise ImprovementRunError(f"task is not eligible for harness improvement: {refusal}")
@@ -538,24 +538,40 @@ class HarnessImprovementEngine:
         )
         proposals: list[HarnessProposal] = []
         failures: list[str] = []
-        for scope in (CandidateScope.INVARIANT, CandidateScope.TASK_OR_DOMAIN):
+        scopes = (CandidateScope.INVARIANT, CandidateScope.TASK_OR_DOMAIN)
+
+        async def _propose_scope(scope: CandidateScope) -> HarnessProposal | None:
             budget.check_model_call(stage=f"proposing_{scope}")
             try:
                 proposal = await editor.propose(context=context, scope=scope)
             except EditorAbsent as exc:
                 failures.append(f"{scope}: {exc}")
-                continue
+                return None
             except Exception as exc:  # a malformed proposal is recorded, not fatal
                 failures.append(f"{scope}: {type(exc).__name__}: {exc}")
                 self._event(run, "proposal.invalid", reason=str(exc), scope=str(scope))
-                continue
+                return None
             if proposal.scope is not scope:
                 proposal = replace(proposal, scope=scope)
             run.proposals.append(proposal)
-            proposals.append(proposal)
             budget.charge(StageCharge(stage=f"proposing_{scope}", model_calls=1, usage=TokenUsage(), elapsed_ms=0))
             self.store.append_ledger(budget.ledger_entry(StageCharge(stage=f"proposing_{scope}", model_calls=1, usage=TokenUsage()), model=self.settings.model))
             self._event(run, "proposal.created", reason=proposal.hypothesis.summary, scope=str(scope), proposal_id=proposal.proposal_id)
+            return proposal
+
+        if self.settings.mode == "parallel":
+            results = await asyncio.gather(*[_propose_scope(s) for s in scopes], return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
+                    failures.append(str(r))
+                elif r is not None:
+                    proposals.append(r)
+        else:
+            for scope in scopes:
+                p = await _propose_scope(scope)
+                if p is not None:
+                    proposals.append(p)
+
         if not proposals:
             raise EditorAbsent(f"no proposal could be formed for any scope: {'; '.join(failures) or 'editor returned none'}")
         run.budget_state = budget.to_dict()
@@ -587,7 +603,8 @@ class HarnessImprovementEngine:
         budget.check_model_call(stage="probing")
         executor = require_executor(self.executor)
         selected = self._accepted_candidates(run)
-        for candidate_id, bundle, contents, scope in selected:
+
+        async def _probe_one(candidate_id: str, bundle: Any, contents: Any, scope: Any) -> None:
             workspace = self._run_workspace(run, safe_id(candidate_id))
             materialize_bundle(workspace, bundle, contents)
             environment = self._environment(f"probe_{scope}")
@@ -602,6 +619,13 @@ class HarnessImprovementEngine:
             budget.charge(StageCharge(stage=f"probe_{scope}", model_calls=1, usage=outcome.token_usage, elapsed_ms=outcome.elapsed_ms, tool_calls=outcome.tool_calls, model_turns=outcome.model_turns))
             self.store.append_ledger(budget.ledger_entry(StageCharge(stage=f"probe_{scope}", model_calls=1, usage=outcome.token_usage, elapsed_ms=outcome.elapsed_ms), model=self.settings.model))
             self._event(run, "probe.completed", reason=outcome.error or "", candidate_id=candidate_id, probe_run_id=outcome.run_id, errored=outcome.errored)
+
+        if self.settings.mode == "parallel":
+            await asyncio.gather(*[_probe_one(cid, b, c, s) for cid, b, c, s in selected], return_exceptions=True)
+        else:
+            for candidate_id, bundle, contents, scope in selected:
+                await _probe_one(candidate_id, bundle, contents, scope)
+
         run.budget_state = budget.to_dict()
         self._persist(run)
 

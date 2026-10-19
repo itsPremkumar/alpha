@@ -421,8 +421,8 @@ class TestStartRefusals:
             _run(engine)
 
     def test_an_unimplemented_mode_is_refused_not_degraded(self, tmp_path: Path) -> None:
-        engine = _engine(tmp_path, mode="parallel")
-        with pytest.raises(ImprovementRunError, match="not implemented in the MVP"):
+        engine = _engine(tmp_path, mode="distributed")
+        with pytest.raises(ImprovementRunError, match="is not implemented"):
             _run(engine)
 
     def test_no_baseline_and_no_provider_refuses_instead_of_inventing_one(self, tmp_path: Path) -> None:

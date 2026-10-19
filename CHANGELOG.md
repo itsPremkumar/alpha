@@ -12,6 +12,14 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **harness2-parallel-exploration:** Bounded parallel exploration (guide §16
+  Phase 6). The engine now accepts ``parallel`` mode in addition to
+  ``sequential``. In parallel mode, both proposal scopes (INVARIANT and
+  TASK_OR_DOMAIN) run concurrently via ``asyncio.gather``, and all candidate
+  probes run concurrently with isolated workspaces. The config's ``mode``
+  field accepts ``"sequential"`` (default) or ``"parallel"``. Sequential
+  mode is unchanged. Tests: updated config and engine tests.
+
 - **harness2-adaptive-recursion:** Adaptive recursion for Harness² (guide §16
   Phase 7). The engine's ``start()`` now accepts an optional
   ``base_bundle_id`` override, so run N+1 can compound run N's improvement
