@@ -12,6 +12,12 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **harness2-held-out-transfer:** Held-out transfer measurement (guide §20
+  Definition of Done). Tests pin that the synthetic and held-out suites are
+  non-empty and distinct, every task converts to a valid TaskContract, and
+  held-out tasks share task types but have distinct names and tags. Tests:
+  `test_harness_held_out.py` (8 tests, offline).
+
 - **harness2-periodic-revalidation:** Periodic revalidation for the Harness²
   experience library (guide §16 Phase 7). New
   ``harness_improvement_maintenance_tick`` in the autonomy supervisor runs
