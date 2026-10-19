@@ -438,40 +438,16 @@ scripted runner seam).
 
 ### Security audit surface (`packages/harness/alpha/security/audit.py`)
 
-`alpha.security.audit` is the deterministic security audit (bot plan 4.4): eight
-local, offline checks — skill Python AST, transcript credential leakage,
-tool-allowlist drift, bot capability ceiling, channel webhook auth, swarm
-worktree path escapes, MCP trust, and prompt-injection analysis (always
-`not_checked`: it needs a model-tier scanner this module deliberately never
-calls). Three surfaces: the `/security audit` command
-(`commands/backend_handlers.py`), `POST /api/security/audit` (admin-gated via
-`require_admin_user`, audit off the loop through `asyncio.to_thread`), and the
-CLI `python -m alpha.security.audit [--json]`.
-
-Four honesty rules, each a plausible wrong answer:
-
-- **`scanned` ∪ `not_checked` == `CHECK_IDS`, disjoint.** A check that cannot
-  run (config-load failure, a running event loop, an over-bound scan) is
-  `not_checked` with its real reason — never silently "clean", never a partial
-  result presented as complete.
-- **No aggregate score exists anywhere** — not in `AuditReport.to_dict()`, not
-  in the text renderer (which states the rule in words), not in the CLI JSON. A
-  score invites trusting the audit instead of reading it.
-- **Evidence carries identifiers, patterns and env-var *names* only** — never
-  secret values, resolved MCP URLs (`$VAR`-resolved at load) or transcript
-  text; the transcript check reports thread id + span count + redaction pattern
-  names.
-- **Bounds are refused, not clamped**: thread/message caps below 1 raise
-  `ValueError` (CLI exit 2); a worktree root above 500 entries refuses the
-  scan into `not_checked`, and a skill tree past the file/size budget surfaces
-  as a low `skill.audit_truncated` disclosure, never a partial clean.
-
-Transcripts need persistence: `run_events.backend: memory` or a missing session
-factory (`database.backend memory`) makes the transcript check `not_checked`
-naming that deployment — "no leaks found" from a process that cannot see the
-real transcripts would be a fabricated clean. Tests:
-`tests/test_security_audit.py` (every host seam stubbed or patched at its
-source module; the suite reads no host config, bots, skills or MCP servers).
+`alpha.security.audit` (bot plan 4.4): eight local, offline checks (prompt-
+injection always `not_checked` — needs a model-tier scanner); full check list
+and honesty contract in the module docstring, each rule a plausible wrong
+answer: `scanned` ∪ `not_checked` == `CHECK_IDS` disjoint, no aggregate score
+anywhere, evidence carries identifiers/patterns/env-var *names* only, bounds
+refused never clamped, and a check that cannot run is `not_checked` with its
+real reason (never "clean"). Surfaces: `/security audit`,
+`POST /api/security/audit` (admin-gated, off-loop), CLI
+`python -m alpha.security.audit [--json]`. Tests:
+`tests/test_security_audit.py` (host seams stubbed at their source).
 
 ### Capability mesh
 
