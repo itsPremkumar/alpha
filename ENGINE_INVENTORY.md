@@ -6,8 +6,8 @@
 > hand-maintaining a list that drifts.
 
 - **Packages:** 128
-- **Python files:** 2121
-- **Total lines:** 575519
+- **Python files:** 2122
+- **Total lines:** 576336
 - **Packages with preview/simulated markers:** 30
 
 Tier `preview/partial` means the package's source mentions a preview-only,
@@ -15,15 +15,15 @@ simulated, or unimplemented path — inspect before relying on it as production.
 
 | Package | Files | Lines | Tier |
 |---|---:|---:|---|
-| `alpha/memory` | 154 | 46481 | preview/partial |
-| `alpha/agents` | 141 | 45359 | preview/partial |
-| `alpha/runtime` | 119 | 34435 | preview/partial |
+| `alpha/memory` | 154 | 46568 | preview/partial |
+| `alpha/agents` | 142 | 46038 | preview/partial |
+| `alpha/runtime` | 119 | 34442 | preview/partial |
 | `alpha/tools` | 169 | 31745 | preview/partial |
 | `alpha/community` | 89 | 27868 | preview/partial |
 | `alpha/persistence` | 105 | 18539 | preview/partial |
 | `alpha/workflow` | 53 | 18527 | preview/partial |
 | `alpha/bots` | 36 | 15246 | preview/partial |
-| `alpha/config` | 86 | 14068 | core |
+| `alpha/config` | 86 | 14112 | core |
 | `alpha/swarm` | 33 | 13405 | core |
 | `alpha/rsi` | 40 | 12821 | preview/partial |
 | `alpha/subagents` | 39 | 12058 | core |

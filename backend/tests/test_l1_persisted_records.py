@@ -717,6 +717,8 @@ def test_base_run_report_contract_is_unchanged() -> None:
         "retention",
         "persona_status",
         "duration_ms",
+        "history_entries",
+        "stale_dependents",
     }
 
 

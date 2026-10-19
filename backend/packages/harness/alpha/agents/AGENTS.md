@@ -75,6 +75,40 @@ subagent execution path. Tests: `tests/test_subagent_limit_middleware.py`.
 
 **L1 credential boundary**: `agents/memory/l1/models.py::MemoryRecord.create()` redacts recognized secret patterns from content and metadata before deriving the record ID; `agents/memory/l1/store.py::L1RecordStore.put_records()` refuses a direct write that bypasses redaction, without echoing matched text. Detection is heuristic, applies to new writes, and does not scrub legacy snapshots. Tests: `tests/test_memory_secret_filter.py`.
 
+**L1 history-preserving revision (default off)**: with `memory.l1.history_kept`, an update/merge keeps the replaced value as a bounded, redacted `MemoryHistoryEntry` chain on the surviving record (`MAX_HISTORY_ENTRIES`=4, entries char-capped, oldest dropped; merged records inherit targets' chains de-duplicated by `(record_id, content)`, oldest first) instead of destroying it. History is written ONLY by the dedup seam's update/merge path — it never changes a decision, never rides the dedup candidate prompt, and `put_records()` extends its redaction boundary to history entries. Recall renders a bounded `(prior: …)` tail through the same `recall_safety` containment as record content, only while the gate is on; `RunReport.history_entries` counts entries written per run (additive report field). Lineage: Tencent Hy-Memory 2.0 history retention (Apache-2.0, contract only — no code copied; see `docs/THIRD_PARTY_MEMORY_NOTICES.md`). Tests: `tests/test_l1_history.py`, `tests/test_l1_persisted_records.py`, `tests/test_memory_evaluation.py` (`alpha-update-003`, `alpha-extraction-003`).
+
+**L1 adoption slices #1/#2/#3/#4 (2026-10-17, Hy-Memory plan; default off)**:
+staleness propagation (`memory.l1.staleness_propagation`) — `apply_decisions`
+gains a `superseded_ids` out-param filled only with store-confirmed removed ids
+(cleared on every exit path), and `RunReport.stale_dependents` counts the
+dependents `pipeline._mark_stale_dependents` walks through the entity-mention
+lineage into the id-only, content-free staleness journal
+`users/{u}/l1/staleness/YYYY-MM-DD.jsonl` (`l1/propagation.py`, ≤32 dependents
+per batch with a `truncated` flag; requires `memory.entities.enabled` for a
+lineage to exist; a propagation failure never fails a capture run). Conflict
+expansion (`memory.l1.conflict_expansion`) — `L1Dedup` widens the candidate pool
+by up to 5 lower-ranked `candidates_for_dedup` entries passing the deterministic
+`_conflict_shaped` prefilter (same subject, different value; over-inclusive by
+design — the LLM adjudicator decides). As-of recall — `memory_search(as_of=...)`
+parses an ISO-8601/unix cutoff via `_parse_as_of` (refusing garbage before any
+search, and refusing outright while `memory.fusion.enabled` is off) and
+`ActiveMemoryController.retrieve(as_of=...)` applies one central filter:
+a candidate dated after the cutoff (episode `event_time`, fact `createdAt`→
+`valid_from`) is dropped with `as_of_dropped=N` in the stage reason; undated
+candidates stay. Signal boost (`memory.l1.signal_boost`) — `L1RecordStore.search`
+/`candidates_for_dedup` gain additive identifier (case-sensitive, 0.15) and
+14-day recency (0.10) rank terms inside the base-score top-k window only; the
+window and relevance floor stay on the base score, so gate-off behavior is
+byte-identical and a zero-relevance record is never admitted. The staleness
+journal is an observation channel nothing consumes this release, and the as-of
+filter never rewrites stored facts. Lineages (StateMem arXiv:2608.19652,
+STALE/CUPMem arXiv:2605.06527, Zep/Graphiti arXiv:2501.13956, Mem0
+arXiv:2504.19413): contracts only, no code copied. Tests:
+`tests/test_l1_staleness_propagation.py`,
+`tests/test_l1_conflict_expansion.py`, `tests/test_memory_search_as_of.py`,
+`tests/test_l1_signal_boost.py`, `tests/test_memory_evaluation.py`
+(`alpha-update-004`).
+
 **Coding-task codebase memory**: when `memory.codebase.enabled` and memory
 injection are enabled, the lead prompt refreshes the bounded structure index
 only from the runtime's explicit `repo_root`, then injects query-matched module,

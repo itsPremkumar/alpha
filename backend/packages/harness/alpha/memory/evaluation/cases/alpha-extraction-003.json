@@ -1,0 +1,35 @@
+{
+  "id": "alpha-extraction-003",
+  "ability": "extraction",
+  "scope": {"user_id": "eval-extraction-003", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-assistant-dinner", "timestamp": "2026-03-02T18:30:00Z", "text": "The assistant recommended mushroom wellington for the launch dinner.", "fact_id": "fact-assistant-dinner", "answer": "mushroom wellington", "expected_stored": true}
+      ]
+    },
+    {
+      "session_id": "s2",
+      "events": [
+        {"id": "event-assistant-outage", "timestamp": "2026-03-09T10:00:00Z", "text": "The assistant said the staging outage fix belongs to the deploy tooling backlog.", "fact_id": "fact-assistant-outage", "answer": "deploy tooling backlog", "expected_stored": true}
+      ]
+    },
+    {
+      "session_id": "s3",
+      "events": [
+        {"id": "event-assistant-ferry", "timestamp": "2026-03-16T08:00:00Z", "text": "The assistant suggested taking the 07:40 ferry for the offsite commute.", "fact_id": "fact-assistant-ferry", "answer": "07:40 ferry", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q1", "question": "For the launch dinner, what dish did the assistant recommend?", "expected": "mushroom wellington", "type": "assistant_said", "evidence_ids": ["event-assistant-dinner"]},
+    {"id": "q2", "question": "What did the assistant say about where the staging outage fix belongs?", "expected": "deploy tooling backlog", "type": "assistant_said", "evidence_ids": ["event-assistant-outage"]},
+    {"id": "q3", "question": "Which ferry did the assistant suggest for the offsite commute?", "expected": "07:40 ferry", "type": "assistant_said", "evidence_ids": ["event-assistant-ferry"]}
+  ],
+  "metadata": {
+    "expected_stored": ["event-assistant-dinner", "event-assistant-outage", "event-assistant-ferry"],
+    "family": "assistant_said",
+    "notes": "Reports what the ASSISTANT itself said/recommended (the Hy-Memory 2.0 'assistant said' case family). Rides the closed 'extraction' ability vocabulary; question type carries the distinction so extraction recall (min_extraction_recall) grades it."
+  }
+}

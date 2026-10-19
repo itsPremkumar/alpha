@@ -49,6 +49,7 @@ import re
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -171,6 +172,11 @@ class _DreamRuleStage:
     The root is resolved through the runtime home, never ``Path.cwd()``. A
     process working-directory change must not silently repoint durable memory
     at a different file — the previous ``DreamStore`` default did exactly that.
+
+    Temporal note (slice #3): the curated dream-rules file carries no per-line
+    timestamps, so no rule is ever time-filtered here — an as-of cutoff cannot
+    honestly order prose rules whose knowledge time was never recorded. Documented
+    no-op by design; the file is the operator's durable truth, not an episode log.
     """
 
     name = "dream_rules"
@@ -325,6 +331,12 @@ class _ConfiguredFactStage:
                     # A fact the backend stored at explicit user request carries
                     # its own assertion; an inferred one does not.
                     metadata={"category": category, "confidence": confidence},
+                    # createdAt is the row's knowledge time (bi-temporal
+                    # ``valid_from``): what the store knew when the fact
+                    # landed. Facts without a stamp are undated and therefore
+                    # never excluded by an as-of cutoff — "unknown time" is
+                    # not "future knowledge" (see :func:`_row_epoch`).
+                    valid_from=_row_epoch(row.get("createdAt")),
                 )
             )
             if len(candidates) >= MAX_CANDIDATES_PER_SOURCE:
@@ -537,6 +549,11 @@ class ActiveMemoryController:
             ctx=ctx,
             latency_budget_ms=self.config.latency_budget_ms,
         )
+        if as_of is not None:
+            # Central temporal projection (slice #3): every candidate the
+            # controller will ever fuse passes the same cutoff here, so the
+            # stage adapters stay dumb and no future fusion path can skip it.
+            stages = _filter_stages_as_of(stages, as_of)
         fusion: FusionResult = MemoryFusion(self.config).fuse(stages, task_context=ctx)
 
         degraded = tuple(sorted(fusion.stages_unavailable))
@@ -682,6 +699,76 @@ def _bounded_float(value: Any) -> float:
     if numeric != numeric or numeric in (float("inf"), float("-inf")):
         return 0.0
     return min(max(numeric, 0.0), 1.0)
+
+
+def _row_epoch(value: Any) -> float | None:
+    """One backend row's knowledge time as a unix-seconds float — total.
+
+    Accepts an ISO-8601 timestamp (``Z`` suffix included) or a numeric unix
+    value; anything else is ``None`` (undated, never excluded by an as-of
+    cutoff). This is the stage-adapter twin of
+    ``alpha.agents.memory.tools._parse_as_of`` — a tool-layer caller input, not
+    a row value, so the two stay separate on purpose.
+    """
+
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        numeric = float(value)
+        if numeric != numeric or numeric in (float("inf"), float("-inf")):
+            return None
+        return numeric
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    if "-" not in text:
+        return None
+    normalized = text[:-1] + "+00:00" if text.endswith(("Z", "z")) else text
+    try:
+        return datetime.fromisoformat(normalized).timestamp()
+    except ValueError:
+        return None
+
+
+def _filter_stages_as_of(stages: Sequence[StageResult], as_of: float) -> list[StageResult]:
+    """Central as-of projection: drop candidates dated after the cutoff.
+
+    A candidate's knowledge time is its ``event_time`` (episode rows) or, when
+    absent, its ``valid_from`` (fact rows); an undated candidate is kept,
+    because "unknown time" is not "future knowledge". Every fully-filtered
+    stage is reported ``empty`` with the cutoff in its own reason — the
+    honest reading is "this source knew nothing yet at that time", never an
+    unexplained zero.
+    """
+
+    filtered: list[StageResult] = []
+    for result in stages:
+        kept = [
+            candidate
+            for candidate in result.candidates
+            if (candidate.event_time if candidate.event_time is not None else candidate.valid_from) is None or (candidate.event_time if candidate.event_time is not None else candidate.valid_from) <= as_of
+        ]
+        dropped = len(result.candidates) - len(kept)
+        if dropped == 0:
+            filtered.append(result)
+            continue
+        reason = f"{result.reason}; as_of_dropped={dropped}"
+        if not kept:
+            reason += f"; as_of={as_of:.0f} excluded every candidate"
+        filtered.append(
+            StageResult(
+                stage=result.stage,
+                status="empty" if not kept else result.status,
+                candidates=tuple(kept),
+                reason=reason,
+                latency_ms=result.latency_ms,
+            )
+        )
+    return filtered
 
 
 def _memory_type_for(category: str) -> str:

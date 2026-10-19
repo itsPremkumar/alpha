@@ -12,6 +12,59 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **hy-memory-adoption-slices-1-2-3-4-7:** Second implementation slice of the
+  Hy-Memory 2.0 adoption plan — four default-off upgrades plus one evaluation
+  family, all wired against the real L1 pipeline and fused controller. Staleness
+  propagation (`memory.l1.staleness_propagation`): the dedup seam reports only
+  store-confirmed superseded ids (`RunReport.stale_dependents` additive), and a
+  never-fail marking pass journals dependent entity ids — bounded at 32 per
+  batch with a `truncated` flag, id-only, content-free — under
+  `users/{u}/l1/staleness/YYYY-MM-DD.jsonl`. Conflict-candidate expansion
+  (`memory.l1.conflict_expansion`): dedup recall widens by up to 5 lower-ranked
+  candidates passing a deterministic same-subject/different-value prefilter so
+  implicit invalidations below the `dedup_top_k` cut reach the adjudicator.
+  As-of recall: `memory_search(as_of=...)` parses an ISO-8601/unix cutoff or
+  refuses it before any search (refusing outright while `memory.fusion.enabled`
+  is off), discloses the parsed cutoff, and the fused controller applies one
+  central filter dropping future-dated candidates (straight from the episode
+  `event_time` / facts with `createdAt` mapped to `valid_from`; undated kept;
+  fully-filtered stages report `empty` with the cutoff). Signal boost
+  (`memory.l1.signal_boost`): case-sensitive identifier tokens (0.15) and a
+  bounded 14-day recency term (0.10) reorder recall and dedup recall inside the
+  base-score top-k window, never below the relevance floor. Evaluation slice:
+  `alpha-update-004` implicit-invalidation family plus six new tests in
+  `test_memory_evaluation.py`. `config.example.yaml` gained the three
+  `memory.l1.*` gates and `config_version` bumped to 66. Lineages
+  (StateMem arXiv:2608.19652, STALE/CUPMem arXiv:2605.06527, Zep/Graphiti
+  arXiv:2501.13956, Mem0 arXiv:2504.19413) recorded in
+  `docs/THIRD_PARTY_MEMORY_NOTICES.md` as contracts only — no code copied.
+  Deferred to the plan backlog: sensory pre-compression, deferred dedup/repair,
+  multi-store transactional fan-out, governed conflict UI, and the L1
+  history-based as-of projection. Offline evidence and limits:
+  `docs/MEMORY_RUNTIME_AUDIT.md`.
+
+- **hy-memory-phase0-phase1-l1-history:** First implementation slice of the
+  Hy-Memory 2.0 adoption plan. Phase 1 L1 slice: with the default-off
+  `memory.l1.history_kept` gate, L1 dedup `update`/`merge` decisions persist
+  the replaced values as bounded, redacted `MemoryHistoryEntry` chains on the
+  surviving record (count-capped, char-capped per entry, oldest dropped;
+  merged records inherit targets' chains de-duplicated), the
+  `L1RecordStore.put_records()` redaction boundary extends to history
+  entries, the L1 recall seam renders a bounded, containment-wrapped
+  `(prior: …)` tail only while the gate is on, and `RunReport.history_entries`
+  counts entries written per run (additive report field). Phase 0 case
+  families: two new original evaluation cases riding the closed ability
+  vocabulary — `alpha-extraction-003` (assistant-said under `extraction`)
+  and `alpha-update-003` (history-retention under `update`, grading both the
+  current value and that the superseded value stays recallable). Also:
+  `config.example.yaml` consolidates three byte-identical duplicate `l1:`
+  blocks (YAML last-wins; no behavior change), adds `history_kept: false`,
+  and bumps `config_version` to 66. Hy-Memory 2.0 (Apache-2.0) attribution
+  recorded in `docs/THIRD_PARTY_MEMORY_NOTICES.md` (contract only — no code
+  copied). Offline evidence and limits: `docs/MEMORY_RUNTIME_AUDIT.md`; the
+  real-backend evaluation baseline and the DeerMem consolidation slice are
+  deliberately deferred.
+
 - **hy-memory-adoption-plan:** Research plan for adopting Tencent Hunyuan's
   open-source Hy-Memory 2.0 into Alpha's memory stacks:
   `docs/ALPHA_HY_MEMORY_2_ADOPTION_PLAN.md` compares every Hy-Memory capability

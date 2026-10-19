@@ -45,6 +45,63 @@ Copyright (C) 2026 Tencent
 Licensed under the MIT License
 ```
 
+## Hy-Memory 2.0 (Apache-2.0) — history-retention contract adopted
+
+- Upstream: <https://github.com/Tencent-Hunyuan/Hy-Memory> (Python SDK
+  `hy-memory==2.0.2`, released October 2026); DCPM paper:
+  <https://arxiv.org/abs/2606.09483>
+- License: **Apache-2.0** (verified against the repository) — eligible with
+  attribution; per `docs/ALPHA_HY_MEMORY_2_ADOPTION_PLAN.md`.
+- Why: Hy-Memory's history-preserving fact revision — when a memory is revised
+  or merged, the superseded value is retained as a bounded chain on the
+  surviving memory instead of being destroyed — fixes a real defect in
+  replace-on-write memories (the prior value's recency/audit value is lost,
+  and recall can no longer answer "what did it say before?"). Alpha's L1
+  dedup otherwise REPLACES targets in real time with no ancestry.
+- Adaptation policy: **no code copied**. Alpha implements the contract in
+  original English Python on its own `MemoryRecord` model, local JSON store,
+  and recall-safety seam (see `docs/ALPHA_HY_MEMORY_2_ADOPTION_PLAN.md`,
+  Phase 1 L1 slice). Divergences from the upstream design are deliberate:
+  the history chain is a bounded record field (`MAX_HISTORY_ENTRIES`,
+  char-capped per entry) rather than a separate memory store; it is written
+  only by the dedup seam's update/merge path under the default-off
+  `memory.l1.history_kept` gate; every entry passes the same
+  redaction-before-persistence boundary as record content; and the recall
+  tail is injected through `recall_safety.contain_recalled_text` (single
+  line, capped, `</memory>` neutralized), so history text can never carry
+  more authority through the prompt seam than current records.
+- Where the contract lives:
+  `backend/packages/harness/alpha/agents/memory/l1/models.py`
+  (`MemoryHistoryEntry`, `build_history_entry`), `.../l1/dedup.py`
+  (`_inherited_history`, `apply_decisions(..., history_enabled=)`),
+  `.../l1/store.py` (extended redaction boundary), `.../l1/pipeline.py`
+  (recall tail, `RunReport.history_entries`).
+- Tests: `backend/tests/test_l1_history.py`,
+  `backend/tests/test_memory_evaluation.py` (the `alpha-update-003`
+  history-retention and `alpha-extraction-003` assistant-said families ride
+  the closed evaluation vocabulary; the "assistant said" family mirrors the
+  LongMemEval subset named `assistant said`, not a copied question set).
+
+## Adoption slices #1–#4 (2026-10-17) — scholarly lineages, NO code copied
+
+Four default-off, bounded upgrades on Alpha's existing L1/fusion read paths,
+adapted from published systems and papers as **contracts only** (no code
+copied from any of them; every mechanism below is original Python on Alpha's
+own stores and seams):
+
+| Slice | Gate | Upstream idea | Source | Alpha adaptation |
+| --- | --- | --- | --- | --- |
+| #1 staleness propagation | `memory.l1.staleness_propagation` | "state drift": derived records survive the supersession of the fact they were extracted from; the fix marks dependents for re-derivation instead of trusting stale artifacts | StateMem — *Can Agent Memory Systems Track Evolving State?* <https://arxiv.org/abs/2608.19652> | deterministic, LLM-free MARKING pass: the dedup seam reports store-confirmed supersession ids, the pipeline walks the entity mention lineage Alpha already writes, and dependent entity ids land as bounded id-only journal rows under `users/{u}/l1/staleness/YYYY-MM-DD.jsonl` (≤32 dependents per batch, `truncated` flag; content never enters the journal; nothing deletes anything) |
+| #2 conflict-candidate expansion | `memory.l1.conflict_expansion` | the hard regime is the IMPLICIT conflict ("export moved to Wednesdays" never lexically negates "runs on Mondays"); conflict detection can only act on the candidates recall gives it, so widening the recalled pool past the top-k cut with same-subject/different-value shapes lets the adjudicator see the conflict | STALE — *Can LLM Agents Know When Their Memories Are No Longer Valid?* and the CUPMem prototype <https://arxiv.org/abs/2605.06527> | when the gate is on, dedup recall also surfaces up to 5 lower-ranked candidates passing a deterministic two-shared-tokens/different-value shape prefilter; the prefilter is over-inclusive by design — the LLM adjudicator, not the prefilter, decides what a conflict is |
+| #3 as-of recall read | tool parameter `memory_search(as_of=...)` (no config key) | bi-temporal reads: answer "what did the system know at time T?" from `valid_at`/`invalid_at`-style knowledge times | Zep / Graphiti <https://arxiv.org/abs/2501.13956> | query-time projection only: the tool parses an ISO-8601/unix cutoff (refusing unparseable values) and the fused controller applies ONE central filter — a candidate dated after the cutoff (episode `event_time`, fact `createdAt`→`valid_from`) is dropped; undated candidates are kept ("unknown time" is not "future knowledge"); fully-filtered stages report `empty` with the cutoff in their reason; with `memory.fusion.enabled` off the parameter is refused, never ignored |
+| #4 entity/recency signal boost | `memory.l1.signal_boost` | fusing structured identifier matches and recency with lexical recall so an identifier-shape match (`AuthService` vs `authservice`) or a fresh value outranks a stale tie | Mem0 — *Building Production-Ready AI Agents with Scalable Long-Term Memory* <https://arxiv.org/abs/2504.19413> | additive rank terms inside the relevance window only: case-sensitive identifier tokens (weight 0.15) and a bounded 14-day linear recency term (weight 0.10); the base hybrid score still decides the top-k window and the `> 0` relevance gate, so the boost reorders genuinely relevant records and can never admit an irrelevant one |
+
+Common honesty boundaries for all four: default OFF via `memory.l1.*` gates
+(slice #3 is a caller-side parameter with no config key); no new tool names;
+`RunReport.stale_dependents` is the only new report field; the staleness
+journal is an observation channel nothing reads back for decisions this
+release; and the temporal projection never deletes or rewrites stored facts.
+
 ## Reviewed agent-memory projects — licenses verified, NO code copied
 
 `references/ALPHA_ADVANCED_OPEN_SOURCE_AGENTIC_MEMORY_SYSTEM.md` names fifteen
@@ -102,7 +159,7 @@ so a future reader can tell inspiration from copying.
 | `fusion` | multi-stage retrieval, reciprocal-rank fusion, MMR diversification | none |
 | `scenarios` | context/scenario-conditioned retrieval routing | none |
 | `fabric` | canonical-envelope + lifecycle/temporal-integrity storage discipline | none |
-| `evaluation` | benchmark design only; **no LoCoMo / LongMemEval / MemBench dataset or question set was copied or bundled** — all 16 JSON cases are original, and LongMemEval is referenced solely as the name of the five-ability taxonomy | none |
+| `evaluation` | benchmark design only; **no LoCoMo / LongMemEval / MemBench dataset or question set was copied or bundled** — all 19 JSON cases are original, and LongMemEval is referenced solely as the name of the five-ability taxonomy (Hy-Memory's "assistant said" family is mirrored as an original case, see the section above; the implicit-invalidation family rides the STALE/CUPMem finding as a contract, with 100% original case content) | none |
 
 Two shared conventions are reused by import from inside this repository (not
 third-party code): `alpha.agents.memory.l1.paths` (`l1_root`, `safe_segment`,

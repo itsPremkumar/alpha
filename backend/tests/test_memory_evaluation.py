@@ -69,6 +69,165 @@ class _ExplodingProvider:
         raise AssertionError("disabled suite touched provider.forget")
 
 
+# ---------------------------------------------------------------------------
+# Hy-Memory 2.0 adoption, slice #2/#3: implicit invalidation (conflict
+# expansion defect probe) + as-of temporal ordering
+# (docs/ALPHA_HY_MEMORY_2_ADOPTION_PLAN.md). Both ride the CLOSED ability
+# vocabulary: update accuracy grades the implicit-invalidation chain,
+# temporal accuracy grades the as-of ordering probe.
+# ---------------------------------------------------------------------------
+
+
+def test_implicit_invalidation_case_loads_and_runs_oracle() -> None:
+    case = _case_by_id("alpha-update-004")
+    assert case.ability == "update"
+    oracle = run_case(case, ScriptedProvider.from_case(case), provider_kind="scripted")
+    assert oracle.status == "pass", oracle.to_dict()
+    types = _question_types(case)
+    assert types["q-current"] == "knowledge_update"
+    assert types["q-history"] == "retained_history"
+    assert list(case.questions[0].superseded_values) == ["blue"], "the superseded value is declared on the current question"
+
+
+def test_implicit_invalidation_case_grades_update_with_history() -> None:
+    case = _case_by_id("alpha-update-004")
+
+    class HistoryKeepingProvider:
+        """L1-faithful projection: the current question is answered ONLY from
+        the live record and the history question from the retained chain."""
+
+        def __init__(self) -> None:
+            self.current_event = next(e for e in case.events() if e.id == "event-staging-green")
+            self.old_event = next(e for e in case.events() if e.id == "event-staging-blue")
+            self.scope = case.scope
+            self.available = True
+
+        def write(self, event: Any) -> WriteReceipt:
+            return WriteReceipt(event.id, stored=True)
+
+        def recall(self, query: str, scope: dict[str, Any], now: str) -> list[MemoryRecord]:
+            if "history" in query or "before" in query:
+                return [MemoryRecord(id=self.old_event.id, content=self.old_event.text, scope=self.scope, answer=self.old_event.answer)]
+            return [MemoryRecord(id=self.current_event.id, content=self.current_event.text, scope=self.scope, answer=self.current_event.answer)]
+
+        def forget(self, id: str) -> None:
+            return None
+
+    result = run_case(case, HistoryKeepingProvider(), provider_kind="real")
+    assert result.status == "pass", result.to_dict()
+    by_id = {outcome.question_id: outcome for outcome in result.question_outcomes}
+    assert by_id["q-current"].correct
+    assert by_id["q-current"].update_correct is True
+    assert by_id["q-history"].correct
+    assert by_id["q-history"].evidence_ids == ("event-staging-blue",)
+
+
+def test_implicit_invalidation_case_rejects_the_stale_value_beside_the_current_one() -> None:
+    """A provider that returns BOTH lanes for the current question — a store
+    that never resolved the implicit conflict, exactly the silent duplicate
+    ``memory.l1.conflict_expansion`` is meant to surface — must FAIL."""
+
+    case = _case_by_id("alpha-update-004")
+    provider = _AnswerProvider("green blue", scope=case.scope, record_id="unresolved-conflict")
+    result = run_case(case, provider, provider_kind="real")
+    assert result.status == "fail"
+    by_id = {outcome.question_id: outcome for outcome in result.question_outcomes}
+    assert by_id["q-current"].update_correct is False
+
+
+def test_replace_on_write_store_fails_the_implicit_invalidation_history_question() -> None:
+    """A store that DESTROYS the prior lane value on update answers the
+    current question correctly but cannot back the history question."""
+
+    class ReplaceOnWriteStore(_PlainDictStore):
+        def put_records(self, records: list[dict[str, Any]], *, user_id: str | None, agent_name: str | None) -> int:
+            for record in records:
+                self.records = [existing for existing in self.records if self._subject(existing) != self._subject(record)]
+            self.records.extend(records)
+            return len(records)
+
+        @staticmethod
+        def _subject(record: dict[str, Any]) -> str:
+            return str(record.get("metadata", {}).get("subject", record["id"]))
+
+    def subject_record_factory(event: Any, scope: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": event.id,
+            "content": event.text,
+            "metadata": {"event_id": event.id, "scope": dict(scope), "subject": "staging-cluster-lane"},
+        }
+
+    case = _case_by_id("alpha-update-004")
+    result = run_case(case, RealStoreProvider(ReplaceOnWriteStore(), record_factory=subject_record_factory), provider_kind="real")
+    assert result.status == "fail", result.to_dict()
+    by_id = {outcome.question_id: outcome for outcome in result.question_outcomes}
+    assert by_id["q-current"].correct
+    assert not by_id["q-history"].passed
+    assert "declared evidence was not returned" in by_id["q-history"].failure_reasons
+
+
+def test_temporal_window_case_loads_and_grades_as_of_ordering() -> None:
+    case = _case_by_id("alpha-temporal-002")
+    assert case.ability == "temporal"
+    oracle = run_case(case, ScriptedProvider.from_case(case), provider_kind="scripted")
+    assert oracle.status == "pass", oracle.to_dict()
+    types = _question_types(case)
+    assert set(types.values()) == {"temporal_reasoning"}
+    by_question = {question.id: question for question in case.questions}
+    # The as-of question expects the OLD value while the NEW value is only a
+    # superseded distractor — the ordering property of the temporal probe.
+    assert by_question["q-before"].expected == "16:00 UTC"
+    assert list(by_question["q-before"].superseded_values) == ["18:00 UTC"]
+    assert list(by_question["q-current"].superseded_values) == ["16:00 UTC"]
+
+
+def test_temporal_window_case_rejects_a_latest_value_answer_to_the_as_of_question() -> None:
+    """Answering the as-of question with the CURRENT window value — the exact
+    read-path failure ``memory_search``'s ``as_of`` projection exists to fix —
+    must FAIL the ordering probe rather than pass vacuously."""
+
+    case = _case_by_id("alpha-temporal-002")
+    provider = _AnswerProvider("18:00 UTC", scope=case.scope, record_id="latest-window")
+    result = run_case(case, provider, provider_kind="real")
+    assert result.status == "fail"
+    by_id = {outcome.question_id: outcome for outcome in result.question_outcomes}
+    assert by_id["q-current"].update_correct is True, "the current question is answered well"
+    assert not by_id["q-before"].correct
+    assert by_id["q-before"].update_correct is False
+
+
+def test_replace_on_write_store_fails_the_temporal_as_of_question() -> None:
+    """A replace-on-write store answers the current question correctly, but
+    the OLD window value no longer exists anywhere — the as-of question must
+    FAIL on the missing declared evidence."""
+
+    class ReplaceOnWriteStore(_PlainDictStore):
+        def put_records(self, records: list[dict[str, Any]], *, user_id: str | None, agent_name: str | None) -> int:
+            for record in records:
+                self.records = [existing for existing in self.records if self._subject(existing) != self._subject(record)]
+            self.records.extend(records)
+            return len(records)
+
+        @staticmethod
+        def _subject(record: dict[str, Any]) -> str:
+            return str(record.get("metadata", {}).get("subject", record["id"]))
+
+    def subject_record_factory(event: Any, scope: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": event.id,
+            "content": event.text,
+            "metadata": {"event_id": event.id, "scope": dict(scope), "subject": "support-window"},
+        }
+
+    case = _case_by_id("alpha-temporal-002")
+    result = run_case(case, RealStoreProvider(ReplaceOnWriteStore(), record_factory=subject_record_factory), provider_kind="real")
+    assert result.status == "fail", result.to_dict()
+    by_id = {outcome.question_id: outcome for outcome in result.question_outcomes}
+    assert by_id["q-current"].correct
+    assert not by_id["q-before"].passed
+    assert "declared evidence was not returned" in by_id["q-before"].failure_reasons
+
+
 def test_every_bundled_case_is_valid_json_and_declares_a_known_ability() -> None:
     paths = sorted(CASES_DIR.glob("*.json"))
     assert len(paths) >= 12
@@ -78,6 +237,7 @@ def test_every_bundled_case_is_valid_json_and_declares_a_known_ability() -> None
         assert isinstance(payload, dict)
         case = Case.from_dict(payload)
         assert case.ability in ABILITIES
+
         assert case.id == payload["id"]
         parsed.append(case)
     assert len({case.id for case in parsed}) == len(parsed)
@@ -293,3 +453,125 @@ def test_package_root_exports_are_lazy_and_original_cases_are_declared() -> None
     assert "LongMemEval" in evaluation.__doc__
     assert callable(evaluation.run_suite)
     assert callable(evaluation.load_cases)
+
+
+# ---------------------------------------------------------------------------
+# Hy-Memory 2.0 adoption, Phase 0: assistant-said + history-retention families
+# (docs/ALPHA_HY_MEMORY_2_ADOPTION_PLAN.md). Both ride the CLOSED ability
+# vocabulary: extraction recall grades the assistant-said family, update
+# accuracy grades the history-retention family.
+# ---------------------------------------------------------------------------
+
+
+def _case_by_id(case_id: str) -> Case:
+    return next(case for case in load_cases(CASES_DIR) if case.id == case_id)
+
+
+def _question_types(case: Case) -> dict[str, str]:
+    return {question.id: question.type for question in case.questions}
+
+
+class _PlainDictStore:
+    """Minimal put/search/delete store for RealStoreProvider (appends never replace)."""
+
+    def __init__(self) -> None:
+        self.records: list[dict[str, Any]] = []
+
+    def put_records(self, records: list[dict[str, Any]], *, user_id: str | None, agent_name: str | None) -> int:
+        self.records.extend(records)
+        return len(records)
+
+    def search(self, query: str, top_k: int, *, user_id: str | None, agent_name: str | None) -> list[dict[str, Any]]:
+        return self.records[:top_k]
+
+    def delete_records(self, record_ids: list[str], *, user_id: str | None, agent_name: str | None) -> int:
+        before = len(self.records)
+        self.records = [record for record in self.records if record["id"] not in set(record_ids)]
+        return before - len(self.records)
+
+
+def _plain_record_factory(event: Any, scope: dict[str, Any]) -> dict[str, Any]:
+    return {"id": event.id, "content": event.text, "metadata": {"event_id": event.id, "scope": dict(scope)}}
+
+
+def test_assistant_said_case_loads_and_runs_through_both_paths() -> None:
+    case = _case_by_id("alpha-extraction-003")
+    assert case.ability == "extraction"
+    oracle = run_case(case, ScriptedProvider.from_case(case), provider_kind="scripted")
+    assert oracle.status == "pass", oracle.to_dict()
+    real = run_case(case, RealStoreProvider(_PlainDictStore(), record_factory=_plain_record_factory), provider_kind="real")
+    assert real.status == "pass", real.to_dict()
+    types = _question_types(case)
+    assert types and all(question_type == "assistant_said" for question_type in types.values())
+
+
+def test_history_retention_case_grades_current_and_prior_value() -> None:
+    case = _case_by_id("alpha-update-003")
+    assert case.ability == "update"
+    oracle = run_case(case, ScriptedProvider.from_case(case), provider_kind="scripted")
+    assert oracle.status == "pass", oracle.to_dict()
+    types = _question_types(case)
+    assert types["q-current"] == "knowledge_update"
+    assert types["q-history"] == "retained_history"
+
+    class HistoryKeepingProvider:
+        """L1-faithful projection: history rides INSIDE the current record,
+        and the history question is answered from the chain — no superseded
+        record is ever returned for the current question (the grader's
+        update contract), so both questions grade correct."""
+
+        def __init__(self) -> None:
+            self.current_event = next(e for e in case.events() if e.id == "event-export-new")
+            self.old_event = next(e for e in case.events() if e.id == "event-export-old")
+            self.scope = case.scope
+            self.available = True
+
+        def write(self, event: Any) -> WriteReceipt:
+            return WriteReceipt(event.id, stored=True)
+
+        def recall(self, query: str, scope: dict[str, Any], now: str) -> list[MemoryRecord]:
+            if "history" in query or "before" in query:
+                return [MemoryRecord(id=self.old_event.id, content=self.old_event.text, scope=self.scope, answer=self.old_event.answer)]
+            return [MemoryRecord(id=self.current_event.id, content=self.current_event.text, scope=self.scope, answer=self.current_event.answer)]
+
+        def forget(self, id: str) -> None:
+            return None
+
+    result = run_case(case, HistoryKeepingProvider(), provider_kind="real")
+    assert result.status == "pass", result.to_dict()
+    by_id = {outcome.question_id: outcome for outcome in result.question_outcomes}
+    assert by_id["q-current"].correct
+    assert by_id["q-history"].correct
+    assert by_id["q-history"].evidence_ids == ("event-export-old",)
+
+
+def test_replace_on_write_store_fails_the_history_retention_question() -> None:
+    """A store that DESTROYS the prior value on update answers the current
+    question correctly but cannot back the history question — the case must
+    FAIL on the missing declared evidence rather than pass vacuously."""
+
+    class ReplaceOnWriteStore(_PlainDictStore):
+        def put_records(self, records: list[dict[str, Any]], *, user_id: str | None, agent_name: str | None) -> int:
+            for record in records:
+                self.records = [existing for existing in self.records if self._subject(existing) != self._subject(record)]
+            self.records.extend(records)
+            return len(records)
+
+        @staticmethod
+        def _subject(record: dict[str, Any]) -> str:
+            return str(record.get("metadata", {}).get("subject", record["id"]))
+
+    def subject_record_factory(event: Any, scope: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": event.id,
+            "content": event.text,
+            "metadata": {"event_id": event.id, "scope": dict(scope), "subject": "nadias-bookkeeping-export"},
+        }
+
+    case = _case_by_id("alpha-update-003")
+    result = run_case(case, RealStoreProvider(ReplaceOnWriteStore(), record_factory=subject_record_factory), provider_kind="real")
+    assert result.status == "fail", result.to_dict()
+    by_id = {outcome.question_id: outcome for outcome in result.question_outcomes}
+    assert by_id["q-current"].correct
+    assert not by_id["q-history"].passed
+    assert "declared evidence was not returned" in by_id["q-history"].failure_reasons

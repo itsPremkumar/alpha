@@ -69,6 +69,11 @@ def generation_log_path(root: Path, user_id: str | None, day: str) -> Path:
     return user_dir(root, user_id) / "generation-log" / f"{day}.jsonl"
 
 
+def staleness_path(root: Path, user_id: str | None, day: str) -> Path:
+    """Path of one day's bounded id-only staleness journal (``day`` is ``YYYY-MM-DD``)."""
+    return user_dir(root, user_id) / "staleness" / f"{day}.jsonl"
+
+
 def quota_path(root: Path, user_id: str | None) -> Path:
     """Path of the per-user quota state document."""
     return user_dir(root, user_id) / "quota.json"

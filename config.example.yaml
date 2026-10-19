@@ -33,13 +33,24 @@
 # 57: documented `network` (internet connectivity monitoring). Existing installs
 # get the same values they already run with — the section's defaults were
 # production-usable — so this is a documentation bump, not a behaviour change.
+# 64: swarm run-correlated lifecycle and recovery (bot plan 3.1): the
+# `swarm.resume_on_start` startup recovery policy, default `none` (park every
+# recovered plan and wait for an explicit resume; auto-resume spends tokens).
+# 65: recursive harness improvement (Harness²) block: immutable harness
+# bundles, proposals, isolated probes and the gated promotion ladder; off.
+# 66: Hy-Memory 2.0 adoption slices #1/#2/#4 under `memory.l1`
+# (`staleness_propagation`, `conflict_expansion`, `signal_boost`) plus the
+# `memory_search` as-of read path (slice #3, tool-level parameter, no config
+# key), `memory.l1.history_kept`, and the removal of three byte-identical
+# duplicate `l1:` blocks (YAML last-wins; no behaviour change). All gates
+# default off/false — additive opt-in, existing behaviour unchanged.
 # 63: `model_routing:` is no longer commented out. The shipped `specialists`
 # declare routing slots (`category:deep`, `category:writing`, `tier:frontier`,
 # `tier:coding`, `tier:fast`), so an install with no `model_routing` table
 # resolved every one of them to no model and booted with a WARNING saying so.
 # A merge-only upgrade cannot add the key to a file that already sits at the
 # previous version, so this needs its own version to reach existing installs.
-config_version: 65
+config_version: 66
 
 # ============================================================================
 # Logging
@@ -3441,6 +3452,29 @@ memory:
     min_priority: 60            # drop below this priority (-1 sentinel kept)
     dedup_enabled: true         # batch conflict detection before writes land
     dedup_top_k: 5              # existing candidates recalled per new memory
+    # History-preserving fact revision (Hy-Memory 2.0 adoption, Phase 1; see
+    # docs/ALPHA_HY_MEMORY_2_ADOPTION_PLAN.md). When dedup issues update/merge,
+    # the replaced value is kept as a bounded, redacted history chain on the
+    # surviving record and recall renders a bounded prior-value tail.
+    # Default off: prior values are replaced (discarded) as before.
+    history_kept: false
+    # Staleness propagation (Hy-Memory 2.0 adoption, slice #1). When conflict
+    # detection removes a record, records depending on it through entity-memory
+    # edges receive an id-only staleness journal entry the next review can
+    # act on (RunReport.stale_dependents). Requires dedup_enabled and
+    # memory.entities.enabled for a lineage to exist. Default off.
+    staleness_propagation: false
+    # Conflict-candidate expansion (Hy-Memory 2.0 adoption, slice #2). Widen the
+    # dedup recall pool by up to 5 lower-ranked candidates that pass a
+    # deterministic same-subject/different-value shape check, so an implicit
+    # invalidation ("export moved to Wednesdays" vs "runs on Mondays") that
+    # missed dedup_top_k still reaches the adjudicator. Default off.
+    conflict_expansion: false
+    # Entity/recency signal boost (Hy-Memory 2.0 adoption, slice #4). Adds a
+    # case-sensitive identifier-match term (weight 0.15) and a bounded 14-day
+    # recency term (weight 0.10) to the L1 recall and dedup recall rank inside
+    # the relevance window. Default off keeps the baseline rank byte-identical.
+    signal_boost: false
     quota_enabled: true         # per-user record + credit quotas
     quota_memory_limit: 10000
     quota_credit_limit: 1000.0
@@ -3453,93 +3487,6 @@ memory:
     persona_enabled: true       # persona profile from persona-type records
     persona_min_memories: 3
     storage_path: null          # null = agent runtime home (per-user layout)
-
-  # L1 typed working memory: scene segmentation, typed extraction, dedup/merge, quotas, recall.
-  # Requires memory.enabled as well; the schema default is false (opt-in).
-  l1:
-    enabled: true
-    mode: "chat"
-    extraction_model: null
-    debounce_seconds: 5.0
-    max_memories_per_run: 12
-    min_priority: 60
-    dedup_enabled: true
-    dedup_top_k: 5
-    quota_enabled: true
-    quota_memory_limit: 10000
-    quota_credit_limit: 1000.0
-    provenance_enabled: true
-    # Apply the retention sweep after each run.
-    retention_enabled: true
-    retention_max_records: 5000
-    # Retention sweep drops non-pinned records older than this many days.
-    retention_max_age_days: 180
-    # Inject the top L1 records into the <memory> block at recall time.
-    recall_enabled: true
-    # How many L1 records the recall seam injects.
-    recall_top_k: 5
-    persona_enabled: true
-    # Minimum persona-type records required before persona synthesis runs.
-    persona_min_memories: 3
-    storage_path: null
-
-  # L1 typed working memory: scene segmentation, typed extraction, dedup/merge, quotas, recall.
-  # Requires memory.enabled as well; the schema default is false (opt-in).
-  l1:
-    enabled: true
-    mode: "chat"
-    extraction_model: null
-    debounce_seconds: 5.0
-    max_memories_per_run: 12
-    min_priority: 60
-    dedup_enabled: true
-    dedup_top_k: 5
-    quota_enabled: true
-    quota_memory_limit: 10000
-    quota_credit_limit: 1000.0
-    provenance_enabled: true
-    # Apply the retention sweep after each run.
-    retention_enabled: true
-    retention_max_records: 5000
-    # Retention sweep drops non-pinned records older than this many days.
-    retention_max_age_days: 180
-    # Inject the top L1 records into the <memory> block at recall time.
-    recall_enabled: true
-    # How many L1 records the recall seam injects.
-    recall_top_k: 5
-    persona_enabled: true
-    # Minimum persona-type records required before persona synthesis runs.
-    persona_min_memories: 3
-    storage_path: null
-
-  # L1 typed working memory: scene segmentation, typed extraction, dedup/merge, quotas, recall.
-  # Requires memory.enabled as well; the schema default is false (opt-in).
-  l1:
-    enabled: true
-    mode: "chat"
-    extraction_model: null
-    debounce_seconds: 5.0
-    max_memories_per_run: 12
-    min_priority: 60
-    dedup_enabled: true
-    dedup_top_k: 5
-    quota_enabled: true
-    quota_memory_limit: 10000
-    quota_credit_limit: 1000.0
-    provenance_enabled: true
-    # Apply the retention sweep after each run.
-    retention_enabled: true
-    retention_max_records: 5000
-    # Retention sweep drops non-pinned records older than this many days.
-    retention_max_age_days: 180
-    # Inject the top L1 records into the <memory> block at recall time.
-    recall_enabled: true
-    # How many L1 records the recall seam injects.
-    recall_top_k: 5
-    persona_enabled: true
-    # Minimum persona-type records required before persona synthesis runs.
-    persona_min_memories: 3
-    storage_path: null
 
   # Affective memory: emotional tone events, decayed mood state, mood-aware recall.
   # Requires memory.enabled as well; the schema default is false (opt-in).

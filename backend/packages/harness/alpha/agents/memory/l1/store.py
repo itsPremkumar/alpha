@@ -122,6 +122,64 @@ def hybrid_score(query: str, record: MemoryRecord, *, corpus_tokens: list[list[s
     return _W_BM25 * norm_bm25 + _W_COSINE * semantic
 
 
+# ---------------------------------------------------------------------------
+# Signal boost (Hy-Memory 2.0 adoption, slice #4; Mem0-inspired entity-term fusion)
+# ---------------------------------------------------------------------------
+
+#: Case-insensitive BM25 + cosine cannot see identifier SHAPE, so the boost
+#: adds the two signals they miss, with documented weights that keep the sum
+#: of one identifier match + one window edge below the semantic weights:
+_SIGNAL_WEIGHT_ENTITY = 0.15
+_SIGNAL_WEIGHT_RECENCY = 0.10
+_SIGNAL_RECENCY_WINDOW_DAYS = 14.0
+_SIGNAL_RECYCLE_SECONDS = 86400.0 * _SIGNAL_RECENCY_WINDOW_DAYS
+
+_IDENTIFIER_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{3,}")
+
+
+def identifier_tokens(text: str) -> set[str]:
+    """Identifier-shaped tokens a case-insensitive rank cannot see.
+
+    CamelCase (``AuthService``), snake_case (``auth_service``) and
+    digit-bearing (``mcp2``) tokens keep their identity signal only when
+    compared case-SENSITIVELY; ordinary prose tokens contribute nothing.
+    """
+
+    tokens = set()
+    for match in _IDENTIFIER_TOKEN_RE.findall(text or ""):
+        if match != match.lower() or "_" in match or any(character.isdigit() for character in match):
+            tokens.add(match)
+    return tokens
+
+
+def recency_term(record: MemoryRecord, *, now: float | None = None) -> float:
+    """``1 - age/window`` clamped to ``[0, 1]`` (14-day window, 0 past it)."""
+
+    current = time.time() if now is None else float(now)
+    age = current - float(record.updated_at or 0.0)
+    if age <= 0.0:
+        return 1.0
+    if age >= _SIGNAL_RECYCLE_SECONDS:
+        return 0.0
+    return 1.0 - age / _SIGNAL_RECYCLE_SECONDS
+
+
+def _entity_term(query: str, content: str) -> float:
+    """Fraction of the query's identifier tokens found case-sensitively."""
+
+    tokens = identifier_tokens(query)
+    if not tokens:
+        return 0.0
+    matched = [token for token in tokens if token in content]
+    return len(matched) / len(tokens)
+
+
+def _boosted_score(base: float, query: str, record: MemoryRecord, *, now: float | None = None) -> float:
+    """``base + entity_term * W_entity + recency_term * W_recency``."""
+
+    return base + _entity_term(query, record.content) * _SIGNAL_WEIGHT_ENTITY + recency_term(record, now=now) * _SIGNAL_WEIGHT_RECENCY
+
+
 class _ScopeDocument:
     """In-memory state for one ``(user_id, agent_name)`` scope."""
 
@@ -225,13 +283,20 @@ class L1RecordStore:
         # durable store as a second, fail-closed boundary for callers that
         # bypass it with direct model construction or model_validate(). Do not
         # silently rewrite IDs here: callers use them as commit receipts.
+        # The bound extends to history chain entries (Phase 1): a prior value
+        # smuggled into ``record.history`` is exactly as durable as record
+        # content, so it carries the same redaction requirement.
         for record in records:
             content_redactions = redact_for_memory(record.content).redactions
             scene_redactions = redact_for_memory(record.scene_name).redactions
             metadata_redactions = redact_mapping(record.metadata).redactions
             tags_redactions = redact_mapping({"tags": record.tags}).redactions
             timestamp_redactions = redact_mapping({"timestamps": record.timestamps}).redactions
-            if content_redactions or scene_redactions or metadata_redactions or tags_redactions or timestamp_redactions:
+            history_redactions: list[Any] = []
+            for entry in record.history:
+                history_redactions.extend(redact_for_memory(entry.content).redactions)
+                history_redactions.extend(redact_mapping({"timestamps": entry.timestamps}).redactions)
+            if content_redactions or scene_redactions or metadata_redactions or tags_redactions or timestamp_redactions or history_redactions:
                 raise ValueError("L1 memory record contains unredacted sensitive content; refusing persistence")
         with self._key_lock(user_id, agent_name):
             doc = self._load(user_id, agent_name)
@@ -278,11 +343,21 @@ class L1RecordStore:
         user_id: str | None = None,
         agent_name: str | None = None,
         memory_type: str | None = None,
+        signal_boost: bool = False,
     ) -> list[MemoryRecord]:
         """Hybrid BM25 + cosine recall, highest score first.
 
         ``memory_type`` filters BEFORE the ``top_k`` slice so a type-scoped
         search is never starved by other types' higher scores.
+
+        With ``signal_boost`` on (``memory.l1.signal_boost``), the rank inside
+        the relevance window adds the entity-identity and recency terms
+        (see :func:`identifier_tokens` / :func:`recency_term`). The BASE score
+        still decides both the ``top_k`` window and the ``> 0`` relevance
+        gate — a record with no lexical relevance can be promoted in ORDER by
+        the boost, but never admitted by it, so "this memory is similar to
+        your question" stays true while the gate is off, and the boost only
+        reorders genuinely-relevant records when it is on.
         """
         with self._key_lock(user_id, agent_name):
             records = self._load(user_id, agent_name).records
@@ -295,7 +370,11 @@ class L1RecordStore:
         corpus_tokens = [tokenize(record.content) for record in records]
         scored = [(hybrid_score(query, record, corpus_tokens=corpus_tokens, index=index), record) for index, record in enumerate(records)]
         scored.sort(key=lambda pair: -pair[0])
-        return [record for score, record in scored[: max(0, top_k)] if score > 0.0]
+        top = scored[: max(0, top_k)]
+        if signal_boost:
+            top = [(_boosted_score(base, query, record), record) for base, record in top]
+            top.sort(key=lambda pair: -pair[0])
+        return [record for base_score, record in top if base_score > 0.0]
 
     # -- dedup candidate recall ------------------------------------------
     def candidates_for_dedup(
@@ -305,6 +384,7 @@ class L1RecordStore:
         *,
         user_id: str | None = None,
         agent_name: str | None = None,
+        signal_boost: bool = False,
     ) -> dict[str, list[MemoryRecord]]:
         """Recall up to ``top_k`` existing candidates for each new memory.
 
@@ -315,7 +395,7 @@ class L1RecordStore:
         matches: dict[str, list[MemoryRecord]] = {}
         for memory in new_memories:
             record_id = memory.get("record_id") or ""
-            matches[record_id] = self.search(str(memory.get("content", "")), top_k, user_id=user_id, agent_name=agent_name)
+            matches[record_id] = self.search(str(memory.get("content", "")), top_k, user_id=user_id, agent_name=agent_name, signal_boost=signal_boost)
         return matches
 
     # -- extraction cursors ----------------------------------------------

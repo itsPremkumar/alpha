@@ -267,10 +267,15 @@ class L1Pipeline:
         config: MemoryConfig | None = None,
         store: L1RecordStore | None = None,
         model: Any = None,
+        entity_memory: Any = None,
     ) -> None:
         self._config = config
         self._store = store
         self._model = model
+        #: Optional entity-memory seam for staleness propagation (slice #1).
+        #: None defers to the lazy host resolution below (cfg.l1.entities) and
+        #: stays a no-op for hosts without entity capture configured.
+        self._entity_memory = entity_memory
         self._pending: dict[tuple[str, str | None, str | None], CaptureJob] = {}
         self._lock = threading.Lock()
         self._timer: threading.Timer | None = None
@@ -518,6 +523,12 @@ class L1Pipeline:
         # it never feeds a decision below — the counts still come from
         # apply_decisions alone.
         persisted_ids: list[str] = []
+        #: Update/merge history-chain lengths this run (one append per merged
+        #: record, all zeros when ``memory.l1.history_kept`` is off).
+        kept_history: list[int] = []
+        #: Store-confirmed supersessions this run (slice #1): only collected
+        #: while the staleness gate is on, so gate-off runs pay nothing.
+        superseded_out: list[str] | None = [] if l1.staleness_propagation else None
         if records and l1.dedup_enabled:
             existing_count = store.count(job.user_id, job.agent_name)
             if existing_count == 0:
@@ -529,6 +540,9 @@ class L1Pipeline:
                     user_id=job.user_id,
                     agent_name=job.agent_name,
                     persisted_ids=persisted_ids,
+                    history_enabled=l1.history_kept,
+                    kept_history=kept_history,
+                    superseded_ids=superseded_out,
                 )
             else:
                 dedup = L1Dedup(
@@ -538,6 +552,8 @@ class L1Pipeline:
                     user_id=job.user_id,
                     agent_name=job.agent_name,
                     model_name=l1.extraction_model,
+                    conflict_expansion=l1.conflict_expansion,
+                    signal_boost=l1.signal_boost,
                 )
                 dedup_outcome = dedup.detect(records, mode=job.mode, thread_id=job.thread_id)
                 report.dedup_status = dedup_outcome.status
@@ -559,6 +575,9 @@ class L1Pipeline:
                     user_id=job.user_id,
                     agent_name=job.agent_name,
                     persisted_ids=persisted_ids,
+                    history_enabled=l1.history_kept,
+                    kept_history=kept_history,
+                    superseded_ids=superseded_out,
                 )
         else:
             report.dedup_status = "disabled" if not l1.dedup_enabled else "no_existing"
@@ -569,12 +588,23 @@ class L1Pipeline:
                 user_id=job.user_id,
                 agent_name=job.agent_name,
                 persisted_ids=persisted_ids,
+                history_enabled=l1.history_kept,
+                kept_history=kept_history,
+                superseded_ids=superseded_out,
             )
         report.stored = counts["stored"]
         report.skipped = counts["skipped"]
         report.updated = counts["updated"]
         report.merged = counts["merged"]
+        report.history_entries = sum(kept_history)
         report.persisted_record_ids = tuple(persisted_ids)
+
+        # 6b. Staleness propagation (slice #1): mark dependents of every
+        # store-confirmed supersession through the entity mention lineage.
+        # Marking, never deleting; a walk or journal failure can never fail
+        # the capture run (see l1/propagation.py).
+        if superseded_out:
+            report.stale_dependents = self._mark_stale_dependents(job, superseded_out, store)
 
         # 7. Retention sweep.
         if l1.retention_enabled:
@@ -737,6 +767,61 @@ class L1Pipeline:
             storage_path=str(self._store_for().root),
         )
 
+    # -- staleness propagation (slice #1) ---------------------------------
+    def _entity_memory_for(self) -> Any:
+        """Injected entity seam first, lazy host wiring second.
+
+        The lazy path mirrors ``capture_composition._write_entities``: entity
+        capture is independently gated (``memory.entities.enabled``), so a
+        deployment with entity memory off has no lineage to walk and
+        propagation is honestly a no-op rather than a silent empty walk.
+        """
+
+        if self._entity_memory is not None:
+            return self._entity_memory
+        cfg = self._cfg()
+        if not bool(getattr(cfg.entities, "enabled", False)):
+            return None
+        from alpha.memory.entities.memory import EntityMemory
+
+        return EntityMemory(config=cfg.entities)
+
+    def _mark_stale_dependents(self, job: CaptureJob, superseded_ids: list[str], store: L1RecordStore) -> int:
+        """Mark dependents of this run's supersessions — never fails a run.
+
+        Returns the count of dependent records marked (journal-side effect:
+        one bounded id-only staleness entry under the user's ``l1/staleness``
+        day file when the walk found the lineage seam).
+        """
+
+        try:
+            from alpha.agents.memory.l1.propagation import (
+                DEPENDENT_LIMIT,
+                append_staleness_entry,
+                collect_entity_dependents,
+            )
+        except Exception as exc:  # pragma: no cover - package-local import
+            logger.warning("L1 staleness propagation unavailable (%s)", type(exc).__name__, exc_info=True)
+            return 0
+        try:
+            entity_memory = self._entity_memory_for()
+            if entity_memory is None:
+                return 0
+            dependents = collect_entity_dependents(entity_memory, user_id=job.user_id, superseded_ids=superseded_ids)
+            truncated = len(dependents) >= DEPENDENT_LIMIT
+            append_staleness_entry(
+                user_id=job.user_id,
+                agent_name=job.agent_name,
+                superseded_record_ids=sorted(superseded_ids),
+                dependents=dependents,
+                storage_path=str(store.root),
+                truncated=truncated,
+            )
+            return len(dependents)
+        except Exception as exc:  # the marking pass can never fail a capture run
+            logger.warning("L1 staleness propagation failed (%s)", type(exc).__name__, exc_info=True)
+            return 0
+
     # -- recall -----------------------------------------------------------
     def recall(
         self,
@@ -771,7 +856,7 @@ class L1Pipeline:
         store = self._store_for()
         limit = top_k if top_k is not None else l1.recall_top_k
         if query.strip():
-            records = store.search(query, limit, user_id=user_id, agent_name=agent_name)
+            records = store.search(query, limit, user_id=user_id, agent_name=agent_name, signal_boost=l1.signal_boost)
         else:
             records = sorted(
                 store.list_records(user_id, agent_name),
@@ -785,7 +870,21 @@ class L1Pipeline:
                 continue
             body = contain_recalled_text(record.content)
             truncated = truncated or TRUNCATION_NOTICE.strip() in body
-            record_lines.append(f"- [{record.type} p{record.priority}] {body}")
+            prior_note = ""
+            if l1.history_kept and record.history:
+                # Bounded prior-value tail (history_kept): most recent
+                # supersessions last, injected through the same containment
+                # wrapper as record content — recall data, not instructions.
+                tail_parts: list[str] = []
+                for entry in reversed(record.history[-2:]):
+                    part = contain_recalled_text(entry.content)
+                    truncated = truncated or TRUNCATION_NOTICE.strip() in part
+                    stamp = entry.timestamps[-1] if entry.timestamps else ""
+                    tail_parts.append(f"{part} @{stamp}" if stamp else part)
+                joined = " | ".join(part for part in tail_parts if part)
+                if joined:
+                    prior_note = f" (prior: {joined})"
+            record_lines.append(f"- [{record.type} p{record.priority}] {body}{prior_note}")
         from .persona import load_profile
 
         raw_profile = load_profile(store, user_id=user_id, agent_name=agent_name).strip()

@@ -1,0 +1,28 @@
+{
+  "id": "alpha-update-004",
+  "ability": "update",
+  "scope": {"user_id": "eval-update-004", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-staging-blue", "timestamp": "2026-03-01T10:00:00Z", "text": "The staging cluster deploys through the blue lane.", "fact_id": "fact-staging-blue", "answer": "blue", "expected_stored": true}
+      ]
+    },
+    {
+      "session_id": "s2",
+      "events": [
+        {"id": "event-staging-green", "timestamp": "2026-03-12T10:00:00Z", "text": "We switched the staging cluster to the green deploy lane.", "fact_id": "fact-staging-green", "answer": "green", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q-current", "question": "Which deploy lane does the staging cluster use now?", "expected": "green", "superseded_values": ["blue"], "type": "knowledge_update", "evidence_ids": ["event-staging-green"]},
+    {"id": "q-history", "question": "Which deploy lane did the staging cluster use before the switch, as retained in memory history?", "expected": "blue", "type": "retained_history", "evidence_ids": ["event-staging-blue"]}
+  ],
+  "metadata": {
+    "expected_stored": ["event-staging-blue", "event-staging-green"],
+    "family": "history_retention",
+    "notes": "IMPLICIT invalidation chain (Hy-Memory 2.0 conflict-candidate expansion slice): the green-lane event never lexically negates the blue-lane event, so a store must resolve the conflict despite no shared negation surface. q-current grades the standard update_correctness contract and FAILS any provider that still returns the superseded blue value beside the current one; q-history grades that the prior lane value remains recallable as history."
+  }
+}

@@ -314,6 +314,50 @@ class L1MemoryConfig(BaseModel):
         le=50,
         description="Existing candidate memories recalled per new memory for conflict detection.",
     )
+    history_kept: bool = Field(
+        default=False,
+        description=(
+            "History-preserving fact revision (Hy-Memory 2.0 adoption, Phase 1): "
+            "when dedup issues update/merge, the replaced value is kept as a "
+            "bounded, redacted history chain on the surviving record instead of "
+            "being destroyed, and recall renders a bounded prior-value tail. "
+            "Requires dedup_enabled and memory.enabled; recall tail also needs "
+            "recall_enabled."
+        ),
+    )
+    staleness_propagation: bool = Field(
+        default=False,
+        description=(
+            "Staleness propagation (Hy-Memory 2.0 adoption, slice #1, StateMem-inspired): "
+            "when conflict detection removes a record, records depending on it "
+            "through entity-memory edges receive an id-only staleness journal "
+            "entry (bounded per day, content-free) that the next L1 review can "
+            "promote. Requires dedup_enabled; default off."
+        ),
+    )
+    conflict_expansion: bool = Field(
+        default=False,
+        description=(
+            "Conflict-candidate expansion (Hy-Memory 2.0 adoption, slice #2, "
+            "STALE/CUPMem-inspired): when conflict detection runs, widen the "
+            "dedup recall pool by up to 5 lower-ranked candidates that pass a "
+            "deterministic same-subject/different-value shape check, so an "
+            "implicit invalidation ('export moved to Wednesdays' vs 'runs on "
+            "Mondays') missing dedup_top_k still reaches the adjudicator. "
+            "Optional second gate after dedup_enabled; default off."
+        ),
+    )
+    signal_boost: bool = Field(
+        default=False,
+        description=(
+            "Entity/recency signal boost (Hy-Memory 2.0 adoption, slice #4, "
+            "Mem0-inspired): adds a case-sensitive identifier-match term "
+            "(weight 0.15) and a bounded 14-day recency term (weight 0.10) to "
+            "the L1 hybrid recall score, for both the recall seam and dedup "
+            "candidate recall. Default off keeps the baseline rank "
+            "byte-identical."
+        ),
+    )
     quota_enabled: bool = Field(
         default=True,
         description="Enforce per-user record and credit quotas before runs and before writes land.",

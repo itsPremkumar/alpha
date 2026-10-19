@@ -18,6 +18,7 @@ overrides those ops (DeerMem does; noop inherits the raises -> errors).
 
 import json
 import logging
+from datetime import datetime
 
 from langchain.tools import tool
 
@@ -46,12 +47,43 @@ def _memory_content_key(content: str) -> str:
     return content.strip().casefold()
 
 
+def _parse_as_of(value: str | None) -> float | None:
+    """Parse an ``as_of`` cutoff into unix seconds — parsed or refused, never guessed.
+
+    ``None``/blank means "not provided". A pure number is unix seconds (float
+    accepted). Any other value must be an ISO-8601 timestamp with a date part
+    (``Z`` suffix accepted); everything else raises :class:`ValueError` so the
+    caller can refuse the request instead of silently ignoring the parameter.
+    """
+
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    # An ISO-8601 timestamp always carries a date part; refusing anything
+    # without one keeps bare times ("07:40") from silently becoming
+    # "today at that time".
+    if "-" not in text:
+        raise ValueError(f"invalid as_of timestamp: {value!r}")
+    normalized = text[:-1] + "+00:00" if text.endswith(("Z", "z")) else text
+    try:
+        return datetime.fromisoformat(normalized).timestamp()
+    except ValueError as exc:
+        raise ValueError(f"invalid as_of timestamp: {value!r}") from exc
+
+
 @tool("memory_search", parse_docstring=True)
 def memory_search_tool(
     runtime: Runtime,
     query: str,
     category: str | None = None,
     limit: int = 10,
+    as_of: str | None = None,
 ) -> str:
     """Search existing facts by natural language query.
 
@@ -64,16 +96,38 @@ def memory_search_tool(
         category: Optional category filter (e.g. "preference", "correction",
             "context"). Only facts with this exact category are returned.
         limit: Maximum results to return (default 10).
+        as_of: Optional temporal cutoff (ISO-8601 timestamp like
+            "2026-10-01T00:00:00Z", or unix seconds). Asks "what did the
+            memory system know at that time?" — candidates dated after the
+            cutoff are excluded. Requires the fused recall surface
+            (memory.fusion.enabled); refused, not ignored, otherwise.
 
     Returns:
         JSON string with "results" (list of fact objects) and "count".
         Each fact has id, content, category, confidence, createdAt, and source.
+        With ``as_of``, the payload also discloses the parsed cutoff.
     """
     agent_name, user_id = _resolve_scope(runtime)
     try:
-        fused = _active_memory_fusion(query, user_id=user_id, agent_name=agent_name, limit=limit)
+        cutoff: float | None = None
+        if as_of is not None:
+            try:
+                cutoff = _parse_as_of(as_of)
+            except ValueError:
+                return json.dumps(
+                    {"error": (f'invalid as_of: {as_of!r} — use an ISO-8601 timestamp (e.g. "2026-10-01T00:00:00Z") or unix seconds')},
+                    ensure_ascii=False,
+                )
+        fused = _active_memory_fusion(query, user_id=user_id, agent_name=agent_name, limit=limit, as_of=cutoff)
         if fused is not None:
             return json.dumps(fused, ensure_ascii=False)
+        if cutoff is not None:
+            # The fused surface is the only path with temporal semantics; an
+            # unsupported parameter must be refused loudly, never dropped.
+            return json.dumps(
+                {"error": ("as_of requires the fused recall surface (memory.fusion.enabled); the single-backend path has no temporal projection, so the request is refused rather than answered with present-day data")},
+                ensure_ascii=False,
+            )
         results = get_memory_manager().search(
             query,
             top_k=limit,
@@ -93,6 +147,7 @@ def _active_memory_fusion(
     user_id: str,
     agent_name: str | None,
     limit: int,
+    as_of: float | None = None,
 ) -> dict[str, object] | None:
     """Fused multi-source retrieval, or ``None`` when the operator has not enabled it.
 
@@ -106,6 +161,10 @@ def _active_memory_fusion(
     rendered as "no memories matched". The controller abstains rather than
     padding the answer, so an empty ``results`` list means "nothing cleared the
     relevance floor", not "the search failed".
+
+    ``as_of`` rides through to the controller's central temporal projection;
+    when set, the parsed cutoff is disclosed beside the answer so a caller can
+    tell a time-traveling read from a present-day one.
     """
     from alpha.memory.active_controller import active_memory_enabled, get_active_memory_controller
 
@@ -113,8 +172,8 @@ def _active_memory_fusion(
         return None
 
     controller = get_active_memory_controller(user_id=user_id, agent_name=agent_name)
-    working_set = controller.retrieve(query)
-    return {
+    working_set = controller.retrieve(query, as_of=as_of)
+    payload: dict[str, object] = {
         "mode": working_set.mode,
         "results": [
             {
@@ -136,6 +195,9 @@ def _active_memory_fusion(
         "degraded_sources": list(working_set.degraded_sources),
         "token_estimate": working_set.token_estimate,
     }
+    if as_of is not None:
+        payload["as_of"] = as_of
+    return payload
 
 
 @tool("memory_add", parse_docstring=True)

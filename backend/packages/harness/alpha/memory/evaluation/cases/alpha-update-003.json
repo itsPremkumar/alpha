@@ -1,0 +1,28 @@
+{
+  "id": "alpha-update-003",
+  "ability": "update",
+  "scope": {"user_id": "eval-update-003", "agent_name": "alpha-memory-evaluation"},
+  "sessions": [
+    {
+      "session_id": "s1",
+      "events": [
+        {"id": "event-export-old", "timestamp": "2026-02-02T09:00:00Z", "text": "Nadia's bookkeeping export runs on Mondays.", "fact_id": "fact-export-old", "answer": "Mondays", "expected_stored": true}
+      ]
+    },
+    {
+      "session_id": "s2",
+      "events": [
+        {"id": "event-export-new", "timestamp": "2026-02-11T09:00:00Z", "text": "Nadia moved the bookkeeping export to Wednesdays.", "fact_id": "fact-export-new", "answer": "Wednesdays", "expected_stored": true}
+      ]
+    }
+  ],
+  "questions": [
+    {"id": "q-current", "question": "When does Nadia's bookkeeping export run now?", "expected": "Wednesdays", "superseded_values": ["Mondays"], "type": "knowledge_update", "evidence_ids": ["event-export-new"]},
+    {"id": "q-history", "question": "When did the bookkeeping export run before it was moved, as retained in memory history?", "expected": "Mondays", "type": "retained_history", "evidence_ids": ["event-export-old"]}
+  ],
+  "metadata": {
+    "expected_stored": ["event-export-old", "event-export-new"],
+    "family": "history_retention",
+    "notes": "Knowledge update PLUS the Hy-Memory 2.0 history-retention property: the superseded value must remain retrievable as history (memory.l1.history_kept) instead of being silently destroyed. q-current grades the standard update_correctness contract; q-history grades that the prior value is recallable."
+  }
+}

@@ -711,6 +711,24 @@ memory:
     embedding_enabled: true
 ```
 
+### L1 typed-memory extras (Hy-Memory 2.0 adoption; all default off)
+
+On top of the L1 typed pipeline itself (`memory.l1.enabled` plus
+`memory.l1.dedup_enabled`), four independently gated extras live in
+`config.example.yaml` under `memory.l1:`:
+
+| Key | Effect when on |
+| --- | --- |
+| `history_kept` | Update/merge keeps the replaced value as a bounded, redacted chain on the surviving record; recall renders a bounded `(prior: …)` tail. |
+| `staleness_propagation` | Records derived (through entity mentions) from a superseded record are journalled — ids only, content-free — under `users/<owner>/l1/staleness/` for the next review; nothing is deleted. |
+| `conflict_expansion` | Conflict detection also sees up to 5 lower-ranked same-subject/different-value candidates, so implicit invalidations below the `dedup_top_k` cut can be caught. |
+| `signal_boost` | Recall ranking adds identifier (case-sensitive) and 14-day recency terms inside the normal relevance window. |
+
+`memory_search` also accepts an optional `as_of` timestamp (ISO-8601 or unix
+seconds) that asks what the memory system knew at that time; it is refused
+unless the fused recall surface (`memory.fusion.enabled`) is on, and undated
+memories are always kept.
+
 ## Best Practices
 
 ### Memory Hygiene

@@ -27,15 +27,106 @@ when nothing was written. The channel observes; it never influences a decision.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from .extractor import message_text
-from .models import DedupDecision, DedupOutcome, ExtractedMemory, MemoryRecord
+from .models import (
+    MAX_HISTORY_ENTRIES,
+    DedupDecision,
+    DedupOutcome,
+    ExtractedMemory,
+    MemoryHistoryEntry,
+    MemoryRecord,
+    build_history_entry,
+)
 from .parser import parse_dedup_response
 from .prompts import format_batch_conflict_prompt, get_conflict_system_prompt
-from .store import L1RecordStore
+from .store import L1RecordStore, tokenize
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Conflict-candidate expansion (Hy-Memory 2.0 adoption, slice #2)
+# ---------------------------------------------------------------------------
+
+#: Extra records pulled past ``top_k`` when ``memory.l1.conflict_expansion``
+#: is on (decision: bounded, never a full scan).
+_EXPANSION_EXTRA = 5
+#: Hard cap on the extras that reach the prompt after the shape prefilter.
+_MAX_EXTRA_CONFLICT_CANDIDATES = 5
+#: Generic connectivity words dropped by the shape check — a token only
+#: counts toward "same subject" if it carries subject content.
+_CONFLICT_DROP_STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "for",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "it",
+        "its",
+        "this",
+        "that",
+        "these",
+        "those",
+        "i",
+        "my",
+        "me",
+        "we",
+        "our",
+        "you",
+        "your",
+        "he",
+        "she",
+        "they",
+        "their",
+        "there",
+        "here",
+        "from",
+        "with",
+        "by",
+        "as",
+        "has",
+        "have",
+        "had",
+        "now",
+        "new",
+    }
+)
+
+
+def _conflict_shaped(new_content: str, candidate_content: str) -> bool:
+    """Deterministic "same subject, different value" prefilter.
+
+    Returns True only when the two texts share at least two non-stopword
+    tokens AND each side carries at least one token the other lacks — the
+    shape of an implicit invalidation ("review cadence moved to Wednesdays"
+    vs "review cadence runs on Mondays"). It is deliberately over-inclusive:
+    near-misses get through so the LLM adjudicator, not the prefilter, decides
+    what a conflict is. Thin inputs (single informative token) never qualify,
+    because two shared tokens is the smallest evidence of a shared SUBJECT.
+    """
+
+    new_tokens = frozenset(token for token in tokenize(new_content or "") if token not in _CONFLICT_DROP_STOPWORDS)
+    cand_tokens = frozenset(token for token in tokenize(candidate_content or "") if token not in _CONFLICT_DROP_STOPWORDS)
+    if len(new_tokens) < 2 or len(cand_tokens) < 2:
+        return False
+    if not (new_tokens - cand_tokens) or not (cand_tokens - new_tokens):
+        return False
+    return len(new_tokens & cand_tokens) >= 2
 
 
 class L1Dedup:
@@ -50,6 +141,8 @@ class L1Dedup:
         user_id: str | None = None,
         agent_name: str | None = None,
         model_name: str | None = None,
+        conflict_expansion: bool = False,
+        signal_boost: bool = False,
     ) -> None:
         self._store = store
         self._model = model
@@ -57,18 +150,34 @@ class L1Dedup:
         self._top_k = max(1, int(top_k))
         self._user_id = user_id
         self._agent_name = agent_name
+        self._conflict_expansion = bool(conflict_expansion)
+        self._signal_boost = bool(signal_boost)
 
     def _build_matches(self, candidates: list[MemoryRecord]) -> list[dict[str, Any]]:
-        """Recall existing candidates per new memory (unified pool in prompt)."""
+        """Recall existing candidates per new memory (unified pool in prompt).
+
+        With ``conflict_expansion`` on, the recall run covers
+        ``top_k + _EXPANSION_EXTRA`` records and the prompt additionally keeps
+        up to ``_MAX_EXTRA_CONFLICT_CANDIDATES`` lower-ranked candidates that
+        pass :func:`_conflict_shaped` — the over-inclusive widening that gives
+        the LLM adjudicator a chance to see an implicit invalidation that
+        ranked below the ``top_k`` cut.
+        """
+        recall_k = self._top_k + (_EXPANSION_EXTRA if self._conflict_expansion else 0)
         matches: list[dict[str, Any]] = []
         recall = self._store.candidates_for_dedup(
             [{"record_id": r.id, "content": r.content} for r in candidates],
-            self._top_k,
+            recall_k,
             user_id=self._user_id,
             agent_name=self._agent_name,
+            signal_boost=self._signal_boost,
         )
         for record in candidates:
             existing = recall.get(record.id, [])
+            if self._conflict_expansion and len(existing) > self._top_k:
+                extra_pool = existing[self._top_k :]
+                extra_pool = [c for c in extra_pool if _conflict_shaped(record.content, c.content)][:_MAX_EXTRA_CONFLICT_CANDIDATES]
+                existing = existing[: self._top_k] + extra_pool
             matches.append(
                 {
                     "record": record.to_prompt_dict(),
@@ -172,6 +281,33 @@ def _confirm_committed_ids(
     return committed
 
 
+def _inherited_history(target_records: list[MemoryRecord], *, recorded_at: float) -> list[MemoryHistoryEntry]:
+    """Bounded, de-duplicated chain of replaced values for one merged record.
+
+    Order is oldest-first: each target's inherited chain (it survived earlier
+    supersessions) comes before that target's OWN current value, which is the
+    freshest prior. A ``(record_id, content)`` pair is only ever embedded once,
+    so a merge across targets that share ancestry cannot duplicate an entry.
+    The chain is capped by dropping the OLDEST entries (they are the least
+    informative about the current value), never the newest.
+    """
+    entries: list[MemoryHistoryEntry] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _add(entry: MemoryHistoryEntry) -> None:
+        key = (entry.record_id, entry.content)
+        if key in seen:
+            return
+        seen.add(key)
+        entries.append(entry)
+
+    for target in target_records:
+        for inherited in target.history:
+            _add(inherited)
+        _add(build_history_entry(target, recorded_at=recorded_at))
+    return entries[-MAX_HISTORY_ENTRIES:]
+
+
 def apply_decisions(
     store: L1RecordStore,
     candidates: list[MemoryRecord],
@@ -181,6 +317,9 @@ def apply_decisions(
     agent_name: str | None = None,
     now: float | None = None,
     persisted_ids: list[str] | None = None,
+    history_enabled: bool = False,
+    kept_history: list[int] | None = None,
+    superseded_ids: list[str] | None = None,
 ) -> dict[str, int]:
     """Apply conflict decisions to the store; returns per-action counts.
 
@@ -202,6 +341,22 @@ def apply_decisions(
     this turn actually commit?" without re-deriving anything. Leave it ``None``
     and this function costs exactly what it did before — the confirmation only
     runs when a sink is supplied *and* something was written.
+
+    ``kept_history`` is the second optional out-parameter (it mirrors
+    ``persisted_ids`` semantics: one append per update/merge write naming the
+    surviving record's history-chain length). ``history_enabled`` turns the
+    Hy-Memory-2.0-style history retention ON: prior values of ``update``/
+    ``merge`` targets are persisted on the surviving record instead of being
+    destroyed (see :func:`_inherited_history`). Both default to OFF so every
+    existing caller keeps byte-identical behaviour; history never changes a
+    decision, only what survives around the decision.
+
+    ``superseded_ids`` is the third optional out-parameter (Hy-Memory adoption
+    slice #1): pass a list and it is cleared, then filled with the target ids
+    the store CONFIRMED removed (verified post-delete via ``store.get``), in
+    sorted order. This is the staleness-propagation observation channel — the
+    pipeline walks the mention lineage of exactly these ids. Leave it ``None``
+    and there is no confirmation cost.
 
     Per-outcome id table (the only ids ``persisted_ids`` can ever receive)::
 
@@ -236,6 +391,10 @@ def apply_decisions(
         # Cleared on every exit path (including the empty-candidate one) so a
         # caller reusing one list across runs can never read a stale id.
         persisted_ids.clear()
+    if kept_history is not None:
+        kept_history.clear()
+    if superseded_ids is not None:
+        superseded_ids.clear()
     if not candidates:
         return counts
 
@@ -286,6 +445,11 @@ def apply_decisions(
                 # Keep the merged record id stable under the candidate's id
                 # so provenance for this run points at the stored record.
                 merged.id = candidate.id
+            if history_enabled:
+                recorded_at = time.time() if now is None else now
+                merged.history = _inherited_history(target_records, recorded_at=recorded_at)
+                if kept_history is not None:
+                    kept_history.append(len(merged.history))
             to_delete.update(decision.target_ids)
             to_write.append(merged)
             counts["updated" if decision.action == "update" else "merged"] += 1
@@ -299,6 +463,18 @@ def apply_decisions(
     deletable = {tid for tid in to_delete if tid not in write_ids}
     if deletable:
         store.delete_records(sorted(deletable), user_id=user_id, agent_name=agent_name)
+        if superseded_ids is not None:
+            # The propagation channel reports only what the STORE confirmed:
+            # a delete that did not land (failed call, mid-scope write) is not
+            # a supersession, and claiming one would mark a live record stale.
+            for target_id in sorted(deletable):
+                try:
+                    gone = store.get(target_id, user_id=user_id, agent_name=agent_name) is None
+                except Exception:  # noqa: BLE001 - an observation channel never fails a run
+                    logger.warning("L1 dedup: could not confirm removal of %s; not reporting it as superseded", target_id, exc_info=True)
+                    gone = False
+                if gone:
+                    superseded_ids.append(target_id)
     if to_write:
         try:
             store.put_records(to_write, user_id=user_id, agent_name=agent_name)
@@ -340,4 +516,4 @@ def candidate_records(
     return records
 
 
-__all__ = ["L1Dedup", "apply_decisions", "candidate_records"]
+__all__ = ["L1Dedup", "apply_decisions", "candidate_records", "_conflict_shaped"]
