@@ -3263,6 +3263,11 @@ summarization:
 memory:
   enabled: true
   injection_enabled: true # Whether to inject memory into system prompt
+  # Episodic-trace consolidation with provenance (bot plan 4.2). Off by
+  # default: consolidation is lossy and cost-bearing. When enabled, episodic
+  # traces are read, facts are extracted by a caller-supplied extractor, and
+  # each written fact cites its source trace ids. No daemon runs by default.
+  consolidation: false
   # Hard budget (seconds) to drain pending memory updates on Gateway graceful
   # shutdown. Each pending item does one LLM call, so large IM batches may need
   # more. Must fit inside the pod's K8s terminationGracePeriodSeconds (channel

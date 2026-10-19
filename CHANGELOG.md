@@ -12,6 +12,19 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **memory-consolidation-provenance:** Honest memory consolidation with
+  provenance (bot plan 4.2). New `alpha/memory/consolidation.py` replaces
+  the fabricated arithmetic path with a real consolidation surface: reads
+  genuine episodic traces, extracts facts through a caller-supplied
+  extractor, and writes each fact with full provenance
+  (`{fact, source_trace_ids, extractor_model, confidence, created_at}`).
+  Dedupes against existing facts and facts written earlier in the same run.
+  Appends every written fact to a "dream journal" JSONL. Returns
+  `{status, traces_read, facts_written, facts_rejected, sources}` — zeros
+  are real zeros. Failed extraction writes nothing and says why. Opt-in
+  only (`memory.consolidation: false`), no daemon by default. Tests:
+  `test_memory_consolidation.py` (24 tests, offline).
+
 - **swarm-worktree-isolation:** Worktree isolation for coding swarms (bot plan
   4.3). New `swarm/merge_queue.py` serializes merge simulations through a
   process-local queue so parallel coding tasks cannot interfere with each
