@@ -211,7 +211,114 @@
 - **Bounded parallel exploration** — `parallel` mode runs proposal scopes and candidate probes concurrently with isolated workspaces.
 - **Cross-domain/cross-model transfer tests** — domain isolation, runtime isolation, tool-schema isolation, expiry exclusion, held-out task separation.
 
-## 11. Development & Operations
+## 12. Slash Command System (454 commands)
+
+Alpha exposes 454 slash commands across 15 categories, each binding to a real backend subsystem:
+
+- **Core / Help** — `/help`, `/commands`, `/version`, `/about`, `/status`, `/doctor`, `/diagnostics`, `/whoami`, `/capabilities`, `/tools`, `/skills`.
+- **Mission / Goal** — `/goal` (create, start, pause, resume, edit, status, complete), `/mission`, `/goal decompose`, `/goal expand`, `/goal verify`.
+- **Agent Management** — `/agent` (create, clone, delegate, evaluate, inspect, list, pause, recruit, replace, reputation, restart, resume, spawn, specialize, stop, tree), `/ask-agent`.
+- **Swarm** — `/swarm` (start, stop, pause, resume, kill, status, inspect, topology, scale, merge, optimize, research, design, hierarchy, debate, consensus, compete, coding, review, mapreduce, pipeline, parallel, rebalance), `/swarm coding`, `/swarm compete`.
+- **Research** — `/research` (deep, quick, exhaustive, sources, citations, claims, counter, gaps, map, synthesize, compare, timeline, verify, frontier).
+- **Memory** — `/memory` (add, search, forget, consolidate, experience, failure, inspect, prune, repair, summarize, promote, demote, project, user).
+- **Security** — `/security` (audit, scan, review, redteam, permissions, policy, credentials, secrets, inject, lockdown, approve, deny, revoke, sandbox).
+- **Planning** — `/plan` (deep, show, approve, reject, revise, compare, dependencies, risk, simulate, optimize, parallelize, freeze, unfreeze, explain, alternative).
+- **Verification** — `/verify` (final, deep, evidence, sources, tests, security, completeness, requirements, regression, runtime, artifact, visual, adversarial, independent).
+- **Context** — `/context` (compact, detail, export, focus, map, optimize, preserve, prune, reset, restore).
+- **Runtime** — `/runtime` (health, inspect, logs, processes, queues, reload, resources, restart, shutdown, workers, events).
+- **Code / Git** — `/code`, `/commit`, `/diff`, `/patch`, `/merge`, `/pr`, `/refactor`, `/undo`, `/branch`, `/worktree`.
+- **Model** — `/model` (list, auto, best, cheap, coding, compare, fallback, fast, local, research, route, vision, benchmark).
+- **Workflow** — `/workflow` (create, run, optimize), `/trigger`, `/task` (cancel, fork, logs, pause, result, resume, retry).
+- **Autonomy / APEX** — `/apex` (on, off, status, policy, approve, reject, pause, resume, stop, take-over, replan, steer, verify), `/avo` (start, stop, status, generate, mutate, evaluate, promote, rollback, candidates, compare, shadow, canary, benchmark, adversarial, archive, lineage), `/bg`, `/boost`, `/monitor`, `/performance`, `/telemetry`, `/usage`, `/metrics`, `/latency`.
+- **Browser** — `/browser` (open, search, click, fill, extract, screenshot, tabs, network, inspect, verify).
+- **Computer** — `/computer` (act, inspect, screenshot, verify).
+- **Knowledge** — `/knowledge` (search, graph, update), `/learn` (failure, trajectory).
+- **Experience** — `/experience` (similar).
+- **Consensus / Negotiation** — `/consensus`, `/negotiate`, `/vote`, `/debate`, `/consult`.
+- **Teamwork** — `/teamwork-preview`, `/handoff`, `/broadcast`, `/msg`.
+- **Session** — `/session` (clone, fork, search), `/sessions`, `/new`, `/newtask`, `/resume`, `/resume-hitl`, `/pause`, `/interrupt`, `/retry`, `/run`, `/watch`.
+- **Skills** — `/skill` (create, list, test), `/skills` (list, install, uninstall, update, enable, disable, inspect, audit, benchmark, improve, create, propose, approve, rollback, search, test).
+- **MCP** — `/mcp` (list, add, remove, enable, disable, health, inspect, auth, reload).
+- **Self-healing** — `/self-heal`.
+- **World** — `/world` (changes, inspect, refresh).
+
+## 13. Memory Systems (Advanced)
+
+- **DeerMem (L1)** — file-based memory with FTS5 retrieval, staleness propagation, conflict expansion, as-of recall, signal boost.
+- **Cognitive memory** — owner-scoped storage under `users/{owner}/cognitive_memory`, per-owner/per-directory process cache, atomic fsync-backed snapshots.
+- **Episodic memory** — turn-by-turn trace recording with salience scoring, outcome tracking, parent episode linking.
+- **Semantic graph** — belief crystallization, conflict reconciliation, Ebbinghaus forgetting curve decay, associative clustering.
+- **Procedural skill memory** — skill registration, lifecycle management (proposed → verified → promoted), strength-based ranking, capacity enforcement.
+- **Working memory** — ephemeral, owner-scoped working memory with salience promotion.
+- **Affective memory** — mood tracking, affective extraction, provenance.
+- **Codebase memory** — bounded AST/structure snapshot for coding tasks; query-matched modules, symbols, dependency summaries.
+- **L1 capture observability** — latest owner-scoped typed-memory capture outcome from bounded seven-day provenance scan.
+- **Memory extraction health** — healthy/degraded/disabled/unknown status with model/source, timestamps, aggregate counters.
+- **L1 secret protection** — credential patterns redacted before content-derived IDs assigned.
+- **Prospective reminders** — captures "remind me to …" requests with owner/agent scope and idempotent source IDs.
+- **ReasoningBank** — durable, evidence-gated procedure memory with measured wins/attempts.
+- **Dreaming consolidation** — folds ephemeral episodic traces into semantic knowledge graph; honest consolidation with provenance.
+- **Memory consolidation (lossy)** — fact consolidation with `consolidation_enabled` flag; min facts threshold, max groups per cycle.
+- **Honest memory consolidation** — `alpha/memory/consolidation.py` with `{fact, source_trace_ids, extractor_model, confidence, created_at}`, dedupe, dream journal JSONL.
+
+## 14. APEX, Autonomy & Self-Improvement
+
+- **APEX executive control plane** — one autonomy contract, one bounded decision cycle, one read-only status projection and one control surface.
+- **Autonomous upkeep** — `run_upkeep_pass()` driver: ingest, reconcile skill lifecycle, replay, verify; degraded verification blocks action.
+- **APEX invariants** — fail-loud runtime self-checks; `InvariantRegistry` with named `InvariantCheck`s.
+- **RSI (Recursive Self-Improvement)** — predictive RSI with advisory forecasts, calibration metrics (Brier, calibration error, coverage).
+- **Self-improvement verification** — four gates (target, repetition_order, held_out, regression) with tri-state pass/fail.
+- **Self-tuning** — bounded observation window, canary clock, max step ratio, cooldown; protected paths refused even with operator token.
+- **Self-repair verification** — `selfrepair/engine.py` provides symptom-based repair; refuses weakened tests.
+- **Sentinel repair loop** — autonomous repair loop with per-fault-kind verdict, human handoff queue, checkpoint-before-edit, revert on failure.
+- **Kibitzer metacognitive supervision** — background supervision detecting loops, thrashing, prompt drift.
+
+## 15. Additional Subsystems
+
+- **Arena tournaments** — single-elimination bracket (attack, defend, revise, judge) with durable budget-gated orchestration; judge quality engineered with blinded neutral copies, deterministic position swapping, per-task hard gates.
+- **AVO (Agentic Variation Operators)** — evolutionary prompt and strategy mutation driven by compiler-grounded feedback.
+- **Capability mesh** — evidence-backed capability records; learned instruments (cross-run memory, calibration, drift, decision-policy table, routing, team selection, composition, independence, shadow); read/preview-only.
+- **Company OS** — durable multi-tenant organizations indexed over real subsystems; employees are bot profiles, projects are project rows, work items are Kanban cards.
+- **Autonomous AI Software Enterprise** — C-Suite hierarchy, mission-to-sprint DAG, RFC/blackboard consensus, token treasury with circuit breakers, multi-sig release attestations.
+- **Mod kernel** — ordered policy chain with mod-contributed commands, admin-gated audit ledger, durable hold queue, preview endpoint.
+- **Multimodal** — vision support (ViewImageMiddleware, view_image_tool), image processing, multimodal chain for T1→T2→T3 capability routing.
+- **Execution modes** — seven execution paradigms declared by the backend.
+- **War rooms** — staged group deliberation with quorum policy; 20-subsystem aggregate.
+- **Teams** — team composition, roster management, team operations surface.
+- **Companies** — company OS with durable multi-tenant organizations.
+- **Skills workshop** — skill authoring, validation, static scan, SkillProposal queuing, admin approve gate.
+- **Subagent batches** — durable batch submission/progress/cancellation with acceptance criteria and verdict tracking.
+- **Input polish** — `POST /api/input-polish` rewrites composer drafts.
+- **Suggestions** — `POST /api/threads/{id}/suggestions` generates follow-up questions.
+- **Ops integration** — deployment metadata, version, status, resources, advice, runtime, network connectivity.
+- **Deliveries** — run delivery receipts; idempotent persistence.
+- **GitHub webhooks** — agent invocations from PRs, issues, comments, releases; HMAC verification.
+- **MCP tasks** — durable task runtime with lease-based recovery for long-running MCP work.
+- **Agent messages** — structured agent-to-agent messaging with inbox.
+- **Assistants compat** — OpenAI-compatible assistant API.
+- **Goal contracts** — goal contract management for thread-level goals.
+- **Goal integrity** — goal integrity verification and enforcement.
+- **Group coordination** — group coordination panel, group activity, group profile management.
+- **Jobs** — job management and execution tracking.
+- **Features** — feature manifest and capability discovery endpoint.
+- **Predictive RSI** — advisory forecast service with calibration metrics (Brier, calibration error, coverage).
+- **Capabilities** — capability mesh with evidence-backed records.
+- **Dashboard** — overview dashboard with system health, run summaries, quick actions.
+- **Vitals & reliability** — system health monitoring and reliability metrics.
+- **File uploads** — all-or-nothing uploads to thread-isolated user buckets.
+- **Thread management** — thread branching, regeneration, edit replay, archive/search, owner isolation.
+- **Plan mode** — TodoList middleware for complex multi-step tasks.
+- **Scheduled tasks** — cron schedules, pre-flight wake gates, incident tracking, auto-pause.
+- **Side effects** — effect journal and reconciliation console.
+- **System monitor** — host CPU/RAM/disk/network/process state.
+- **Peer network** — cross-installation identity, discovery, pairing, transport, delivery receipts.
+- **Self-healing Windows startup** — watchdog, autostart, tray icon, recovery checks.
+- **Guarded GitHub source auto-update** — published-release discovery, clean worktree + fast-forward enforcement, backup refs, detached restart, health verification, automatic rollback.
+
+---
+
+*Generated from the Alpha repository at commit `7eef241`. See `README.md` for the full feature catalog with links, and `docs/INDEX.md` for the documentation index.*
+
 
 - **140 native tools** — deep research, code execution, file operations, web search, browser automation, and more.
 - **MCP extensions** — Model Context Protocol server integration for extensible tooling.
