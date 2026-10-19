@@ -63,6 +63,8 @@
 - **Kibitzer metacognitive supervision** — background supervision detecting loops, thrashing, and prompt drift.
 - **Dynamic workflow plane** — intent perception, capability discovery, task decomposition, bounded DAG waves, typed graph patches, approval gates, retry/replan, evidence-gated replay, saga compensation.
 - **Workflow fork, dry run & templates** — fork from any event history point, dry-run on throwaway engine (zero side effects, zero tokens), templates gated through `draft → verified → promoted`.
+- **Execution modes** — frontend ExecutionModesSection for selecting and configuring execution paradigms (seven declared by the backend).
+- **Thread management** — thread branching, regeneration, edit replay, archive/search, owner isolation, activity-time preservation.
 - **Failure classification** — 19 deterministic `NodeFailureClass` values (auth, rate limit, security block, worker lost, …) with the matching rule disclosed.
 - **Company OS** — durable multi-tenant organizations indexed over real subsystems; every figure carries a `MeasurementBasis`.
 - **Autonomous AI Software Enterprise** — C-Suite hierarchy, mission-to-sprint DAG, RFC/blackboard consensus, token treasury with circuit breakers, multi-sig release attestations.
@@ -128,12 +130,20 @@
 - **Bot detail page** — `/bots/[name]` reads everything the Gateway reports about one bot (profile, SOUL, capabilities, skills, toolsets, model config, performance, liveness, working state, project memberships, group rooms, company employment, board tasks, canonical chat thread, inbox, routines, org chart, fleet context, org events); twelve reads fail independently.
 - **Free local real-time voice** — browser mic streaming, local Whisper interim + final transcription, VAD turn endpointing, normal SSE agent streaming, sentence-level local Piper playback, optional Kokoro voice, on-device openWakeWord wake word, hands-free resume, no paid speech API.
 - **Milo the lion companion** — local inline-SVG companion with articulated animation, bounded roaming, petting, optional always-on-top desktop window forwarding no prompt or conversation data.
+- **Self-healing Windows startup** — watchdog, autostart, tray icon, and recovery checks under `recovery/`; self-healing chain restarts the port-8001 tree mid-probe.
 - **Guarded GitHub source auto-update** — published-release discovery, clean worktree + fast-forward enforcement, backup refs, detached restart, health verification, automatic rollback; disabled by default.
 - **Interactive canvas & generative UI** — inline interactive HTML/React widgets, live SVG diagrams, KaTeX math, data tables.
 
 ## 9. Self-Knowledge, Durability & Autonomous Operations
 
-- **Self-inventory plane (self-knowledge)** — one bounded answer to "what can Alpha do?": eleven read-only registries (tools, skills, MCP, models, bots, commands, capabilities, engines, wiring, memory) behind the `alpha_capability` tool and `GET /api/intelligence/inventory`; unreadable sources report `count: null`, never `0`.
+- **Self-tuning** — bounded observation window, canary clock, max step ratio, cooldown; protected paths refused even with operator token; unavailable canary/health/audit fails closed.
+- **Self-repair verification** — `selfrepair/engine.py` provides symptom-based repair; `refuse_weakened_tests` is not a field; a self-repair loop never weakens tests.
+- **Arena tournaments** — runs one task through N strategy-carded sub-agents with single-elimination bracket (attack, defend, revise, judge); durable budget-gated orchestration; judge quality engineered with blinded neutral copies, deterministic position swapping, per-task hard gates, bounded repair loop; `compare`/`synthesize` refused by name; task-contract/candidate-coverage/evidence-ledger/synthesis wired into executor.
+- **War Room** — staged group deliberation with quorum policy; open the **War Room** view for the 20-subsystem aggregate, coordination policy, decision log, event feed, locks, handoffs, approvals, checkpoints.
+- **External Alpha** — cross-installation peer network view; transcript read scope; bounded reports with truncation; `hide_from_ui` unchanged.
+- **Capability mesh** — evidence-backed capability records for every dispatchable configuration; learned instruments (cross-run memory, calibration, drift, decision-policy table, routing, team selection, composition, independence, shadow); read/preview-only, no executor wiring; `enabled: false` by default.
+- **Vitals & reliability view** — frontend VitalsSection and ReliabilitySection for system health monitoring and reliability metrics.
+- **Self-knowledge (self-inventory plane)** — eleven read-only registries behind one `list`/`describe`/`health` protocol; `alpha_capability` tool and `GET /api/intelligence/inventory`. do?": eleven read-only registries (tools, skills, MCP, models, bots, commands, capabilities, engines, wiring, memory) behind the `alpha_capability` tool and `GET /api/intelligence/inventory`; unreadable sources report `count: null`, never `0`.
 - **Code index** — bounded, query-driven symbol lookup returning names, signatures, `path:line`, one-line docstrings; never a function body; TypeScript rows labelled `extraction="regex"`.
 - **Cognitive memory** — owner-server-resolved storage under `users/{owner}/cognitive_memory`, per-owner/per-directory process cache, atomic fsync-backed snapshots; unreadable store fails closed.
 - **L1 capture observability** — Memory overview shows latest owner-scoped typed-memory capture outcome from a bounded seven-day provenance scan; surface status and counts; no remembered content exposed.
