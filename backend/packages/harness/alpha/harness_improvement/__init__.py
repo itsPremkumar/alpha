@@ -38,6 +38,14 @@ Package guide: ``backend/packages/harness/alpha/harness_improvement/AGENTS.md``.
 """
 
 from alpha.harness_improvement.budgets import BudgetCeilings, BudgetExceeded, BudgetState, StageCharge, estimate_run_cost
+from alpha.harness_improvement.complexity import (
+    EvidenceRelevance,
+    StopDecision,
+    TaskComplexity,
+    decide_stop,
+    estimate_complexity,
+    score_evidence_relevance,
+)
 from alpha.harness_improvement.components import ComponentIdError, UnknownComponentsError, build_bundle, build_component_ref, diff_bundles, validate_component_id
 from alpha.harness_improvement.compose import ComposerInput, DeliverableCandidate, compose_successor, select_deliverable
 from alpha.harness_improvement.contrast import CandidateEvaluation, build_contrast
@@ -160,7 +168,9 @@ __all__ = [
     "ContrastReport",
     "ContrastVerdict",
     "DeliverableCandidate",
+    "EvidenceRelevance",
     "DeliverableCheck",
+    "EvidenceRelevance",
     "EditorAbsent",
     "ExecutorAbsent",
     "ExperienceBuildResult",
@@ -206,9 +216,11 @@ __all__ = [
     "ScriptedExecutor",
     "StageCharge",
     "StageCheckpoint",
+    "StopDecision",
     "StoreCorrupt",
     "StoreUnreadable",
     "SyntheticTask",
+    "TaskComplexity",
     "TaskContract",
     "TaskSpec",
     "TokenUsage",
@@ -231,9 +243,11 @@ __all__ = [
     "confined_path",
     "content_hash",
     "create_probe_workspace",
+    "decide_stop",
     "diff_bundles",
     "environment_confounders",
     "environment_fingerprint",
+    "estimate_complexity",
     "estimate_run_cost",
     "evaluate_promotion",
     "held_out_suite",
@@ -254,6 +268,7 @@ __all__ = [
     "run_experience_maintenance",
     "safe_id",
     "save_experience",
+    "score_evidence_relevance",
     "scan_for_credential_paths",
     "scan_for_network_commands",
     "select_deliverable",

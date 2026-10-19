@@ -652,6 +652,26 @@ class HarnessImprovementEngine:
         # for adaptive recursion — a run that retained the baseline added
         # no information worth chaining from.
         run.marginal_improvement = not decision.retained_baseline
+        # Adaptive stop decision (Phase 7): record whether the run should
+        # stop (no more recursion) based on complexity, evidence relevance,
+        # and marginal improvement.  Advisory — never blocks the run.
+        try:
+            from alpha.harness_improvement.complexity import decide_stop
+            from alpha.harness_improvement.experiences import ExperienceMetadata
+
+            listing = self.store.list_experiences()
+            entries = [ExperienceMetadata.from_dict(row) for row in listing.items]
+            stop = decide_stop(
+                task=run.task,
+                marginal_improvement=run.marginal_improvement,
+                entries=entries,
+                alpha_runtime_version=run.alpha_runtime_version,
+                tool_schema_version=run.tool_schema_version,
+            )
+            run.add_note(f"adaptive stop: should_stop={stop.should_stop}, reason={stop.reason}")
+            self._persist(run)
+        except Exception:
+            pass  # Adaptive decision is advisory; never block the run.
         if not decision.retained_baseline:
             # Same stamping rule as an accepted candidate: the composed
             # successor records the run that produced it, so the promotion
