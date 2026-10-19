@@ -23,7 +23,7 @@ This section accumulates work toward the **2.1.0** milestone
   `{status, traces_read, facts_written, facts_rejected, sources}` — zeros
   are real zeros. Failed extraction writes nothing and says why. Opt-in
   only (`memory.consolidation: false`), no daemon by default. Tests:
-  `test_memory_consolidation.py` (24 tests, offline).
+  `test_memory_consolidation_provenance.py` (24 tests, offline).
 
 - **swarm-worktree-isolation:** Worktree isolation for coding swarms (bot plan
   4.3). New `swarm/merge_queue.py` serializes merge simulations through a
