@@ -65,6 +65,12 @@ from alpha.harness_improvement.experiences import (
     select_experiences,
     supersede_experience,
 )
+from alpha.harness_improvement.maintenance import (
+    MaintenancePlan,
+    analyze_experiences,
+    apply_maintenance,
+    run_experience_maintenance,
+)
 from alpha.harness_improvement.metrics import (
     HELD_OUT_TASKS,
     SYNTHETIC_TASKS,
@@ -178,6 +184,7 @@ __all__ = [
     "InvalidTransition",
     "KIND_EXTRACTION_POLICY",
     "Listing",
+    "MaintenancePlan",
     "PRIVILEGED_KINDS",
     "PROTECTED_COMPONENT_IDS",
     "PatchPolicy",
@@ -209,6 +216,8 @@ __all__ = [
     "ValidatorResult",
     "ValidatorStatus",
     "activate",
+    "analyze_experiences",
+    "apply_maintenance",
     "active_bundle",
     "build_bundle",
     "build_component_ref",
@@ -242,6 +251,7 @@ __all__ = [
     "render_experience_markdown",
     "rollback",
     "run_deliverable_checks",
+    "run_experience_maintenance",
     "safe_id",
     "save_experience",
     "scan_for_credential_paths",

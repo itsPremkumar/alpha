@@ -49,6 +49,8 @@ from alpha.harness_improvement import (
     ComponentKind,
     ComponentOp,
     DeliverableCheck,
+    ExperienceMetadata,
+    ExperienceStatus,
     FailureHypothesis,
     HarnessImprovementEngine,
     HarnessImprovementSettings,
@@ -64,6 +66,7 @@ from alpha.harness_improvement import (
     activate,
     build_bundle,
     compute_task_fingerprint,
+    save_experience,
 )
 from alpha.harness_improvement.config import HarnessImprovementConfig
 from app.gateway.auth_disabled import AUTH_SOURCE_PAT, AUTH_SOURCE_SESSION
@@ -109,6 +112,7 @@ _REQUESTS: tuple[tuple[str, str, dict[str, Any] | None], ...] = (
     ("GET", f"/api/harness/bundles/{_MISSING_BUNDLE}/diff", None),
     ("GET", "/api/harness/experiences", None),
     ("GET", "/api/harness/experiences/exp-1", None),
+    ("POST", "/api/harness/experiences/maintain", {"apply": False}),
     ("GET", "/api/harness/promotions", None),
     ("POST", f"/api/harness/candidates/{_MISSING_BUNDLE}/approve", {"reason": "", "approvals": []}),
     ("POST", f"/api/harness/candidates/{_MISSING_BUNDLE}/reject", {"reason": ""}),
@@ -135,6 +139,7 @@ _EXPECTED_ROUTES: set[tuple[str, tuple[str, ...]]] = {
     ("/api/harness/bundles/{bundle_id}/diff", ("GET",)),
     ("/api/harness/experiences", ("GET",)),
     ("/api/harness/experiences/{experience_id}", ("GET",)),
+    ("/api/harness/experiences/maintain", ("POST",)),
     ("/api/harness/promotions", ("GET",)),
     ("/api/harness/candidates/{bundle_id}/approve", ("POST",)),
     ("/api/harness/candidates/{bundle_id}/reject", ("POST",)),
@@ -541,6 +546,94 @@ class TestDisabledPosture:
 
 
 # ------------------------------------------------------------- enabled start refusals
+
+
+def _seed_experience(
+    store: HarnessImprovementStore,
+    experience_id: str,
+    *,
+    created_at: str,
+    component_ids: tuple[str, ...] = ("tool_guidance/bash",),
+    finding: str = "benefit",
+    expires_at: str | None = None,
+) -> None:
+    """Write one library entry directly; maintenance routes read what is stored."""
+    save_experience(
+        store,
+        ExperienceMetadata(
+            experience_id=experience_id,
+            title=experience_id,
+            lesson=experience_id,
+            finding=finding,
+            scope=CandidateScope.TASK_OR_DOMAIN,
+            task_type="general",
+            domain_tags=(),
+            trigger_symptoms=(),
+            applicable_conditions=(),
+            not_applicable_to=(),
+            component_ids=component_ids,
+            component_kinds=(),
+            evidence_refs=("run-1",),
+            run_ids=("run-1",),
+            benefit="",
+            counter_evidence="",
+            status=ExperienceStatus.ACTIVE,
+            created_at=created_at,
+            last_reviewed_at=created_at,
+            review_condition="",
+            expires_at=expires_at,
+            compatibility={},
+        ),
+    )
+
+
+class TestExperienceMaintenance:
+    """The library-maintenance pass over HTTP (guide §16 Phase 7).
+
+    Analysis is a read-like report; applying is the one route outside
+    stop-or-restore that rewrites library records, so the kill switch blocks
+    it with the run/advance writes.
+    """
+
+    def test_analysis_reports_the_plan_and_writes_nothing(self, lab: _Lab) -> None:
+        _seed_experience(lab.store, "exp-old", created_at="2026-01-01T00:00:00Z")
+        _seed_experience(lab.store, "exp-new", created_at="2026-06-01T00:00:00Z")
+        with lab.client() as client:
+            response = client.post("/api/harness/experiences/maintain", json={"apply": False})
+            assert response.status_code == 200, response.text
+            body = response.json()
+            assert body["apply"] is False
+            assert body["applied"] == []
+            assert any(row["experience_id"] == "exp-old" and row["action"] == "supersede" for row in body["plan"]["actions"])
+            assert client.get("/api/harness/experiences/exp-old").json()["metadata"]["status"] == "active", "analysis is read-like"
+
+    def test_apply_marks_entries_and_never_deletes_one(self, lab: _Lab) -> None:
+        _seed_experience(lab.store, "exp-old", created_at="2026-01-01T00:00:00Z")
+        _seed_experience(lab.store, "exp-new", created_at="2026-06-01T00:00:00Z")
+        with lab.client() as client:
+            response = client.post("/api/harness/experiences/maintain", json={"apply": True})
+            assert response.status_code == 200, response.text
+            applied = {row["experience_id"]: row["status"] for row in response.json()["applied"]}
+            assert applied == {"exp-old": "applied"}
+            statuses = {row["experience_id"]: row["status"] for row in client.get("/api/harness/experiences").json()["experiences"]}
+            assert statuses == {"exp-new": "active", "exp-old": "superseded"}
+            assert client.get("/api/harness/experiences/exp-old").json()["metadata"]["superseded_by"] == "exp-new"
+        kept = sorted(path.name for path in (lab.tmp_path / STORE_DIRNAME / "experiences").iterdir())
+        assert kept == ["exp-new", "exp-old"], "maintenance rewrites metadata; it never removes an entry"
+
+    def test_analysis_stays_reachable_while_disabled_but_apply_refuses_by_name(self, lab: _Lab) -> None:
+        _seed_experience(lab.store, "exp-expired", created_at="2026-01-01T00:00:00Z", expires_at="2026-01-02T00:00:00Z")
+        lab.enabled = False
+        with lab.client() as client:
+            report = client.post("/api/harness/experiences/maintain", json={"apply": False})
+            assert report.status_code == 200, report.text
+            body = report.json()
+            assert body["reviewed"] == 1
+            assert any(row["action"] == "stale" for row in body["plan"]["actions"])
+            applied = client.post("/api/harness/experiences/maintain", json={"apply": True})
+        assert applied.status_code == 503
+        assert applied.json()["code"] == "harness_improvement_disabled"
+        assert "harness_improvement.enabled" in applied.json()["detail"]
 
 
 class TestEnabledRefusals:

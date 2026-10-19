@@ -12,6 +12,20 @@ This section accumulates work toward the **2.1.0** milestone
 
 ### Added
 
+- **harness2-library-maintenance:** the Harness² experience library gains the
+  guide's Phase-7 maintenance pass (`alpha.harness_improvement.maintenance`):
+  one whole-library analysis supersedes duplicate lessons onto their newest
+  keeper, marks entries past `expires_at` stale, and reports opposing
+  findings on one component for a human to resolve. Every applied write is
+  additive status/pointer marking — nothing is deleted — terminal records,
+  component-less general lessons and groups with no current keeper are left
+  untouched with the reason in the report. New `POST
+  /api/harness/experiences/maintain` (admin-gated; analysis is read-like and
+  reachable while the feature is disabled, applying refuses with the other
+  run/advance writes) and a `maintenance_notes` provenance field on entry
+  metadata that keeps the round-trip backward compatible. Tests:
+  `test_harness_improvement_maintenance.py` (22 tests, offline).
+
 - **hy-memory-adoption-slices-1-2-3-4-7:** Second implementation slice of the
   Hy-Memory 2.0 adoption plan — four default-off upgrades plus one evaluation
   family, all wired against the real L1 pipeline and fused controller. Staleness

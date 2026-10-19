@@ -88,6 +88,7 @@ from alpha.harness_improvement import (
     redact_text,
     reject_candidate,
     rollback,
+    run_experience_maintenance,
     utc_now,
 )
 from alpha.harness_improvement.promotion import LADDER
@@ -189,6 +190,12 @@ class HarnessApprovalRequest(BaseModel):
 
 class HarnessActivationRequest(BaseModel):
     reason: str = Field(default="", max_length=2000)
+
+
+class HarnessExperienceMaintenanceRequest(BaseModel):
+    """Body for ``POST /experiences/maintain``; analysis is the default."""
+
+    apply: bool = Field(default=False, description="rewrite the marked entries; false = analysis report only")
 
 
 # --------------------------------------------------------------------- plumbing
@@ -937,6 +944,42 @@ async def get_experience(experience_id: str, _user: Any = Depends(get_current_us
     entry = ExperienceMetadata.from_dict(metadata)
     clean, findings = _redacted(markdown)
     return {"metadata": metadata, "markdown": clean, "staleness": list(is_stale(entry, now=utc_now())), "redactions": findings}
+
+
+@router.post("/experiences/maintain")
+async def maintain_experiences(
+    request: Request,
+    body: HarnessExperienceMaintenanceRequest | None = None,
+    _user: Any = Depends(get_current_user_from_request),
+) -> Any:
+    """Consolidate and revalidate the experience library (guide §16 Phase 7).
+
+    Analysis (the default, ``apply: false``) is a report over the library that
+    writes nothing, so it stays reachable while the feature is disabled like
+    every other read. Applying (``apply: true``) rewrites entry metadata —
+    superseding duplicated lessons onto their newest keeper, marking entries
+    whose ``expires_at`` has passed stale — so it refuses while the feature is
+    disabled alongside the writes that advance work: maintenance must not
+    reshape a library an operator has frozen. Every action is additive marking
+    plus pointers, nothing is deleted, and opposing lessons are reported for a
+    human rather than resolved — the pass never picks a winner it cannot
+    prove.
+    """
+    apply = bool(body.apply) if body is not None else False
+    actor = await _admin_actor(request, detail="maintaining the harness experience library requires an administrator")
+    if isinstance(actor, JSONResponse):
+        return actor
+    if apply:
+        engine = await _enabled_engine()
+        if isinstance(engine, JSONResponse):
+            return engine
+    else:
+        engine = await asyncio.to_thread(_engine)
+    store = engine.store
+    try:
+        return await asyncio.to_thread(partial(run_experience_maintenance, store, apply=apply, now=utc_now()))
+    except _STORE_ERRORS as exc:
+        return _store_error(exc)
 
 
 @router.get("/promotions")

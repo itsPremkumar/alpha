@@ -157,6 +157,20 @@ symptoms, and what it does *not* apply to); staleness is computed against
 compatibility versions and review conditions, not assumed. Negative findings
 are recorded too — the library is not a wall of wins.
 
+## Library maintenance (`maintenance.py`)
+
+`analyze_experiences` is the whole-library view the run pipeline cannot have:
+it plans superseding duplicate lessons (same finding, same component) onto
+their newest keeper through the same pair-wise `supersede_experience` write,
+reports entries whose findings conflict on one component for a human to
+resolve, and plans stale-marking for entries past `expires_at`. Applying
+rewrites status and pointers only — nothing is ever deleted, and a duplicate
+group whose newest entry is not current, an entry without component identity,
+and every terminal record are left untouched, each with the reason stated in
+the report. Analysis is pure, ordering-independent and writes nothing when
+`apply=False`; `run_experience_maintenance` carries the store's `unreadable`
+rows into the report instead of acting on rows nobody could parse.
+
 ## Budgets (`budgets.py`)
 
 Ceilings are *enforced / exhausted / unenforceable* — an unenforceable cap
@@ -178,12 +192,13 @@ import `alpha.config` — the Gateway converts.
 
 ## HTTP surface and production posture (`app/gateway/routers/harness.py`)
 
-18 routes under `/api/harness`: reads (`GET /status`, `/runs`, `/runs/{id}`,
+19 routes under `/api/harness`: reads (`GET /status`, `/runs`, `/runs/{id}`,
 `/runs/{id}/events`, `/bundles`, `/bundles/{id}`, `/bundles/{id}/diff`,
 `/experiences`, `/experiences/{id}`, `/promotions`, `/budgets`) are
 authenticated; mutations (`POST /runs`, `/runs/{id}/resume`,
 `/runs/{id}/cancel`, `/candidates/{id}/approve`, `/candidates/{id}/reject`,
-`/active/{id}/activate`, `/active/{id}/rollback`) are admin-gated. The
+`/active/{id}/activate`, `/active/{id}/rollback`, `/experiences/maintain`)
+are admin-gated. The
 subsystem is **installation-scoped** — one store, one active bundle — so
 payloads are not partitioned per user.
 
@@ -231,3 +246,7 @@ All offline, no model calls, scripted actors only:
 - `backend/tests/test_harness_improvement_router.py` — route inventory, auth
   and admin sweeps, the disabled posture, start refusals, a full cycle read
   over HTTP, promotion flows, and the degraded-store `503`/`unreadable` split.
+- `backend/tests/test_harness_improvement_maintenance.py` — the pure plan
+  (duplicates, conflicts, expiry, determinism, maintenance_notes round-trip),
+  store application (additive marking, unreadable carried, nothing deleted,
+  vanished target refused), and the route's analysis/apply split.

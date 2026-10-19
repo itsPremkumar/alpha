@@ -529,7 +529,7 @@ should be told first. `POST /api/harness/runs` refuses with
 progress. Full contract, ladder, store honesty rules and the HTTP surface:
 **[harness_improvement/AGENTS.md](harness_improvement/AGENTS.md)**. Frontend
 surface: the Harness Lab workspace view. Tests:
-`backend/tests/test_harness_improvement_{engine,patches,config,promotion,router}.py`
+`backend/tests/test_harness_improvement_{engine,patches,config,promotion,router,maintenance}.py`
 (all offline, scripted actors, zero model calls).
 
 ## Peer network boundary

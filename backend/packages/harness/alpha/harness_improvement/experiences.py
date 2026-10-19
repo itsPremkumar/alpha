@@ -78,6 +78,10 @@ class ExperienceMetadata:
     supersedes: tuple[str, ...] = ()
     superseded_by: str | None = None
     compatibility: dict[str, Any] = field(default_factory=dict)
+    # Durable provenance for maintenance decisions (why an entry was marked
+    # stale); empty for every entry built by an improvement run. ``from_dict``
+    # tolerates its absence so pre-maintenance metadata files keep reading.
+    maintenance_notes: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -106,6 +110,7 @@ class ExperienceMetadata:
             "supersedes": list(self.supersedes),
             "superseded_by": self.superseded_by,
             "compatibility": self.compatibility,
+            "maintenance_notes": list(self.maintenance_notes),
         }
 
     @classmethod
@@ -135,6 +140,7 @@ class ExperienceMetadata:
             supersedes=tuple(str(s) for s in data.get("supersedes", [])),
             superseded_by=data.get("superseded_by"),
             compatibility=dict(data.get("compatibility", {})),
+            maintenance_notes=tuple(str(n) for n in data.get("maintenance_notes", [])),
         )
 
 
@@ -268,6 +274,7 @@ def render_experience_markdown(entry: ExperienceMetadata) -> str:
         f"- Review or expiry condition: {entry.review_condition}\n"
         f"- Expires at: {entry.expires_at or 'no expiry; review condition applies'}\n"
         f"- Supersedes / superseded by: {', '.join(entry.supersedes) or '(none)'} / {entry.superseded_by or '(none)'}\n"
+        f"- Maintenance notes: {' / '.join(entry.maintenance_notes) or '(none)'}\n"
     )
 
 

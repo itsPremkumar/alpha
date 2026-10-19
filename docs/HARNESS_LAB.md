@@ -118,7 +118,7 @@ deliberately has not made.
 
 ## 5. HTTP API
 
-18 routes under `/api/harness`. **Reads are authenticated; every mutation is
+19 routes under `/api/harness`. **Reads are authenticated; every mutation is
 admin-gated** (a PAT is never an admin). The subsystem is
 **installation-scoped** — one store, one active bundle — so payloads are not
 partitioned per user: an improvement run measures this deployment's harness,
@@ -138,6 +138,7 @@ not one person's data.
 | `GET /bundles/{id}/diff` | read | The component-level diff against its parent bundle. |
 | `GET /experiences` | read | The experience library, newest first, filterable. |
 | `GET /experiences/{id}` | read | One lesson, including its scope and counter-evidence. |
+| `POST /experiences/maintain` | mutation | Library maintenance (guide §16 Phase 7). `apply: false` (default) analyzes: duplicate lessons superseded onto their newest keeper, expired entries stale-marked, opposing findings reported. `apply: true` rewrites entry metadata additively — nothing is deleted. Analysis stays reachable while the feature is disabled (it writes nothing); applying refuses with the run/advance writes. |
 | `GET /promotions` | read | The ladder vocabulary, the promotion log, and the active pointer. |
 | `POST /candidates/{id}/approve` | mutation | Record an operator approval — only when the substantive gates already pass. |
 | `POST /candidates/{id}/reject` | mutation | Reject a candidate with a recorded reason. |
